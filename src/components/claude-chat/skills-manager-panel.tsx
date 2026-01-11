@@ -1,42 +1,60 @@
 import { FC, useEffect, useState } from 'react'
 import { Cross2Icon } from '@radix-ui/react-icons'
-import { useSkillsStore, type SkillInfo } from '~/lib/skills-store'
+import { useQuery } from '@tanstack/react-query'
+import { useServerFn } from '@tanstack/react-start'
+import {
+  listSkillsStore,
+  listUserSkills,
+  enableUserSkill,
+  disableUserSkill,
+} from '~/server/function/skills.server'
+import type { SkillInfo } from '~/claude/skills'
 
 interface SkillsManagerPanelProps {
   userId: string
   onClose: () => void
 }
 
+/**
+ * Skills Manager Panel
+ *
+ * Follows TanStack Start best practices:
+ * - Server Functions for data fetching and mutations
+ * - React Query for caching and synchronization
+ */
 export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClose }) => {
-  const {
-    availableSkills,
-    enabledSkills,
-    isLoading,
-    error,
-    loadAvailableSkills,
-    loadEnabledSkills,
-    enableSkill,
-    disableSkill,
-    clearError,
-  } = useSkillsStore()
+  // Server Functions (type-safe RPC)
+  const enableSkill = useServerFn(enableUserSkill)
+  const disableSkillFn = useServerFn(disableUserSkill)
 
-  // Load data on mount
-  useEffect(() => {
-    loadAvailableSkills()
-    loadEnabledSkills(userId)
-  }, [userId, loadAvailableSkills, loadEnabledSkills])
+  // Fetch data using React Query
+  const { data: availableSkills = [], isLoading: isLoadingSkills } = useQuery({
+    queryKey: ['skills-store'],
+    queryFn: () => listSkillsStore(),
+  })
+
+  const { data: enabledSkillsList = [], isLoading: isLoadingEnabled } = useQuery({
+    queryKey: ['user-skills', userId],
+    queryFn: () => listUserSkills(),
+  })
+
+  const enabledSkills = enabledSkillsList.map(s => s.slug)
+  const isLoading = isLoadingSkills || isLoadingEnabled
 
   // Handle toggle switch
   const handleToggle = async (skillSlug: string) => {
     const isEnabled = enabledSkills.includes(skillSlug)
     try {
       if (isEnabled) {
-        await disableSkill(userId, skillSlug)
+        await disableSkillFn({ data: { skillName: skillSlug } })
+        // Optimistic update (React Query will refetch)
       } else {
-        await enableSkill(userId, skillSlug)
+        await enableSkill({ data: { skillName: skillSlug } })
+        // Optimistic update
       }
     } catch (error) {
-      // Error already handled in store
+      console.error('Failed to toggle skill:', error)
+      // TODO: Show error toast to user
     }
   }
 
@@ -62,19 +80,6 @@ export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClos
 
       {/* Content */}
       <div className="px-4 py-3 space-y-3">
-        {/* Error Message */}
-        {error && (
-          <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-            <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-            <button
-              onClick={clearError}
-              className="text-xs text-red-600 dark:text-red-400 underline mt-1"
-            >
-              关闭
-            </button>
-          </div>
-        )}
-
         {/* Loading State */}
         {isLoading && (
           <p className="text-xs text-gray-500 dark:text-gray-400">加载中...</p>

@@ -101,7 +101,7 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
             <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
               <Link to="/">
                 <HomeSmileIcon className="!size-5" />
-                <span className="font-semibold text-base">ex0 AI</span>
+                <span className="font-semibold text-base">Claude Agent Chat</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

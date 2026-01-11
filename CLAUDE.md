@@ -316,11 +316,189 @@ ZHIPU_API_KEY=your_api_key_here
    - Derived views → render 时计算或 live queries
 
 ### 服务端函数（Server Functions）最佳实践
-- RPC 风格，仅服务端可访问
-- 定义：`createServerFn(opts?).handler(async ctx => { ... })`
-- 可返回：primitives/JSON/Response
-- 支持：redirect/notFound/error
-- 在 route lifecycles 中自动处理 redirects/notFounds
+
+> **官方文档**: [Server Functions | TanStack Start](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions)
+
+Server Functions 是 TanStack Start 推荐的 **类型安全的 RPC 机制**，用于替代传统 REST API。
+
+#### 核心优势
+
+| 特性 | REST API | Server Functions |
+|------|----------|------------------|
+| **类型安全** | ❌ 手动维护类型定义 | ✅ 自动推导 |
+| **调用方式** | `fetch('/api/...')` | `await fn()` |
+| **序列化** | ❌ 手动 `JSON.stringify/parse` | ✅ 自动处理 |
+| **错误处理** | ❌ 手动检查 `response.ok` | ✅ 自动处理 |
+| **认证** | ❌ 每个路由单独检查 | ✅ 统一 `requireUser()` |
+| **Redirect** | ❌ 手动处理 30x 响应 | ✅ `throw redirect()` |
+| **Validation** | ❌ 需要中间件 | ✅ 内置 `inputValidator` |
+| **Bundle 安全** | ⚠️ 需要手动配置 | ✅ 自动隔离 |
+
+#### 基本用法
+
+**定义 Server Function**：
+```typescript
+// src/server/function/skills.server.ts
+import { createServerFn } from '@tanstack/react-start';
+import { z } from 'zod';
+
+// GET 请求（默认）
+export const listSkillsStore = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    return await getSkillsStore();  // 返回类型自动推导
+  });
+
+// POST 请求 + 输入验证
+export const enableUserSkill = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({
+    skillName: z.string().min(1),
+  }))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    await enableSkill(user.id, data.skillName);
+    return { success: true };
+  });
+```
+
+**在路由 loader 中调用**：
+```typescript
+// src/routes/agents/skills/route.tsx
+export const Route = createFileRoute('/agents/skills')({
+  loader: async () => {
+    // 并行加载数据（SSR + streaming）
+    const [skills, enabledSkills] = await Promise.all([
+      listSkillsStore(),
+      listUserSkills(),
+    ]);
+    return { skills, enabledSkills };
+  },
+  component: () => {
+    const { skills, enabledSkills } = Route.useLoaderData();
+    return <SkillsPageComponent skills={skills} enabledSkills={enabledSkills} />;
+  },
+});
+```
+
+**在组件中调用**：
+```typescript
+import { useServerFn } from '@tanstack/react-start';
+
+export const SkillsPageComponent = ({ skills, enabledSkills }) => {
+  const enableSkill = useServerFn(enableUserSkill);
+
+  const handleToggle = async (skillSlug: string) => {
+    // 类型安全的调用
+    await enableSkill({ data: { skillName: skillSlug } });
+  };
+};
+```
+
+#### 规范要求
+
+1. **❌ 禁止使用 REST API 路由**
+   - 不要创建 `/routes/api/skills/*.ts` 文件
+   - 不要使用 `server: { handlers: { GET: ... } }` 模式
+   - 不要在前端使用 `fetch('/api/...')`
+
+2. **✅ 必须使用 Server Functions**
+   - 所有服务端操作定义为 `createServerFn()`
+   - 前端通过 `useServerFn()` 或直接调用
+   - 输入验证使用 Zod schemas
+
+3. **✅ 数据加载在 loader 中**
+   - 页面初始数据在 `loader` 中预加载
+   - 使用 `Promise.all()` 并行加载
+   - 组件通过 `Route.useLoaderData()` 获取数据
+
+4. **✅ 认证统一处理**
+   ```typescript
+   const requireUser = async () => {
+     const { headers } = getRequest();
+     const session = await auth.api.getSession({ headers });
+     if (!session?.user) throw new Error('UNAUTHORIZED');
+     return session.user;
+   };
+   ```
+
+#### 重构示例
+
+**Before（❌ 不推荐）**：
+```typescript
+// REST API 路由
+export const Route = createFileRoute('/api/skills/store')({
+  server: {
+    handlers: {
+      GET: async () => {
+        return Response.json(await getSkillsStore());
+      },
+    },
+  },
+});
+
+// 前端 fetch 调用
+loadAvailableSkills: async () => {
+  const response = await fetch('/api/skills/store');
+  const data = await response.json();
+  set({ availableSkills: data });
+}
+```
+
+**After（✅ 推荐）**：
+```typescript
+// Server Function
+export const listSkillsStore = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    return await getSkillsStore();
+  });
+
+// 路由 loader
+export const Route = createFileRoute('/agents/skills')({
+  loader: async () => {
+    const skills = await listSkillsStore();
+    return { skills };
+  },
+});
+
+// 组件使用 props
+export const SkillsPageComponent: FC<{ skills: SkillInfo[] }> = ({ skills }) => {
+  // 数据已通过 loader 加载
+};
+```
+
+#### 认证和错误处理
+
+```typescript
+// Server Function 自动处理 redirect/notFound
+export const requireAuth = createServerFn()
+  .handler(async () => {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw redirect({ to: '/login' });  // 自动重定向
+    }
+    return user;
+  });
+
+// 前端调用：自动处理响应
+const user = await requireAuth();  // 未认证时自动跳转
+```
+
+#### 环境变量安全
+
+```typescript
+// ❌ 危险：可能泄露到客户端
+const apiKey = process.env.SECRET_KEY;
+
+// ✅ 安全：使用 Server Function
+const getApiKey = createServerOnlyFn(() => {
+  return process.env.SECRET_KEY;  // 永远只在服务端
+});
+```
+
+#### 参考文档
+
+- [Server Functions 官方文档](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions)
+- [Code Execution Patterns](https://tanstack.com/start/latest/docs/framework/react/guide/code-execution-patterns)
+- [Static Server Functions](https://tanstack.com/start/latest/docs/framework/react/guide/static-server-functions)
 
 ### 项目约束
 - ✅ 使用 pnpm
@@ -330,10 +508,130 @@ ZHIPU_API_KEY=your_api_key_here
 - ❌ **禁止**使用 `pnpm run dev` 或 `npm run dev` 启动
 - ❌ **禁止**创建本地 pnpm store
 
+### 路由验证工具
+
+项目提供了自动化路由验证工具，用于检查代码是否符合 TanStack Start 最佳实践。
+
+#### 使用方法
+
+```bash
+# 运行路由验证
+pnpm validate-routes
+
+# 查看验证脚本
+cat scripts/validate-routes.mjs
+
+# 查看使用指南
+cat scripts/README.md
+```
+
+#### 验证内容
+
+**错误级别（必须修复）**：
+- ❌ 禁止 REST API 路由（`server: { handlers: { GET } }`）
+- ❌ 禁止在 loader 中使用 `fetch()`
+- ❌ 禁止在 zustand store 中获取数据
+
+**警告级别（建议优化）**：
+- ⚠️  推荐使用 Server Functions 而不是 `fetch()`
+- ⚠️  避免在 `useEffect` 中获取数据
+- ⚠️  Loader 应使用 `Promise.all()` 并行加载数据
+
+#### 集成到开发流程
+
+**提交前检查**：
+```bash
+# 1. 验证路由
+pnpm validate-routes
+
+# 2. 运行 linter
+pnpm lint
+
+# 3. 运行测试
+pnpm test
+```
+
+**当前项目状态**：
+- 总文件数：48 个路由文件
+- 通过验证：21 个
+- 需要优化：29 个（主要是旧的 REST API 路由）
+
+**参考文档**：
+- [验证工具使用指南](scripts/README.md)
+- [手动检查清单](docs/ROUTE_VALIDATION_CHECKLIST.md)
+
 ### Hydration + Suspense 规则
 - 同步更新导致 suspend → fallback 替换 SSR 内容
 - 解决：用 `startTransition` 包装同步更新（直接 import）
 - hydration 期间避免：`useTransition` 的 `isPending`、`useSyncExternalStore` mutation
+
+### 嵌套路由规则（重要！）
+
+> **官方文档参考**: https://tanstack.com/router/latest/docs/framework/react/routing/file-based-routing
+
+TanStack Router 使用文件系统来表示路由层级。当子目录包含 `route.tsx` 时，会形成嵌套路由关系。
+
+**官方定义**（摘自 TanStack Router 文档）：
+- **Layout Routes**: 用于包装子路由的组件和逻辑，内部使用 `<Outlet />` 作为嵌套内容的占位符
+- **`route.tsx`**: 在目录中定义该路径的组件（如 `/account` 对应 `account/route.tsx`）
+- **`index.tsx`**: 当路由精确匹配且没有子路由匹配时激活
+- **`<Outlet />`**: 渲染下一个可能匹配的子路由，不接受任何 props，可放置在路由组件树的任何位置
+
+**核心规则**：
+1. 父路由（Layout Route）必须提供 `<Outlet />` 组件来渲染子路由内容
+2. 如果路由没有定义组件，会自动渲染 `<Outlet />`
+3. 如果没有子路由匹配，`<Outlet />` 返回 `null`
+
+**目录结构示例**：
+```
+routes/
+├── parent/
+│   ├── route.tsx      ← Layout Route（包装子路由，需要 Outlet）
+│   ├── index.tsx      ← /parent 的默认内容
+│   └── child/
+│       └── route.tsx  ← /parent/child 的内容
+```
+
+**常见错误**：
+❌ 错误：`parent/route.tsx` 不包含 `<Outlet />`，导致访问 `/parent/child` 时子路由无法显示
+✅ 正确：父路由使用 `<Outlet />` 或条件渲染
+
+**条件渲染模式**（当父路由既有自己的内容，又需要渲染子路由时）：
+```typescript
+import { Outlet, useMatch } from '@tanstack/react-router';
+
+function RouteComponent() {
+  const childMatch = useMatch({
+    from: '/parent/child',
+    shouldThrow: false,
+  });
+
+  if (childMatch) {
+    return <Outlet />;  // 渲染子路由
+  }
+
+  return <ParentContent />;  // 渲染父路由自己的内容
+}
+```
+
+**替代方案**（更符合官方推荐的 Layout 模式）：
+```typescript
+// parent/route.tsx - 作为纯 Layout
+function ParentLayout() {
+  return (
+    <div className="parent-wrapper">
+      <Outlet />  {/* 子路由或 index 内容在此渲染 */}
+    </div>
+  );
+}
+
+// parent/index.tsx - 父路由的默认内容
+function ParentIndex() {
+  return <ParentContent />;
+}
+```
+
+**详细规范**：见 `src/routes/agents/ai-workflow/CLAUDE.md`
 
 ---
 
