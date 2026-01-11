@@ -39,7 +39,7 @@ RUN echo "=== Memory before build ===" && free -m && \
 FROM node:22-alpine AS runner
 
 # Install runtime dependencies including bubblewrap for sandbox-runtime
-RUN apk add --no-cache libc6-compat ca-certificates bubblewrap
+RUN apk add --no-cache libc6-compat ca-certificates bubblewrap bash ripgrep
 RUN npm install -g pnpm@10.17.1
 
 WORKDIR /app
