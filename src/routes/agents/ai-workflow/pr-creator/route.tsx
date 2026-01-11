@@ -20,6 +20,7 @@ import {
   FileText,
   MessageSquare,
   CheckCircle,
+  Check,
   Loader2,
   AlertCircle,
   Copy,
@@ -41,6 +42,7 @@ import {
 } from '~/components/ui/select';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Separator } from '~/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { cn } from '~/lib/utils';
 
 export const Route = createFileRoute('/agents/ai-workflow/pr-creator')({
@@ -63,10 +65,32 @@ interface BriefData {
 }
 
 interface FactsData {
-  keyFacts: string[];
-  quotes: string[];
-  data: string[];
-  background: string;
+  rawContent: string; // 原始素材文本，可直接粘贴品牌方文档
+}
+
+// 支持的语言列表
+const SUPPORTED_LANGUAGES = [
+  { code: 'zh', name: '中文', flag: '🇨🇳' },
+  { code: 'en', name: 'English', flag: '🇺🇸' },
+  { code: 'ru', name: 'Русский', flag: '🇷🇺' },
+  { code: 'ar', name: 'العربية', flag: '🇸🇦' },
+  { code: 'es', name: 'Español', flag: '🇪🇸' },
+  { code: 'fr', name: 'Français', flag: '🇫🇷' },
+  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { code: 'uz', name: "O'zbek", flag: '🇺🇿' },
+] as const;
+
+// 字数范围选项
+const WORD_COUNT_OPTIONS = [
+  { value: '500-800', label: '500-800 字（简短）' },
+  { value: '800-1200', label: '800-1200 字（标准）' },
+  { value: '1200-1800', label: '1200-1800 字（详细）' },
+  { value: '1800-2500', label: '1800-2500 字（深度）' },
+] as const;
+
+interface OutputConfig {
+  wordCountRange: string;
+  languages: string[]; // 最多3种语言代码
 }
 
 interface Question {
@@ -131,15 +155,18 @@ function PRCreatorWorkflow() {
     tone: 'professional',
   });
   const [facts, setFacts] = useState<FactsData>({
-    keyFacts: [''],
-    quotes: [''],
-    data: [''],
-    background: '',
+    rawContent: '',
+  });
+  const [outputConfig, setOutputConfig] = useState<OutputConfig>({
+    wordCountRange: '800-1200',
+    languages: ['zh'], // 默认中文
   });
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [draft, setDraft] = useState<PRDraft | null>(null);
+  const [draft, setDraft] = useState<PRDraft | null>(null); // 保留用于单语言兼容
+  const [drafts, setDrafts] = useState<PRDraft[]>([]); // 新增：多语言稿件数组
+  const [primaryLanguage, setPrimaryLanguage] = useState<string>('zh'); // 新增：主语言
   const [fullText, setFullText] = useState<string>('');
 
   // Start workflow
@@ -152,11 +179,9 @@ function PRCreatorWorkflow() {
       const requestBody = {
         brief,
         facts: {
-          ...facts,
-          keyFacts: facts.keyFacts.filter((f) => f.trim()),
-          quotes: facts.quotes.filter((q) => q.trim()),
-          data: facts.data.filter((d) => d.trim()),
+          rawContent: facts.rawContent.trim(),
         },
+        outputConfig,
         additionalNotes,
       };
       console.log('[pr-creator:frontend] Request body:', requestBody);
@@ -236,12 +261,38 @@ function PRCreatorWorkflow() {
 
       if (result.status === 'suspended' && result.suspendedStep === 'human-review') {
         // Workflow suspended for review
-        // 注意：API 返回 suspendPayload，不是 suspendedData
-        setDraft(result.suspendPayload?.draft);
+        console.log('[pr-creator:frontend] Suspended at human-review');
+        console.log('[pr-creator:frontend] suspendPayload:', result.suspendPayload);
+
+        // 注意：后端返回的是 drafts 数组
+        const allDrafts = result.suspendPayload?.drafts;
+        const primary = result.suspendPayload?.primaryLanguage || 'zh';
+
+        if (allDrafts && allDrafts.length > 0) {
+          setDrafts(allDrafts);
+          setPrimaryLanguage(primary);
+          setDraft(allDrafts[0]); // 兼容性：仍然设置第一个
+          console.log('[pr-creator:frontend] Set', allDrafts.length, 'drafts, primary:', primary);
+        } else {
+          console.error('[pr-creator:frontend] No drafts in suspendPayload!');
+        }
         setCurrentStep('review');
       } else if (result.status === 'success') {
-        setDraft(result.result?.draft);
-        setFullText(result.result?.fullText || '');
+        console.log('[pr-creator:frontend] Workflow completed successfully');
+        console.log('[pr-creator:frontend] result:', result.result);
+
+        // 注意：后端返回的是 drafts 数组和 fullTexts 对象
+        const drafts = result.result?.drafts;
+        const fullTexts = result.result?.fullTexts;
+        const primaryLanguage = result.result?.primaryLanguage || 'zh';
+
+        if (drafts && drafts.length > 0) {
+          setDraft(drafts[0]); // 显示主语言版本
+          // 获取主语言的完整文本
+          if (fullTexts && fullTexts[primaryLanguage]) {
+            setFullText(fullTexts[primaryLanguage]);
+          }
+        }
         setCurrentStep('done');
       }
     } catch (err) {
@@ -275,11 +326,35 @@ function PRCreatorWorkflow() {
       }
 
       if (result.status === 'suspended' && result.suspendedStep === 'human-review') {
-        setDraft(result.suspendedData?.draft);
+        console.log('[pr-creator:frontend] (skip) Suspended at human-review');
+        console.log('[pr-creator:frontend] (skip) suspendPayload:', result.suspendPayload);
+
+        // 注意：后端返回的是 drafts 数组
+        const allDrafts = result.suspendPayload?.drafts;
+        const primary = result.suspendPayload?.primaryLanguage || 'zh';
+
+        if (allDrafts && allDrafts.length > 0) {
+          setDrafts(allDrafts);
+          setPrimaryLanguage(primary);
+          setDraft(allDrafts[0]);
+        }
         setCurrentStep('review');
       } else if (result.status === 'success') {
-        setDraft(result.result?.draft);
-        setFullText(result.result?.fullText || '');
+        console.log('[pr-creator:frontend] Workflow completed successfully');
+        console.log('[pr-creator:frontend] result:', result.result);
+
+        // 注意：后端返回的是 drafts 数组和 fullTexts 对象
+        const drafts = result.result?.drafts;
+        const fullTexts = result.result?.fullTexts;
+        const primaryLanguage = result.result?.primaryLanguage || 'zh';
+
+        if (drafts && drafts.length > 0) {
+          setDraft(drafts[0]); // 显示主语言版本
+          // 获取主语言的完整文本
+          if (fullTexts && fullTexts[primaryLanguage]) {
+            setFullText(fullTexts[primaryLanguage]);
+          }
+        }
         setCurrentStep('done');
       }
     } catch (err) {
@@ -311,8 +386,58 @@ function PRCreatorWorkflow() {
         throw new Error(result.error || '审批失败');
       }
 
-      setFullText(result.result?.fullText || '');
+      console.log('[pr-creator:frontend] Approved, workflow complete');
+      console.log('[pr-creator:frontend] result:', result.result);
+
+      // 处理多语言结果
+      const fullTexts = result.result?.fullTexts;
+      const primaryLanguage = result.result?.primaryLanguage || 'zh';
+      if (fullTexts && fullTexts[primaryLanguage]) {
+        setFullText(fullTexts[primaryLanguage]);
+      } else if (result.result?.fullText) {
+        // Fallback for single-language version
+        setFullText(result.result.fullText);
+      }
+
       setCurrentStep('done');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '发生未知错误');
+    }
+  }, [runId]);
+
+  // Reject draft (currently just completes workflow with needs_revision status)
+  const handleRejectDraft = useCallback(async (feedback: string) => {
+    if (!runId) return;
+
+    setError(null);
+
+    try {
+      const response = await fetch('/api/workflow/pr-creator/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          runId,
+          step: 'human-review',
+          resumeData: { approved: false, feedback },
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '操作失败');
+      }
+
+      console.log('[pr-creator:frontend] Rejected with feedback:', feedback);
+      console.log('[pr-creator:frontend] result:', result);
+
+      // Workflow should complete with needs_revision status
+      if (result.status === 'done' || result.status === 'success') {
+        setError('稿件已标记为需要修改。请返回首页重新开始。');
+        setCurrentStep('done');
+      } else {
+        setError('操作完成，但工作流状态异常');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '发生未知错误');
     }
@@ -332,10 +457,7 @@ function PRCreatorWorkflow() {
       tone: 'professional',
     });
     setFacts({
-      keyFacts: [''],
-      quotes: [''],
-      data: [''],
-      background: '',
+      rawContent: '',
     });
     setAdditionalNotes('');
     setAnalysis(null);
@@ -349,7 +471,7 @@ function PRCreatorWorkflow() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link to="/agents/ai-workflow" search={{ workflow: undefined }}>
+          <Link to="/agents/ai-workflow">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -378,6 +500,8 @@ function PRCreatorWorkflow() {
             setBrief={setBrief}
             facts={facts}
             setFacts={setFacts}
+            outputConfig={outputConfig}
+            setOutputConfig={setOutputConfig}
             additionalNotes={additionalNotes}
             setAdditionalNotes={setAdditionalNotes}
             onSubmit={handleStartWorkflow}
@@ -398,8 +522,14 @@ function PRCreatorWorkflow() {
 
         {currentStep === 'generating' && <LoadingStep message="AI 正在生成 PR 稿件…" />}
 
-        {currentStep === 'review' && draft && (
-          <ReviewStep draft={draft} onApprove={handleApproveDraft} onReset={handleReset} />
+        {currentStep === 'review' && drafts.length > 0 && (
+          <ReviewStep
+            drafts={drafts}
+            primaryLanguage={primaryLanguage}
+            onApprove={handleApproveDraft}
+            onReject={handleRejectDraft}
+            onReset={handleReset}
+          />
         )}
 
         {currentStep === 'done' && draft && (
@@ -485,6 +615,8 @@ interface InputStepProps {
   setBrief: React.Dispatch<React.SetStateAction<BriefData>>;
   facts: FactsData;
   setFacts: React.Dispatch<React.SetStateAction<FactsData>>;
+  outputConfig: OutputConfig;
+  setOutputConfig: React.Dispatch<React.SetStateAction<OutputConfig>>;
   additionalNotes: string;
   setAdditionalNotes: (value: string) => void;
   onSubmit: () => void;
@@ -495,6 +627,8 @@ function InputStep({
   setBrief,
   facts,
   setFacts,
+  outputConfig,
+  setOutputConfig,
   additionalNotes,
   setAdditionalNotes,
   onSubmit,
@@ -503,27 +637,45 @@ function InputStep({
     brief.client.trim() &&
     brief.project.trim() &&
     brief.targetAudience.trim() &&
-    facts.keyFacts.some((f) => f.trim());
+    facts.rawContent.trim() &&
+    outputConfig.languages.length > 0;
 
-  const addArrayItem = (field: keyof FactsData) => {
-    if (Array.isArray(facts[field])) {
-      setFacts({ ...facts, [field]: [...(facts[field] as string[]), ''] });
-    }
-  };
+  // Debug logging
+  console.log('[InputStep] Validation:', {
+    hasClient: !!brief.client.trim(),
+    hasProject: !!brief.project.trim(),
+    hasAudience: !!brief.targetAudience.trim(),
+    hasFacts: !!facts.rawContent.trim(),
+    hasLanguages: outputConfig.languages.length > 0,
+    languageCount: outputConfig.languages.length,
+    isValid,
+  });
 
-  const updateArrayItem = (field: keyof FactsData, index: number, value: string) => {
-    if (Array.isArray(facts[field])) {
-      const newArray = [...(facts[field] as string[])];
-      newArray[index] = value;
-      setFacts({ ...facts, [field]: newArray });
-    }
-  };
+  // 处理语言选择
+  const toggleLanguage = (langCode: string) => {
+    console.log('[toggleLanguage] Clicked:', langCode);
+    console.log('[toggleLanguage] Current languages:', outputConfig.languages);
 
-  const removeArrayItem = (field: keyof FactsData, index: number) => {
-    if (Array.isArray(facts[field])) {
-      const newArray = (facts[field] as string[]).filter((_, i) => i !== index);
-      setFacts({ ...facts, [field]: newArray.length ? newArray : [''] });
-    }
+    setOutputConfig((prev) => {
+      const isSelected = prev.languages.includes(langCode);
+      console.log('[toggleLanguage] isSelected:', isSelected);
+
+      if (isSelected) {
+        // 取消选择
+        const newLanguages = prev.languages.filter((l) => l !== langCode);
+        console.log('[toggleLanguage] Deselecting, new languages:', newLanguages);
+        return { ...prev, languages: newLanguages };
+      } else {
+        // 选择（最多3种）
+        if (prev.languages.length >= 3) {
+          console.log('[toggleLanguage] Already at limit (3)');
+          return prev; // 已达上限
+        }
+        const newLanguages = [...prev.languages, langCode];
+        console.log('[toggleLanguage] Selecting, new languages:', newLanguages);
+        return { ...prev, languages: newLanguages };
+      }
+    });
   };
 
   return (
@@ -625,94 +777,100 @@ function InputStep({
       {/* Facts Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Facts 事实素材</CardTitle>
-          <CardDescription>提供稿件所需的事实和数据</CardDescription>
+          <CardTitle>Facts 事实素材 *</CardTitle>
+          <CardDescription>
+            直接粘贴品牌方提供的文档内容，包括核心事实、引言、数据、背景信息等
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Key Facts */}
+        <CardContent>
+          <Textarea
+            id="rawContent"
+            value={facts.rawContent}
+            onChange={(e) => setFacts({ rawContent: e.target.value })}
+            placeholder={`请粘贴品牌方提供的原始素材，例如：
+
+【产品信息】
+- 产品名称：XX 新品
+- 发布时间：2024年X月X日
+- 主要卖点：...
+
+【核心数据】
+- 销量/市场份额/增长率等
+
+【高管引言】
+"这是我们的重要里程碑..." —— CEO 张三
+
+【背景信息】
+公司简介、行业背景等...`}
+            rows={12}
+            className="min-h-[280px] font-mono text-sm"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Output Config Section */}
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>输出配置</CardTitle>
+          <CardDescription>设置稿件的字数和语言（最多选择3种语言，将批量生成）</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Word Count Range */}
           <div className="space-y-2">
-            <Label>核心事实 *</Label>
-            {facts.keyFacts.map((fact, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={fact}
-                  onChange={(e) => updateArrayItem('keyFacts', index, e.target.value)}
-                  placeholder={`事实 ${index + 1}`}
-                />
-                {facts.keyFacts.length > 1 && (
+            <Label>字数范围</Label>
+            <Select
+              value={outputConfig.wordCountRange}
+              onValueChange={(value) => setOutputConfig({ ...outputConfig, wordCountRange: value })}
+            >
+              <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WORD_COUNT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Language Selection */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>输出语言（可多选，最多3种）</Label>
+              <span className="text-sm text-muted-foreground">
+                已选 {outputConfig.languages.length}/3
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SUPPORTED_LANGUAGES.map((lang) => {
+                const isSelected = outputConfig.languages.includes(lang.code);
+                const isDisabled = !isSelected && outputConfig.languages.length >= 3;
+                return (
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeArrayItem('keyFacts', index)}
+                    key={lang.code}
+                    type="button"
+                    variant={isSelected ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={isDisabled}
+                    onClick={() => toggleLanguage(lang.code)}
+                    className={`transition-all ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    ×
+                    <span className="mr-1.5">{lang.flag}</span>
+                    {lang.name}
                   </Button>
-                )}
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => addArrayItem('keyFacts')}>
-              + 添加事实
-            </Button>
-          </div>
-
-          {/* Quotes */}
-          <div className="space-y-2">
-            <Label>可用引言</Label>
-            {facts.quotes.map((quote, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={quote}
-                  onChange={(e) => updateArrayItem('quotes', index, e.target.value)}
-                  placeholder={`引言 ${index + 1}（含说话人）`}
-                />
-                {facts.quotes.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeArrayItem('quotes', index)}
-                  >
-                    ×
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => addArrayItem('quotes')}>
-              + 添加引言
-            </Button>
-          </div>
-
-          {/* Data */}
-          <div className="space-y-2">
-            <Label>数据/数字</Label>
-            {facts.data.map((d, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={d}
-                  onChange={(e) => updateArrayItem('data', index, e.target.value)}
-                  placeholder={`数据 ${index + 1}`}
-                />
-                {facts.data.length > 1 && (
-                  <Button variant="ghost" size="icon" onClick={() => removeArrayItem('data', index)}>
-                    ×
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => addArrayItem('data')}>
-              + 添加数据
-            </Button>
-          </div>
-
-          {/* Background */}
-          <div className="space-y-2">
-            <Label htmlFor="background">背景信息</Label>
-            <Textarea
-              id="background"
-              value={facts.background}
-              onChange={(e) => setFacts({ ...facts, background: e.target.value })}
-              placeholder="公司/产品/行业背景..."
-              rows={3}
-            />
+                );
+              })}
+            </div>
+            {outputConfig.languages.length === 0 && (
+              <p className="text-sm text-destructive">请至少选择一种语言</p>
+            )}
+            {outputConfig.languages.length > 1 && (
+              <p className="text-sm text-muted-foreground">
+                将为每种语言生成独立的稿件版本
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -735,7 +893,16 @@ function InputStep({
 
       {/* Submit Button */}
       <div className="lg:col-span-2 flex justify-end">
-        <Button size="lg" onClick={onSubmit} disabled={!isValid}>
+        <Button
+          size="lg"
+          onClick={() => {
+            console.log('[InputStep] Submit button clicked!');
+            console.log('[InputStep] isValid:', isValid);
+            console.log('[InputStep] outputConfig:', outputConfig);
+            onSubmit();
+          }}
+          disabled={!isValid}
+        >
           开始分析
           <Send className="ml-2 h-4 w-4" />
         </Button>
@@ -852,16 +1019,159 @@ function ClarifyStep({ analysis, answers, setAnswers, onSubmit, onSkip }: Clarif
 }
 
 // ============================================================================
-// Review Step
+// Review Step - 支持多语言
 // ============================================================================
 
 interface ReviewStepProps {
-  draft: PRDraft;
+  drafts: PRDraft[];  // 改为数组
+  primaryLanguage: string;
   onApprove: () => void;
+  onReject: (feedback: string) => void;
   onReset: () => void;
 }
 
-function ReviewStep({ draft, onApprove, onReset }: ReviewStepProps) {
+function ReviewStep({ drafts, primaryLanguage, onApprove, onReject, onReset }: ReviewStepProps) {
+  const [selectedLanguage, setSelectedLanguage] = useState(primaryLanguage);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const handleRejectClick = () => {
+    setShowFeedbackForm(true);
+  };
+
+  const handleSubmitFeedback = () => {
+    if (!feedback.trim()) {
+      return;
+    }
+    onReject(feedback);
+  };
+
+  const handleCancelFeedback = () => {
+    setShowFeedbackForm(false);
+    setFeedback('');
+  };
+
+  // 如果只有一个语言版本，直接显示，不需要 Tab
+  if (drafts.length === 1) {
+    return <SingleDraftReview draft={drafts[0]} onApprove={onApprove} onReject={onReject} onReset={onReset} />;
+  }
+
+  // 多语言版本，使用 Tab 切换
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>稿件预览</CardTitle>
+          <CardDescription>
+            已生成 {drafts.length} 个语言版本，请逐一审核
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={selectedLanguage} onValueChange={setSelectedLanguage}>
+            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${drafts.length}, 1fr)` }}>
+              {drafts.map((draft) => {
+                const langCode = draft.language || 'unknown';
+                const langInfo = SUPPORTED_LANGUAGES.find((l) => l.code === langCode);
+                return (
+                  <TabsTrigger key={langCode} value={langCode}>
+                    <span className="mr-1.5">{langInfo?.flag || '🌐'}</span>
+                    {langInfo?.name || langCode}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+
+            {drafts.map((draft) => {
+              const langCode = draft.language || 'unknown';
+              return (
+                <TabsContent key={langCode} value={langCode}>
+                  <DraftPreview draft={draft} />
+                </TabsContent>
+              );
+            })}
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* Feedback Form */}
+      {showFeedbackForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>修改意见</CardTitle>
+            <CardDescription>请提供您希望修改的具体内容，AI 将基于您的反馈修改所有语言版本</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="例如：标题太长了，建议控制在20字以内；正文第二段需要补充更多数据支撑..."
+              rows={6}
+              className="resize-none"
+            />
+            <div className="flex justify-end gap-4">
+              <Button variant="outline" onClick={handleCancelFeedback}>
+                取消
+              </Button>
+              <Button onClick={handleSubmitFeedback} disabled={!feedback.trim()}>
+                提交反馈，重新生成
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Actions */}
+      {!showFeedbackForm && (
+        <div className="flex justify-end gap-4">
+          <Button variant="outline" onClick={onReset}>
+            重新开始
+          </Button>
+          <Button variant="outline" onClick={handleRejectClick}>
+            <AlertCircle className="mr-2 h-4 w-4" />
+            不通过，提供修改意见
+          </Button>
+          <Button onClick={onApprove}>
+            批准所有版本
+            <Check className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 单稿件审核组件（原 ReviewStep 逻辑）
+// ============================================================================
+
+interface SingleDraftReviewProps {
+  draft: PRDraft;
+  onApprove: () => void;
+  onReject: (feedback: string) => void;
+  onReset: () => void;
+}
+
+function SingleDraftReview({ draft, onApprove, onReject, onReset }: SingleDraftReviewProps) {
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const handleRejectClick = () => {
+    setShowFeedbackForm(true);
+  };
+
+  const handleSubmitFeedback = () => {
+    if (!feedback.trim()) {
+      return;
+    }
+    onReject(feedback);
+  };
+
+  const handleCancelFeedback = () => {
+    setShowFeedbackForm(false);
+    setFeedback('');
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -869,77 +1179,127 @@ function ReviewStep({ draft, onApprove, onReset }: ReviewStepProps) {
           <CardTitle>稿件预览</CardTitle>
           <CardDescription>请审核 AI 生成的 PR 稿件</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Title */}
-          <div>
-            <h2 className="text-2xl font-bold">{draft.title}</h2>
-            {draft.subtitle && <p className="text-lg text-muted-foreground mt-1">{draft.subtitle}</p>}
-          </div>
-
-          <Separator />
-
-          {/* Lead */}
-          <div>
-            <Badge variant="outline" className="mb-2">
-              导语
-            </Badge>
-            <p className="text-lg leading-relaxed">{draft.lead}</p>
-          </div>
-
-          <Separator />
-
-          {/* Body */}
-          <div>
-            <Badge variant="outline" className="mb-2">
-              正文
-            </Badge>
-            <div className="prose prose-sm max-w-none">
-              {draft.body.split('\n\n').map((para, i) => (
-                <p key={i} className="leading-relaxed">
-                  {para}
-                </p>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Boilerplate */}
-          <div>
-            <Badge variant="outline" className="mb-2">
-              关于
-            </Badge>
-            <p className="text-sm text-muted-foreground">{draft.boilerplate}</p>
-          </div>
-
-          <Separator />
-
-          {/* Key Messages */}
-          <div>
-            <Badge variant="outline" className="mb-2">
-              核心要点
-            </Badge>
-            <ul className="list-disc list-inside space-y-1">
-              {draft.keyMessages.map((msg, i) => (
-                <li key={i} className="text-sm">
-                  {msg}
-                </li>
-              ))}
-            </ul>
-          </div>
+        <CardContent>
+          <DraftPreview draft={draft} />
         </CardContent>
       </Card>
 
+      {/* Feedback Form */}
+      {showFeedbackForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>修改意见</CardTitle>
+            <CardDescription>请提供您希望修改的具体内容</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="例如：标题太长了，建议控制在20字以内；正文第二段需要补充更多数据支撑..."
+              rows={6}
+              className="resize-none"
+            />
+            <div className="flex justify-end gap-4">
+              <Button variant="outline" onClick={handleCancelFeedback}>
+                取消
+              </Button>
+              <Button onClick={handleSubmitFeedback} disabled={!feedback.trim()}>
+                提交反馈，重新生成
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Actions */}
-      <div className="flex justify-end gap-4">
-        <Button variant="outline" onClick={onReset}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          重新开始
-        </Button>
-        <Button onClick={onApprove}>
-          <CheckCircle className="mr-2 h-4 w-4" />
-          确认通过
-        </Button>
+      {!showFeedbackForm && (
+        <div className="flex justify-end gap-4">
+          <Button variant="outline" onClick={onReset}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            重新开始
+          </Button>
+          <Button variant="outline" onClick={handleRejectClick}>
+            <AlertCircle className="mr-2 h-4 w-4" />
+            不通过，提供修改意见
+          </Button>
+          <Button onClick={onApprove}>
+            <CheckCircle className="mr-2 h-4 w-4" />
+            确认通过
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Draft Preview Component（稿件展示组件）
+// ============================================================================
+
+function DraftPreview({ draft }: { draft: PRDraft }) {
+  // 统计正文字数
+  const bodyLength = draft.body.length;
+
+  return (
+    <div className="space-y-6">
+      {/* Title */}
+      <div>
+        <h2 className="text-2xl font-bold">{draft.title}</h2>
+        {draft.subtitle && <p className="text-lg text-muted-foreground mt-1">{draft.subtitle}</p>}
+      </div>
+
+      <Separator />
+
+      {/* Lead */}
+      <div>
+        <Badge variant="outline" className="mb-2">
+          导语
+        </Badge>
+        <p className="text-lg leading-relaxed">{draft.lead}</p>
+      </div>
+
+      <Separator />
+
+      {/* Body */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <Badge variant="outline">正文</Badge>
+          <span className="text-sm text-muted-foreground">字数: {bodyLength}</span>
+        </div>
+        <div className="prose prose-sm max-w-none">
+          {draft.body.split('\n\n').map((para, i) => (
+            <p key={i} className="leading-relaxed">
+              {para}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Boilerplate */}
+      <div>
+        <Badge variant="outline" className="mb-2">
+          关于
+        </Badge>
+        <p className="text-sm text-muted-foreground">{draft.boilerplate}</p>
+      </div>
+
+      <Separator />
+
+      {/* Key Messages */}
+      <div>
+        <Badge variant="outline" className="mb-2">
+          核心要点
+        </Badge>
+        <ul className="list-disc list-inside space-y-1">
+          {draft.keyMessages.map((msg, i) => (
+            <li key={i} className="text-sm">
+              {msg}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
