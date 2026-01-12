@@ -36,6 +36,84 @@ const config = {
   cwd: process.cwd(),
 };
 
+const PERMISSION_MODES = new Set([
+  'default',
+  'plan',
+  'dontAsk',
+  'acceptEdits',
+  'delegate',
+  'bypassPermissions',
+]);
+
+const BYPASS_USER_IDS = new Set(
+  (process.env.CLAUDE_BYPASS_USER_IDS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+
+const ALLOW_BASH_IN_BYPASS = process.env.CLAUDE_ALLOW_BASH === 'true';
+
+function resolveMaxThinkingTokens(thinkingMode) {
+  if (thinkingMode !== 'extended') {
+    return undefined;
+  }
+  const raw = process.env.CLAUDE_MAX_THINKING_TOKENS;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function normalizePermissionMode(mode) {
+  if (!mode) {
+    return 'default';
+  }
+  if (PERMISSION_MODES.has(mode)) {
+    return mode;
+  }
+  return 'default';
+}
+
+function resolvePermissionMode(userId, requestedMode = process.env.CLAUDE_PERMISSION_MODE) {
+  const normalized = normalizePermissionMode(requestedMode);
+  if (normalized === 'bypassPermissions') {
+    if (userId && BYPASS_USER_IDS.has(userId)) {
+      return 'bypassPermissions';
+    }
+    return 'default';
+  }
+  return normalized;
+}
+
+function resolveDisallowedTools(permissionMode, allowBash) {
+  if (permissionMode === 'bypassPermissions' && allowBash) {
+    return [];
+  }
+  return ['Bash'];
+}
+
+/**
+ * Fetch permission info from the API
+ * Returns organization-based permission settings or falls back to environment variables
+ */
+async function fetchPermissionInfo(cookie) {
+  try {
+    const response = await fetch(`${APP_URL}/api/auth/permission-info`, {
+      headers: { cookie },
+    });
+
+    if (!response.ok) {
+      console.warn('[WS Server] Failed to fetch permission info:', response.status, response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('[WS Server] Error fetching permission info:', error);
+    return null;
+  }
+}
+
 // Handle uncaught errors with detailed logging and flush
 process.on('uncaughtException', (err) => {
   console.error('==========================================');
@@ -440,7 +518,7 @@ function sendMessage(ws, msg) {
 /**
  * Handle chat message using child process for user and session isolation
  */
-async function handleChat(ws, prompt, resumeSessionId) {
+async function handleChat(ws, prompt, resumeSessionId, thinkingMode) {
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -493,6 +571,30 @@ async function handleChat(ws, prompt, resumeSessionId) {
     }
     if (config.model) workerEnv.ANTHROPIC_MODEL = config.model;
 
+    // Fetch permission info from API (includes organization settings)
+    const permissionInfo = await fetchPermissionInfo(ws.cookie);
+
+    // Use fetched permission info or fall back to environment variables
+    let permissionMode, allowBash, organizationId, role;
+    if (permissionInfo && permissionInfo.userId === ws.userId) {
+      permissionMode = permissionInfo.permissionMode;
+      allowBash = permissionInfo.allowBash;
+      organizationId = permissionInfo.organizationId;
+      role = permissionInfo.role;
+      console.log(`[WS Server] Using organization-based permissions: org=${organizationId}, role=${role}, mode=${permissionMode}, bash=${allowBash}`);
+    } else {
+      // Fallback to environment variables
+      permissionMode = resolvePermissionMode(ws.userId);
+      allowBash = permissionMode === 'bypassPermissions' && ALLOW_BASH_IN_BYPASS;
+      organizationId = null;
+      role = null;
+      console.log(`[WS Server] Using environment-based permissions: mode=${permissionMode}, bash=${allowBash}`);
+    }
+
+    const disallowedTools = resolveDisallowedTools(permissionMode, allowBash);
+    const maxThinkingTokens = resolveMaxThinkingTokens(thinkingMode);
+    workerEnv.CLAUDE_PERMISSION_MODE = permissionMode;
+
     // Spawn worker process with user-specific CLAUDE_HOME
     const worker = spawn('node', [WORKER_PATH], {
       env: workerEnv,
@@ -502,7 +604,15 @@ async function handleChat(ws, prompt, resumeSessionId) {
 
     // Send query request to worker
     // Pass sdkResumeId for SDK conversation resume
-    const request = JSON.stringify({ prompt, sdkResumeId });
+    const request = JSON.stringify({
+      prompt,
+      sdkResumeId,
+      permissionMode,
+      disallowedTools,
+      allowBash,  // Pass allowBash flag so worker can trust org-based bypass mode
+      userId: ws.userId,
+      ...(maxThinkingTokens ? { maxThinkingTokens } : {}),
+    });
     worker.stdin.write(request);
     worker.stdin.end();
 
@@ -663,7 +773,7 @@ async function handleMessage(ws, msg) {
         });
         return;
       }
-      await handleChat(ws, message.content, message.sessionId);
+      await handleChat(ws, message.content, message.sessionId, message.thinking);
       break;
 
     case 'resume':

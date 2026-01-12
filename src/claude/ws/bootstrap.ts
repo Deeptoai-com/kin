@@ -9,6 +9,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import type { Server } from 'http';
 import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { resolveDisallowedTools, resolvePermissionMode, shouldSkipPermissions } from '../permissions';
+import { createPathSecurity } from '../path-security';
 
 // Process-level error handlers to prevent crashes from unhandled rejections
 if (typeof process !== 'undefined') {
@@ -41,12 +43,49 @@ type OutboundMessage =
 // WebSocket with user info
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
+  cookie?: string;
   isAlive?: boolean;
   sessionId?: string | null;
   abortController?: AbortController;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+
+// App URL for API calls (same as ws-server.mjs)
+const APP_URL = process.env.APP_URL || 'http://localhost:5000';
+const MAX_THINKING_TOKENS = Number.parseInt(process.env.CLAUDE_MAX_THINKING_TOKENS || '', 10);
+
+function resolveMaxThinkingTokens(thinkingMode?: string): number | undefined {
+  if (thinkingMode !== 'extended') {
+    return undefined;
+  }
+  return Number.isFinite(MAX_THINKING_TOKENS) && MAX_THINKING_TOKENS > 0
+    ? MAX_THINKING_TOKENS
+    : undefined;
+}
+
+/**
+ * Fetch permission info from the API
+ * Returns organization-based permission settings or falls back to environment variables
+ */
+async function fetchPermissionInfo(cookie: string) {
+  try {
+    const response = await fetch(`${APP_URL}/api/auth/permission-info`, {
+      headers: { cookie },
+    });
+
+    if (!response.ok) {
+      console.warn('[WS Server] Failed to fetch permission info:', response.status, response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('[WS Server] Error fetching permission info:', error);
+    return null;
+  }
+}
 
 /**
  * Create WebSocket server for Agent Chat
@@ -80,6 +119,7 @@ export function createAgentWebSocketServer(httpServer: Server | null): WebSocket
       wss.handleUpgrade(request, socket, head, (ws) => {
         const authWs = ws as AuthenticatedWebSocket;
         authWs.userId = user.id;
+        authWs.cookie = request.headers.cookie || '';
         authWs.isAlive = true;
         wss.emit('connection', authWs, request);
       });
@@ -157,7 +197,7 @@ function sendMessage(ws: AuthenticatedWebSocket, msg: OutboundMessage): void {
  * Handle incoming message
  */
 async function handleMessage(ws: AuthenticatedWebSocket, msg: unknown): Promise<void> {
-  const message = msg as { type: string; content?: string; sessionId?: string };
+  const message = msg as { type: string; content?: string; sessionId?: string; thinking?: string };
 
   switch (message.type) {
     case 'chat':
@@ -170,7 +210,7 @@ async function handleMessage(ws: AuthenticatedWebSocket, msg: unknown): Promise<
         });
         return;
       }
-      await handleChat(ws, message.content, message.sessionId);
+      await handleChat(ws, message.content, message.sessionId, message.thinking);
       break;
 
     case 'abort':
@@ -197,7 +237,8 @@ async function handleMessage(ws: AuthenticatedWebSocket, msg: unknown): Promise<
 async function handleChat(
   ws: AuthenticatedWebSocket,
   prompt: string,
-  resumeSessionId?: string
+  resumeSessionId?: string,
+  thinkingMode?: string
 ): Promise<void> {
   console.log('[WS Server] handleChat starting...', { prompt: prompt.slice(0, 50), resumeSessionId });
 
@@ -216,6 +257,43 @@ async function handleChat(
     }
     if (config.model) customEnv.ANTHROPIC_MODEL = config.model;
 
+    // Fetch permission info from API (includes organization settings)
+    const permissionInfo = await fetchPermissionInfo(ws.cookie || '');
+
+    // Use fetched permission info or fall back to environment variables
+    let permissionMode, orgSettings, organizationId, role;
+    if (permissionInfo && permissionInfo.userId === ws.userId) {
+      permissionMode = permissionInfo.permissionMode;
+      orgSettings = {
+        permissionMode: permissionMode,
+        allowBash: permissionInfo.allowBash,
+        role: permissionInfo.role,
+      };
+      organizationId = permissionInfo.organizationId;
+      role = permissionInfo.role;
+      console.log(`[WS Server] Using organization-based permissions: org=${organizationId}, role=${role}, mode=${permissionMode}`);
+    } else {
+      // Fallback to environment variables
+      permissionMode = resolvePermissionMode(ws.userId);
+      orgSettings = undefined;
+      organizationId = null;
+      role = null;
+      console.log(`[WS Server] Using environment-based permissions: mode=${permissionMode}`);
+    }
+
+    const disallowedTools = resolveDisallowedTools(permissionMode, orgSettings);
+    const maxThinkingTokens = resolveMaxThinkingTokens(thinkingMode);
+    const allowDangerouslySkipPermissions = shouldSkipPermissions(permissionMode);
+    const { canUseTool, debugInfo } = createPathSecurity({
+      workspace: config.cwd,
+      userId: ws.userId,
+      claudeHome: customEnv.CLAUDE_HOME,
+      sessionsRoot: process.env.CLAUDE_SESSIONS_ROOT,
+    });
+    if (process.env.CLAUDE_SECURITY_DEBUG === 'true') {
+      console.error(`[WS Server] Path Security: ${JSON.stringify(debugInfo)}`);
+    }
+
     // Call SDK
     console.log('[WS Server] Calling SDK query...');
     const stream = query({
@@ -223,8 +301,11 @@ async function handleChat(
       options: {
         cwd: config.cwd,
         model: config.model,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
+        permissionMode,
+        disallowedTools,
+        ...(allowDangerouslySkipPermissions && { allowDangerouslySkipPermissions: true }),
+        ...(permissionMode !== 'bypassPermissions' && { canUseTool }),
+        ...(Number.isFinite(maxThinkingTokens) && { maxThinkingTokens }),
         abortController: ws.abortController,
         ...(resumeSessionId && { resume: resumeSessionId }),
         env: customEnv,

@@ -19,6 +19,7 @@ const InboundMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('chat'),
     content: z.string().min(1),
     sessionId: z.string().optional(),
+    thinking: z.string().optional(),
   }),
   z.object({
     type: z.literal('resume'),
@@ -38,11 +39,41 @@ type InboundMessage = z.infer<typeof InboundMessageSchema>;
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
   userEmail?: string;
+  cookie?: string;
   isAlive?: boolean;
 }
 
 // Heartbeat interval: 30 seconds
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const APP_URL = process.env.APP_URL || 'http://localhost:5000';
+const MAX_THINKING_TOKENS = Number.parseInt(process.env.CLAUDE_MAX_THINKING_TOKENS || '', 10);
+
+function resolveMaxThinkingTokens(thinkingMode?: string): number | undefined {
+  if (thinkingMode !== 'extended') {
+    return undefined;
+  }
+  return Number.isFinite(MAX_THINKING_TOKENS) && MAX_THINKING_TOKENS > 0
+    ? MAX_THINKING_TOKENS
+    : undefined;
+}
+
+async function fetchPermissionInfo(cookie: string) {
+  try {
+    const response = await fetch(`${APP_URL}/api/auth/permission-info`, {
+      headers: { cookie },
+    });
+
+    if (!response.ok) {
+      console.warn('[WS Server] Failed to fetch permission info:', response.status, response.statusText);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('[WS Server] Error fetching permission info:', error);
+    return null;
+  }
+}
 
 /**
  * Create and configure WebSocket server
@@ -89,6 +120,7 @@ export function createAgentWebSocketServer(server: ViteDevServer['httpServer']):
         const authWs = ws as AuthenticatedWebSocket;
         authWs.userId = user.id;
         authWs.userEmail = user.email;
+        authWs.cookie = request.headers.cookie || '';
         authWs.isAlive = true;
 
         wss.emit('connection', authWs, request);
@@ -101,11 +133,20 @@ export function createAgentWebSocketServer(server: ViteDevServer['httpServer']):
   });
 
   // Handle new connections
-  wss.on('connection', (ws: AuthenticatedWebSocket) => {
+  wss.on('connection', async (ws: AuthenticatedWebSocket) => {
     console.log(`[WS Server] Client connected: ${ws.userEmail}`);
 
+    const permissionInfo = await fetchPermissionInfo(ws.cookie || '');
+    const orgSettings = permissionInfo && permissionInfo.userId === ws.userId
+      ? {
+        permissionMode: permissionInfo.permissionMode,
+        allowBash: permissionInfo.allowBash,
+        role: permissionInfo.role,
+      }
+      : undefined;
+
     // Get or create session for this user
-    const session = sessionManager.getOrCreateSession(ws.userId!);
+    const session = sessionManager.getOrCreateSession(ws.userId!, orgSettings);
     sessionManager.attachWebSocket(ws, session);
 
     // Handle incoming messages
@@ -175,7 +216,11 @@ async function handleMessage(
 ): Promise<void> {
   switch (message.type) {
     case 'chat':
-      await session.chat(message.content, message.sessionId);
+      await session.chat(
+        message.content,
+        message.sessionId,
+        resolveMaxThinkingTokens(message.thinking)
+      );
       break;
 
     case 'resume':

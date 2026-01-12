@@ -15,6 +15,13 @@ import path from 'node:path';
 import { db } from '~/db/db-config';
 import { agentSession } from '~/db/schema';
 import { eq, and } from 'drizzle-orm';
+import {
+  resolveDisallowedTools,
+  resolvePermissionMode,
+  shouldSkipPermissions,
+  type OrganizationPermissionSettings,
+} from '~/claude/permissions';
+import { createPathSecurity } from '~/claude/path-security';
 
 // Outbound message types sent to WebSocket clients
 export type OutboundMessage =
@@ -29,8 +36,10 @@ export interface AgentSessionConfig {
   baseURL?: string;
   model?: string;
   cwd?: string;
+  permissionMode?: string;
   userId?: string;           // User ID for isolation
   sessionsRoot?: string;     // Root directory for user sessions
+  orgSettings?: OrganizationPermissionSettings;  // Organization-based permission settings
 }
 
 export class AgentSession {
@@ -56,6 +65,13 @@ export class AgentSession {
       // Sanitize userId to prevent path traversal attacks
       const safeUserId = this.sanitizeUserId(config.userId);
       this.claudeHome = path.join(config.sessionsRoot, safeUserId);
+    }
+  }
+
+  setOrgSettings(orgSettings?: OrganizationPermissionSettings): void {
+    this.config.orgSettings = orgSettings;
+    if (orgSettings?.permissionMode) {
+      this.config.permissionMode = orgSettings.permissionMode;
     }
   }
 
@@ -217,7 +233,7 @@ export class AgentSession {
   /**
    * Process a chat message from the user
    */
-  async chat(prompt: string, resumeSessionId?: string): Promise<void> {
+  async chat(prompt: string, resumeSessionId?: string, maxThinkingTokens?: number): Promise<void> {
     if (this.isBusy) {
       this.broadcast({
         type: 'error',
@@ -257,14 +273,34 @@ export class AgentSession {
         customEnv.ANTHROPIC_MODEL = this.config.model;
       }
 
+      const permissionMode = resolvePermissionMode(
+        this.userId,
+        this.config.permissionMode,
+        this.config.orgSettings
+      );
+      const disallowedTools = resolveDisallowedTools(permissionMode, this.config.orgSettings);
+      const allowDangerouslySkipPermissions = shouldSkipPermissions(permissionMode);
+      const { canUseTool, debugInfo } = createPathSecurity({
+        workspace: this.config.cwd || process.cwd(),
+        userId: this.userId,
+        claudeHome: this.claudeHome,
+        sessionsRoot: this.config.sessionsRoot,
+      });
+      if (process.env.CLAUDE_SECURITY_DEBUG === 'true') {
+        console.error(`[AgentSession] Path Security: ${JSON.stringify(debugInfo)}`);
+      }
+
       // Call Claude Agent SDK
       const stream = query({
         prompt,
         options: {
           cwd: this.config.cwd || process.cwd(),
           model: this.config.model,
-          permissionMode: 'bypassPermissions',
-          allowDangerouslySkipPermissions: true,
+          permissionMode,
+          disallowedTools,
+          ...(allowDangerouslySkipPermissions && { allowDangerouslySkipPermissions: true }),
+          ...(permissionMode !== 'bypassPermissions' && { canUseTool }),
+          ...(Number.isFinite(maxThinkingTokens) && { maxThinkingTokens }),
           abortController: this.abortController,
           // Resume from existing session if provided
           ...(resumeSessionId && { resume: resumeSessionId }),

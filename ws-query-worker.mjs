@@ -9,12 +9,63 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { createPathSecurity } from './src/claude/path-security.js';
 
 // Read configuration from environment
 const config = {
   model: process.env.ANTHROPIC_MODEL,
   cwd: process.env.WORKER_CWD || process.cwd(),
 };
+
+const PERMISSION_MODES = new Set([
+  'default',
+  'plan',
+  'dontAsk',
+  'acceptEdits',
+  'delegate',
+  'bypassPermissions',
+]);
+
+const BYPASS_USER_IDS = new Set(
+  (process.env.CLAUDE_BYPASS_USER_IDS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+
+const ALLOW_BASH_IN_BYPASS = process.env.CLAUDE_ALLOW_BASH === 'true';
+
+function normalizePermissionMode(mode) {
+  if (!mode) {
+    return 'default';
+  }
+  if (PERMISSION_MODES.has(mode)) {
+    return mode;
+  }
+  return 'default';
+}
+
+function resolvePermissionMode(mode, userId) {
+  if (mode !== undefined) {
+    return normalizePermissionMode(mode);
+  }
+  const normalized = normalizePermissionMode(process.env.CLAUDE_PERMISSION_MODE);
+  if (normalized === 'bypassPermissions') {
+    return userId && BYPASS_USER_IDS.has(userId) ? 'bypassPermissions' : 'default';
+  }
+  return normalized;
+}
+
+function resolveDisallowedTools(permissionMode, requestedDisallowedTools, allowBash) {
+  if (Array.isArray(requestedDisallowedTools)) {
+    return requestedDisallowedTools;
+  }
+  const effectiveAllowBash = allowBash === undefined ? ALLOW_BASH_IN_BYPASS : allowBash;
+  if (permissionMode === 'bypassPermissions' && effectiveAllowBash) {
+    return [];
+  }
+  return ['Bash'];
+}
 
 // Define Artifact Schema for Structured Outputs
 // This schema guides Claude to provide metadata for artifacts (HTML, SVG, React, Markdown)
@@ -76,13 +127,39 @@ process.stdin.on('data', (chunk) => {
 process.stdin.on('end', async () => {
   try {
     const request = JSON.parse(inputData);
-    const { prompt, sdkResumeId } = request;
+    const {
+      prompt,
+      sdkResumeId,
+      permissionMode: requestedPermissionMode,
+      disallowedTools: requestedDisallowedTools,
+      allowBash: requestedAllowBash = false,
+      maxThinkingTokens,
+      userId,
+    } = request;
+    const permissionMode = resolvePermissionMode(requestedPermissionMode, userId);
+    const disallowedTools = resolveDisallowedTools(
+      permissionMode,
+      requestedDisallowedTools,
+      requestedAllowBash
+    );
+    const allowDangerouslySkipPermissions = permissionMode === 'bypassPermissions';
+    const { canUseTool, debugInfo } = createPathSecurity({
+      workspace: config.cwd,
+      userId,
+      claudeHome: process.env.CLAUDE_HOME,
+      sessionsRoot: process.env.CLAUDE_SESSIONS_ROOT,
+    });
 
     console.error(`[Worker] ======================================`);
     console.error(`[Worker] Starting query`);
     console.error(`[Worker]   CLAUDE_HOME: ${process.env.CLAUDE_HOME}`);
     console.error(`[Worker]   CWD (Workspace): ${config.cwd}`);
     console.error(`[Worker]   Model: ${config.model || 'default'}`);
+    console.error(`[Worker]   Permission Mode: ${permissionMode}`);
+    console.error(`[Worker]   Disallowed Tools: ${disallowedTools.join(', ') || '(none)'}`);
+    if (process.env.CLAUDE_SECURITY_DEBUG === 'true') {
+      console.error(`[Worker]   Path Security: ${JSON.stringify(debugInfo)}`);
+    }
     console.error(`[Worker]   Prompt length: ${prompt.length} chars`);
     if (sdkResumeId) {
       console.error(`[Worker]   SDK Resume ID: ${sdkResumeId}`);
@@ -157,8 +234,11 @@ Example bad operations:
       options: {
         cwd: config.cwd,
         model: config.model,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
+        permissionMode,
+        disallowedTools,
+        ...(allowDangerouslySkipPermissions && { allowDangerouslySkipPermissions: true }),
+        ...(permissionMode !== 'bypassPermissions' && { canUseTool }),
+        ...(Number.isFinite(maxThinkingTokens) && { maxThinkingTokens }),
         // Enable skills loading from project (.claude/skills in cwd)
         // Note: We use symlink to share user's skills across sessions, so only 'project' is needed
         settingSources: ['project'],

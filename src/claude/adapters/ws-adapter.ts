@@ -63,7 +63,7 @@ type SDKMessage = {
 
 // WebSocket message types (matching ws-server.ts)
 type InboundMessage =
-  | { type: 'chat'; content: string; sessionId?: string }
+  | { type: 'chat'; content: string; sessionId?: string; thinking?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
   | { type: 'ping' };
@@ -74,6 +74,7 @@ type OutboundMessage =
   | { type: 'messages_loaded'; messages: StorageSDKMessage[] }
   | { type: 'error'; code: string; message: string; retriable: boolean }
   | { type: 'done' }
+  | { type: 'aborted' }
   | { type: 'pong' };
 
 // Assistant UI Part Types
@@ -310,7 +311,7 @@ export function disconnect(): void {
  * Claude Agent WebSocket Adapter for Assistant UI
  */
 export const ClaudeAgentWSAdapter: ChatModelAdapter = {
-  async *run({ messages, abortSignal }: ChatModelRunOptions) {
+  async *run({ messages, abortSignal, runConfig }: ChatModelRunOptions) {
     console.log('[WS Adapter] run() called with', messages.length, 'messages');
 
     // Mark query as running
@@ -331,17 +332,23 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
       throw new Error('Empty prompt');
     }
 
-    // 2. Set up abort handler
-    const abortHandler = () => {
-      abort();
-    };
-    abortSignal?.addEventListener('abort', abortHandler);
-
-    // 3. Create message queue for async iteration
+    // 2. Create message queue for async iteration
     const messageQueue: OutboundMessage[] = [];
     let resolveNext: (() => void) | null = null;
     let isComplete = false;
     let error: Error | null = null;
+    let isAborted = false;
+
+    // 3. Set up abort handler
+    const abortHandler = () => {
+      isAborted = true;
+      abort();
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = null;
+      }
+    };
+    abortSignal?.addEventListener('abort', abortHandler);
 
     messageHandler = (msg: OutboundMessage) => {
       messageQueue.push(msg);
@@ -350,6 +357,10 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         resolveNext = null;
       }
     };
+
+    const thinkingMode = typeof runConfig?.custom?.thinking === 'string'
+      ? runConfig.custom.thinking
+      : undefined;
 
     // 4. Send chat message
     try {
@@ -361,6 +372,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         type: 'chat',
         content: prompt,
         sessionId: currentSessionId,
+        ...(thinkingMode === 'extended' && { thinking: 'extended' }),
       });
       console.log('[WS Adapter] ✅ Message sent successfully');
     } catch (connectError) {
@@ -378,6 +390,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
     try {
       while (!isComplete && !error) {
+        if (isAborted) {
+          break;
+        }
         // Wait for next message
         if (messageQueue.length === 0) {
           await new Promise<void>((resolve) => {
@@ -385,6 +400,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
           });
         }
 
+        if (isAborted) {
+          break;
+        }
         const msg = messageQueue.shift();
         if (!msg) continue;
 
@@ -583,6 +601,8 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                 if (event.is_error || event.subtype?.startsWith('error')) {
                   error = new Error(event.result || 'Agent execution failed');
                 }
+                // Treat the result event as the end of the run in case "done" is missing.
+                isComplete = true;
                 break;
 
               case 'error':
@@ -600,6 +620,12 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
             console.log('[WS Adapter] ✅ Received done message');
             isComplete = true;
             break;
+
+          case 'aborted':
+            console.log('[WS Adapter] ⛔ Received aborted message');
+            isAborted = true;
+            isComplete = true;
+            break;
         }
       }
 
@@ -611,6 +637,13 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
       messageHandler = null;
       isQueryRunning = false;
       hasPendingChat = false;
+    }
+
+    if (isAborted) {
+      yield {
+        status: { type: 'incomplete', reason: 'cancelled' },
+      } satisfies ChatModelRunResult;
+      return;
     }
 
     // 6. Yield final result

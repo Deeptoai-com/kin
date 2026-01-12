@@ -8,6 +8,7 @@
  */
 
 import { AgentSession, type AgentSessionConfig } from './session';
+import type { OrganizationPermissionSettings } from '~/claude/permissions';
 import type { WebSocket } from 'ws';
 
 // Session timeout: 30 minutes of inactivity
@@ -40,11 +41,12 @@ export class SessionManager {
   /**
    * Get or create a session for a user
    */
-  getOrCreateSession(userId: string): AgentSession {
+  getOrCreateSession(userId: string, orgSettings?: OrganizationPermissionSettings): AgentSession {
     // Check if user already has an active session
     for (const [_key, info] of this.sessions) {
       if (info.userId === userId) {
         info.session.lastActivity = Date.now();
+        info.session.setOrgSettings(orgSettings);
         return info.session;
       }
     }
@@ -54,6 +56,7 @@ export class SessionManager {
       ...this.config,
       userId,
       sessionsRoot: this.sessionsRoot,
+      orgSettings,
     });
     const sessionKey = `${userId}-${Date.now()}`;
 
