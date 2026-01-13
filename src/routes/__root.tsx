@@ -69,7 +69,7 @@ export const Route = createRootRouteWithContext<{
         content: 'width=device-width, initial-scale=1',
       },
       ...seo({
-        title: 'Claude Agent Chat - AI 工作台',
+        title: 'DeeptoAI - AI 工作台',
         description: '基于 Claude Agent SDK 的 AI 工作台，支持流式对话、Skills 管理、Artifacts 展示和会话管理。Powered by Zhipu AI GLM-4.7',
         keywords: 'AI, Claude Agent, Zhipu AI, GLM-4.7, Chat, Skills, Artifacts, AI Workspace',
       }),
@@ -147,9 +147,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           <ThemeProvider initial={initial}>
             <AuthUIProviderTanstack
               authClient={authClient}
-              redirectTo="/agents"
-              navigate={(to) => router.navigate({ to })}
-              replace={(to) => router.navigate({ to, replace: true })}
+              redirectTo="/agents/claude-chat"
+              navigate={(href) => router.navigate({ href })}
+              replace={(href) => router.navigate({ href, replace: true })}
               Link={({ href, ...props }) => <Link to={href} {...props} />}
               social={
                 socialProviders.length > 0

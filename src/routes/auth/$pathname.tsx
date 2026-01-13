@@ -41,7 +41,7 @@ export const Route = createFileRoute('/auth/$pathname')({
       const session = await getSession();
       if (session?.user) {
         throw redirect({
-          to: '/agents',
+          to: '/agents/claude-chat',
         });
       }
     }
@@ -52,7 +52,7 @@ function RouteComponent() {
   const router = useRouter();
   const { pathname } = Route.useParams();
   const { redirect: redirectParam, message, token, method } = Route.useSearch();
-  const redirectTo = redirectParam || '/agents';
+  const redirectTo = redirectParam || '/agents/claude-chat';
 
   const localizedCopy = React.useMemo(() => {
     return {
@@ -395,4 +395,3 @@ function ResendVerificationNotice({
     </div>
   );
 }
-

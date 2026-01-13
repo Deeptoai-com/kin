@@ -29,37 +29,41 @@ export function Header() {
     <header className="sticky top-0 z-50 border-b bg-background/60 px-4 py-3 backdrop-blur">
       <div className="container mx-auto flex items-center justify-between">
         <Link to="/" className="font-bold text-2xl text-foreground">
-          Claude Agent Chat
+          DeeptoAI
         </Link>
 
         <nav className="flex items-center gap-6">
-          <SignedIn>
-            <Link
-              to="/agents"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Dashboard
-            </Link>
-          </SignedIn>
           <Link
-            to="/docs"
+            to="/agents/claude-chat"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Docs
+            Agent Chat
           </Link>
           <Link
-            to="/pricing"
+            to="/agents/skills"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Pricing
+            Skill Store
+          </Link>
+          <Link
+            to="/agents/ai-chat"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Fast Chat
+          </Link>
+          <Link
+            to="/agents/ai-workflow"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Workflow
           </Link>
           <a
-            href="https://github.com/instructa/constructa-starter"
+            href="https://x.com/Stephen4171127"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
           >
-            GitHub
+            X
             <svg
               className="w-3 h-3"
               fill="none"
@@ -92,9 +96,9 @@ export function Header() {
             </Link>
           </SignedOut>
           <SignedIn>
-            <Link to="/agents">
+            <Link to="/agents/claude-chat">
               <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
-                Dashboard <span className="ml-1">↗</span>
+                Agent Chat <span className="ml-1">↗</span>
               </Button>
             </Link>
           </SignedIn>

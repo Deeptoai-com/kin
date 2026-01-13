@@ -46,7 +46,7 @@ function RouteComponent() {
         <div className="mt-10 flex flex-col gap-4 sm:flex-row">
           <Button size="lg" asChild className="rounded-full px-8">
             <Link to="/agents/claude-chat">
-              Try Claude Agent Chat <ArrowRight className="ml-2 h-4 w-4" />
+              Try DeeptoAI <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <Button size="lg" variant="outline" className="rounded-full px-8" asChild>
@@ -85,11 +85,11 @@ function RouteComponent() {
         </div>
 
         <div className="mt-12 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {/* Claude Agent Chat */}
+          {/* DeeptoAI Agent Chat */}
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <MessageSquare className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>Claude Agent Chat</CardTitle>
+              <CardTitle>DeeptoAI Agent Chat</CardTitle>
               <CardDescription>
                 Full Claude Desktop replica with Claude Agent SDK integration
               </CardDescription>
@@ -240,7 +240,7 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <Badge className="mb-2 w-fit">Main Feature</Badge>
-              <CardTitle className="text-xl">Claude Agent Chat</CardTitle>
+              <CardTitle className="text-xl">DeeptoAI Agent Chat</CardTitle>
               <CardDescription className="text-base">
                 Full-featured agent with WebSocket-based real-time communication
               </CardDescription>
@@ -285,7 +285,7 @@ function RouteComponent() {
           <CardContent className="flex flex-col items-center p-8 text-center md:p-12">
             <MessageSquare className="mb-4 h-12 w-12 text-primary" />
             <h2 className="mb-4 text-2xl font-bold md:text-3xl">
-              Ready to Try Claude Agent Chat?
+              Ready to Try DeeptoAI?
             </h2>
             <p className="mb-8 text-muted-foreground">
               Start chatting with the AI agent powered by Claude Agent SDK and Skills Store

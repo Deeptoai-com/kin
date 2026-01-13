@@ -29,8 +29,8 @@ function RouteComponent() {
       {/* Only show content to authenticated users */}
       <SignedIn>
         <div className="container mx-auto py-8">
-          <h1 className="text-3xl font-bold mb-4">Welcome to Claude Agent Chat</h1>
-          <p>Redirecting to Claude Chat...</p>
+          <h1 className="text-3xl font-bold mb-4">Welcome to DeeptoAI</h1>
+          <p>Redirecting to Agent Chat...</p>
         </div>
       </SignedIn>
     </>
