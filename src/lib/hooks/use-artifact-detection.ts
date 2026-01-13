@@ -286,7 +286,11 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
       return
     }
 
-    console.log('[Artifact Detection] Received structured output:', metadata)
+    console.log('[Artifact Detection] Phase 2: Received structured output:', metadata)
+    console.log('[Artifact Detection] - title:', metadata.title)
+    console.log('[Artifact Detection] - description:', metadata.description)
+    console.log('[Artifact Detection] - type:', metadata.type)
+    console.log('[Artifact Detection] - files:', metadata.files.map(f => f.path))
 
     // Get primary file content (first file or combined HTML)
     const primaryContent = getPrimaryContent(metadata)
@@ -296,13 +300,26 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     }
 
     const primaryFilePath = metadata.files[0]?.path
+    console.log('[Artifact Detection] Looking for artifact with filePath:', primaryFilePath)
+    console.log('[Artifact Detection] Current sessionId:', sessionId)
+    console.log('[Artifact Detection] Current messageId:', messageId)
 
     if (!primaryFilePath || !sessionId) {
+      console.warn('[Artifact Detection] Missing filePath or sessionId')
       return
     }
 
     const existing = getArtifactByFilePath(sessionId, primaryFilePath)
-    if (!existing || existing.messageId !== messageId) {
+    console.log('[Artifact Detection] Found existing artifact:', existing ? `${existing.id} (messageId: ${existing.messageId})` : 'null')
+
+    if (!existing) {
+      console.warn('[Artifact Detection] No existing artifact found for filePath:', primaryFilePath)
+      console.log('[Artifact Detection] Current artifacts in store:', Array.from(useArtifactsStore.getState().artifacts.values()).map(a => ({ id: a.id, sourceFilePath: a.sourceFilePath, messageId: a.messageId })))
+      return
+    }
+
+    if (existing.messageId !== messageId) {
+      console.warn('[Artifact Detection] Artifact messageId mismatch:', { existing: existing.messageId, current: messageId })
       return
     }
 

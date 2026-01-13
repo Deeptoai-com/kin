@@ -87,6 +87,7 @@ export const auth = betterAuth({
       }
     },
   },
+  advanced: {
     useSecureCookies: isProd,
     defaultCookieAttributes: {
       httpOnly: true,
@@ -111,22 +112,6 @@ export const auth = betterAuth({
     trustedOrigins: isProd
       ? []  // In production, configure your actual domains
       : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5050'],
-  },
-  user: {
-    deleteUser: {
-      enabled: true,
-      afterDelete: async (deletedUser) => {
-        // Only try to delete Polar customer if Polar is enabled
-        if (!polarClient) return;
-        try {
-          await polarClient.customers.deleteExternal({ externalId: deletedUser.id });
-        } catch (error: any) {
-          if (error?.error !== 'ResourceNotFound') {
-            console.error('[polar] failed to delete external customer', error);
-          }
-        }
-      },
-    },
   },
   plugins: [
     reactStartCookies(),
