@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-const jsonOk = () =>
+// Ensure handlers return promises for middleware compatibility
+const jsonOk = async () =>
   Response.json(
     { status: 'ok' },
     {
@@ -14,7 +15,7 @@ export const Route = createFileRoute('/health')({
   server: {
     handlers: {
       GET: jsonOk,
-      HEAD: () => new Response(null, { status: 200 }),
+      HEAD: async () => new Response(null, { status: 200 }),
     },
   },
 });

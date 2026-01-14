@@ -88,20 +88,23 @@ export function Header() {
 
           <DevSentryButton />
 
-          <SignedOut>
-            <Link to="/auth/$pathname" params={{ pathname: 'sign-in' }}>
-              <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
-                Sign In <span className="ml-1">↗</span>
-              </Button>
-            </Link>
-          </SignedOut>
-          <SignedIn>
-            <Link to="/agents/claude-chat">
-              <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
-                Agent Chat <span className="ml-1">↗</span>
-              </Button>
-            </Link>
-          </SignedIn>
+          {/* Client-only auth components to avoid SSR hydration errors */}
+          <ClientOnly fallback={null}>
+            <SignedOut>
+              <Link to="/auth/$pathname" params={{ pathname: 'sign-in' }}>
+                <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
+                  Sign In <span className="ml-1">↗</span>
+                </Button>
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <Link to="/agents/claude-chat">
+                <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
+                  Agent Chat <span className="ml-1">↗</span>
+                </Button>
+              </Link>
+            </SignedIn>
+          </ClientOnly>
         </nav>
       </div>
     </header>
