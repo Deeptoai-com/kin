@@ -337,6 +337,7 @@ services:
     restart: unless-stopped
     networks:
       - private
+      - dokploy
 
 # Docker networks
 networks:
@@ -344,6 +345,9 @@ networks:
     driver: bridge
     # Network name must not contain spaces
     name: ${APP_NAME_SANITIZED:-claude-agent-chat}-network
+  dokploy:
+    external: true
+    name: dokploy-network
 
 # Persistent volumes
 # Note: Volume names must not contain spaces or special characters
