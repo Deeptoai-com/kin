@@ -11,6 +11,13 @@ ENV NODE_OPTIONS="--max-old-space-size=8192"
 ARG VITE_WS_URL
 ENV VITE_WS_URL=${VITE_WS_URL}
 
+# OAuth client IDs (optional - for social login)
+ARG VITE_GITHUB_CLIENT_ID
+ENV VITE_GITHUB_CLIENT_ID=${VITE_GITHUB_CLIENT_ID}
+
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+
 # Use pnpm
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 

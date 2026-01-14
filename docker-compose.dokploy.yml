@@ -27,6 +27,9 @@ x-app-build: &app_build
     args:
       # WebSocket URL (will be set via Traefik routing)
       VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
+      # OAuth Client IDs (optional - for social login, passed at build time)
+      VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
 
 services:
   # PostgreSQL database with pgvector extension
@@ -80,11 +83,15 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      MINIO_BUCKET: ${MINIO_BUCKET:?}
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
-      mc mb --ignore-existing local/${MINIO_BUCKET} &&
-      mc anonymous set none local/${MINIO_BUCKET} || true
+      mc alias set local http://minio:9000 \"$MINIO_ROOT_USER\" \"$MINIO_ROOT_PASSWORD\" &&
+      mc mb --ignore-existing local/\"$MINIO_BUCKET\" &&
+      mc anonymous set none local/\"$MINIO_BUCKET\" || true
       "
     restart: 'no'
     networks:
@@ -204,6 +211,8 @@ services:
       NODE_ENV: production
       PORT: 5000
       WS_PORT: 3001
+      # Disable auto-migration in production (use migrate service instead)
+      AUTO_MIGRATE: 'false'
       # Database
       DATABASE_URL: ${DATABASE_URL:?}
       # S3-compatible config to reach MinIO inside the stack
@@ -231,6 +240,14 @@ services:
       BETTER_AUTH_URL: https://${APP_HOSTNAME}
       BETTER_AUTH_INTERNAL_URL: http://localhost:5000
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      # OAuth Providers (optional - GitHub & Google)
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # OAuth Providers (frontend - Client ID only)
+      VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
       # Mastra Agent (Zhipu AI GLM-4.7 via Mastra built-in gateway)
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:?}
       # Claude Agent SDK configuration
@@ -303,17 +320,21 @@ services:
 networks:
   private:
     driver: bridge
-    name: ${APP_NAME:-claude-agent-chat}-network
+    # Network name must not contain spaces
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-network
 
 # Persistent volumes
+# Note: Volume names must not contain spaces or special characters
+# Using fixed names to avoid issues with APP_NAME containing spaces
+# Format: [a-zA-Z0-9][a-zA-Z0-9_.-] are allowed
 volumes:
   ex0-data:
-    name: ${APP_NAME:-claude-agent-chat}-data
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-data
   ex0-minio-data:
-    name: ${APP_NAME:-claude-agent-chat}-minio-data
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-minio-data
   ex0-redis-data:
-    name: ${APP_NAME:-claude-agent-chat}-redis-data
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-redis-data
   ex0-meili-data:
-    name: ${APP_NAME:-claude-agent-chat}-meili-data
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-meili-data
   claude-sessions:
-    name: ${APP_NAME:-claude-agent-chat}-claude-sessions
+    name: ${APP_NAME_SANITIZED:-claude-agent-chat}-claude-sessions

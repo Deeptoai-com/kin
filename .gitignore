@@ -8,6 +8,7 @@
 .env.local
 .env.prod
 .env.sentry-build-plugin
+.env.dokploy
 .hidden
 .mastra
 .nitro

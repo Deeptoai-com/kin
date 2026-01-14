@@ -67,6 +67,37 @@
 
 ---
 
+### 🔵 第三方登录配置（OAuth - 可选）
+
+**GitHub OAuth**：
+- [ ] `GITHUB_CLIENT_ID` - GitHub OAuth App Client ID
+- [ ] `GITHUB_CLIENT_SECRET` - GitHub OAuth App Client Secret
+- [ ] `VITE_GITHUB_CLIENT_ID` - GitHub OAuth App Client ID（前端，必须与后端相同）
+
+**Google OAuth**：
+- [ ] `GOOGLE_CLIENT_ID` - Google OAuth Client ID
+- [ ] `GOOGLE_CLIENT_SECRET` - Google OAuth Client Secret
+- [ ] `VITE_GOOGLE_CLIENT_ID` - Google OAuth Client ID（前端，必须与后端相同）
+
+**注意**：
+- 如果不配置这些变量，用户只能使用邮箱密码登录
+- 如果配置了 OAuth，登录页面会显示 "Continue with GitHub" 或 "Continue with Google" 按钮
+- 前端需要 `VITE_*` 前缀的变量（用于构建时注入）
+- 后端需要不带前缀的变量（用于运行时认证）
+
+**配置步骤**：
+1. **GitHub OAuth**：访问 https://github.com/settings/developers
+   - 创建 OAuth App
+   - 设置 Authorization callback URL: `https://your-domain.com/api/auth/callback/github`
+   - 获取 Client ID 和 Client Secret
+
+2. **Google OAuth**：访问 https://console.cloud.google.com/apis/credentials
+   - 创建 OAuth 2.0 Client ID
+   - 设置 Authorized redirect URIs: `https://your-domain.com/api/auth/callback/google`
+   - 获取 Client ID 和 Client Secret
+
+---
+
 ### ✅ AI 服务配置
 
 - [ ] `ANTHROPIC_API_KEY` - Claude Agent SDK API 密钥

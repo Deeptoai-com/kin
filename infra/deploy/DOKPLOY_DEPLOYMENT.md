@@ -27,11 +27,36 @@
 
 ---
 
-### Step 2: 上传 docker-compose 文件
+### Step 2: 配置 Docker Compose 文件
 
-1. 在应用配置中，选择 "Use Docker Compose File"
+Dokploy 支持两种方式配置 Docker Compose 文件：
+
+#### 方式 1: 从 Git 仓库部署（推荐）⭐
+
+如果 Dokploy 连接到 Git 仓库：
+
+1. **在应用配置中，找到 "Compose Path" 或 "Docker Compose File Path" 字段**
+2. **填写路径**：`docker-compose.dokploy.yml`
+   - 这是相对于 Git 仓库根目录的路径
+   - 文件位于项目根目录，所以直接填写文件名即可
+3. **保存配置**
+
+**示例**：
+```
+Compose Path: docker-compose.dokploy.yml
+```
+
+#### 方式 2: 手动上传文件
+
+如果使用手动上传方式：
+
+1. 在应用配置中，选择 "Use Docker Compose File" 或 "Upload Compose File"
 2. 上传或粘贴 `docker-compose.dokploy.yml` 文件内容
 3. 保存配置
+
+**注意**：
+- 如果文件在子目录中，Compose Path 需要包含相对路径，例如：`infra/deploy/docker-compose.dokploy.yml`
+- 当前项目的 `docker-compose.dokploy.yml` 位于项目根目录，所以路径就是 `docker-compose.dokploy.yml`
 
 ---
 
@@ -230,7 +255,40 @@ docker exec -it claude-agent-chat-db psql -U your_db_user -d claude_agent_chat
 
 ---
 
-### 问题 5: 迁移失败
+### 问题 5: Docker Volume 名称错误
+
+**症状**：部署时出现错误：
+```
+Error response from daemon: create "App Name-volume": "App Name-volume" includes invalid characters for a local volume name, only "[a-zA-Z0-9][a-zA-Z0-9_.-]" are allowed.
+```
+
+**原因**：
+- `APP_NAME` 环境变量包含空格或特殊字符（如 `DeeptoAI Agents`）
+- Docker volume 和 network 名称不允许包含空格，只能使用 `[a-zA-Z0-9][a-zA-Z0-9_.-]`
+
+**解决方案**：
+
+1. **设置 `APP_NAME_SANITIZED` 环境变量**：
+   - 将 `APP_NAME` 中的空格替换为连字符（`-`）
+   - 移除其他特殊字符
+   
+   **示例**：
+   ```bash
+   APP_NAME=DeeptoAI Agents
+   APP_NAME_SANITIZED=DeeptoAI-Agents
+   ```
+
+2. **或者修改 `APP_NAME` 本身**：
+   - 将应用名称改为不包含空格的版本
+   - 例如：`DeeptoAI Agents` → `DeeptoAI-Agents`
+
+**验证**：
+- 确保 `APP_NAME_SANITIZED` 只包含允许的字符：字母、数字、连字符、下划线、点
+- 不能包含空格或其他特殊字符
+
+---
+
+### 问题 6: 迁移失败
 
 **症状**：`migrate` 服务失败
 
@@ -244,6 +302,58 @@ docker exec -it claude-agent-chat-db psql -U your_db_user -d claude_agent_chat
 ```bash
 docker exec -it claude-agent-chat-app pnpm run db:migrate
 ```
+
+**注意**：生产环境应用中的自动迁移已禁用（`AUTO_MIGRATE=false`），迁移由 Docker Compose 的 `migrate` 服务执行。这是为了：
+- 避免双重迁移
+- 确保迁移在应用启动前完成
+- 迁移失败时应用不会启动
+
+---
+
+### 问题 7: 第三方登录（OAuth）不显示或无法使用
+
+**症状**：登录页面没有显示 "Continue with GitHub" 或 "Continue with Google" 按钮
+
+**可能原因**：
+1. 环境变量未配置
+2. 前端和后端的 CLIENT_ID 不一致
+3. OAuth App 回调 URL 配置错误
+
+**解决方案**：
+
+1. **检查环境变量**：
+   ```bash
+   # 检查后端变量
+   docker exec claude-agent-chat-app env | grep -E "GITHUB_CLIENT|GOOGLE_CLIENT"
+   
+   # 检查前端变量（构建时需要）
+   # 注意：VITE_* 变量需要在构建时传入，运行时无法修改
+   ```
+
+2. **配置 GitHub OAuth**：
+   - 访问：https://github.com/settings/developers
+   - 创建 OAuth App
+   - **Authorization callback URL**：`https://${APP_HOSTNAME}/api/auth/callback/github`
+   - 复制 Client ID 和 Client Secret
+
+3. **配置 Google OAuth**：
+   - 访问：https://console.cloud.google.com/apis/credentials
+   - 创建 OAuth 2.0 Client ID
+   - **Authorized redirect URIs**：`https://${APP_HOSTNAME}/api/auth/callback/google`
+   - 复制 Client ID 和 Client Secret
+
+4. **配置环境变量**：
+   - `GITHUB_CLIENT_ID` 和 `GITHUB_CLIENT_SECRET`（后端）
+   - `VITE_GITHUB_CLIENT_ID`（前端，必须与 `GITHUB_CLIENT_ID` 相同）
+   - `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`（后端）
+   - `VITE_GOOGLE_CLIENT_ID`（前端，必须与 `GOOGLE_CLIENT_ID` 相同）
+
+5. **重新构建镜像**（如果修改了 `VITE_*` 变量）：
+   - `VITE_*` 变量在构建时注入，修改后需要重新构建镜像
+
+**验证**：
+- 登录页面应该显示对应的社交登录按钮
+- 点击按钮应该能正常跳转到 OAuth 提供商
 
 ---
 
