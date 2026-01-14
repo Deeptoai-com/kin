@@ -38,11 +38,28 @@ const resolveAuthBaseURL = (rawUrl: string | undefined, basePath: string) => {
   }
 };
 
+const isProd = process.env.NODE_ENV === 'production';
+const sessionCookieName = process.env.SESSION_COOKIE_NAME ?? 'ex0_session';
 const authBasePath = normalizeAuthBasePath(process.env.BETTER_AUTH_BASE_PATH);
 const authBaseURL = resolveAuthBaseURL(process.env.BETTER_AUTH_URL, authBasePath);
 
-const isProd = process.env.NODE_ENV === 'production';
-const sessionCookieName = process.env.SESSION_COOKIE_NAME ?? 'ex0_session';
+const parseTrustedOrigins = (raw?: string) => {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+};
+
+const devTrustedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5050',
+];
+const envTrustedOrigins = parseTrustedOrigins(process.env.BETTER_AUTH_TRUSTED_ORIGINS);
+const trustedOrigins = [
+  ...new Set([...envTrustedOrigins, ...(isProd ? [] : devTrustedOrigins)]),
+];
 
 const isEmailVerificationEnabled = process.env.ENABLE_EMAIL_VERIFICATION === 'true';
 
@@ -76,6 +93,7 @@ const checkoutProducts = isPolarEnabled
 export const auth = betterAuth({
   baseURL: authBaseURL,
   basePath: authBasePath,
+  trustedOrigins,
   database: drizzleAdapter(db, {
     provider: 'pg',
   }),
@@ -139,10 +157,6 @@ export const auth = betterAuth({
         },
       },
     },
-    // Allow cross-origin requests from development ports
-    trustedOrigins: isProd
-      ? []  // In production, configure your actual domains
-      : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5050'],
   },
   plugins: [
     reactStartCookies(),
