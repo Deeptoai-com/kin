@@ -5,41 +5,42 @@ export const Route = createFileRoute('/api/auth/$')({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
-        // Better Auth handler needs the full path
-        // The $ param (splat) contains the path after /api/auth/
-        const pathSegment = (params as { _splat?: string })._splat || '';
-        const url = new URL(request.url);
-        
-        // Reconstruct the full pathname: /api/auth/{pathSegment}
-        // This ensures Better Auth handler receives the correct path
-        const fullPath = `/api/auth/${pathSegment}`;
-        const newUrl = new URL(fullPath + url.search, url.origin);
-        
-        // Create a new request with the corrected URL
-        const newRequest = new Request(newUrl.toString(), {
-          method: request.method,
-          headers: request.headers,
-          body: request.method !== 'GET' && request.body ? await request.clone().arrayBuffer() : undefined,
-        });
-        
-        return auth.handler(newRequest);
+        return auth.handler(await buildAuthRequest(request, params));
       },
       POST: async ({ request, params }) => {
-        const pathSegment = (params as { _splat?: string })._splat || '';
-        const url = new URL(request.url);
-        const fullPath = `/api/auth/${pathSegment}`;
-        const newUrl = new URL(fullPath + url.search, url.origin);
-        
-        // For POST, we need to preserve the body
-        const body = await request.clone().arrayBuffer();
-        const newRequest = new Request(newUrl.toString(), {
-          method: request.method,
-          headers: request.headers,
-          body: body.byteLength > 0 ? body : undefined,
-        });
-        
-        return auth.handler(newRequest);
+        return auth.handler(await buildAuthRequest(request, params));
       },
     },
   },
 });
+
+const buildAuthRequest = async (
+  request: Request,
+  params: Record<string, unknown>,
+) => {
+  const splat = (params as { _splat?: string })._splat ?? '';
+  const pathSegment = splat.replace(/^\/+/, '');
+  const url = new URL(request.url);
+  const routeBase = '/api/auth';
+  const baseIndex = url.pathname.lastIndexOf(routeBase);
+  const prefix = baseIndex >= 0 ? url.pathname.slice(0, baseIndex) : '';
+  const basePath = `${prefix}${routeBase}`;
+  const newPath = pathSegment ? `${basePath}/${pathSegment}` : basePath;
+  const newUrl = new URL(newPath + url.search, url.origin);
+
+  let body: ArrayBuffer | undefined;
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    const buffer = await request.clone().arrayBuffer();
+    if (buffer.byteLength > 0) {
+      body = buffer;
+    }
+  }
+
+  return new Request(newUrl.toString(), {
+    method: request.method,
+    headers: request.headers,
+    body,
+    redirect: request.redirect,
+    signal: request.signal,
+  });
+};
