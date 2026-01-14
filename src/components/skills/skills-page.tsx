@@ -45,7 +45,7 @@ const CATEGORIES: CategoryItem[] = [
 export const SkillsPageComponent: FC<{
   skills: ExtendedSkillInfo[];
   enabledSkills: string[];
-}> = ({ skills, enabledSkills }) => {
+}> = ({ skills, enabledSkills: initialEnabledSkills }) => {
   // Server Functions (type-safe RPC)
   const enableOfficialSkill = useServerFn(enableUserSkillFn);
   const disableOfficialSkill = useServerFn(disableUserSkillFn);
@@ -58,6 +58,7 @@ export const SkillsPageComponent: FC<{
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [selectedSkillSlug, setSelectedSkillSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [enabledSkills, setEnabledSkills] = useState<string[]>(() => initialEnabledSkills);
 
   // Query for skill detail (lazy loading on dialog open)
   const { data: skillDetail, isLoading: isLoadingDetail } = useQuery({
@@ -98,12 +99,10 @@ export const SkillsPageComponent: FC<{
         }
       }
 
-      // Update local state
-      if (isEnabled) {
-        enabledSkills = enabledSkills.filter(s => s !== skillSlug);
-      } else {
-        enabledSkills = [...enabledSkills, skillSlug];
-      }
+      // Update local state so UI reflects the change immediately
+      setEnabledSkills((prev) =>
+        isEnabled ? prev.filter((s) => s !== skillSlug) : [...prev, skillSlug]
+      );
     } catch (error) {
       console.error('Failed to toggle skill:', error);
       // TODO: Show error toast to user
