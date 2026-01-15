@@ -8,16 +8,23 @@ import { auth } from "../auth.server";
  */
 export const getSession = createServerFn({ method: "GET" }).handler(
 	async () => {
+		const shouldLog = process.env.NODE_ENV !== 'production';
+		const logDebug = (...args: unknown[]) => {
+			if (shouldLog) {
+				console.log(...args);
+			}
+		};
+
 		try {
-			console.log('[getSession] Fetching session...');
+			logDebug('[getSession] Fetching session...');
 			const { headers } = getRequest();
-			console.log('[getSession] Headers:', Object.fromEntries(headers.entries()));
+			logDebug('[getSession] Headers:', Object.fromEntries(headers.entries()));
 
 			const session = await auth.api.getSession({
 				headers,
 			});
 
-			console.log('[getSession] Auth session result:', {
+			logDebug('[getSession] Auth session result:', {
 				hasSession: !!session,
 				hasUser: !!session?.user,
 				user: session?.user,
@@ -25,7 +32,7 @@ export const getSession = createServerFn({ method: "GET" }).handler(
 
 			// Dev mode: return mock user for easier testing
 			if (!session?.user && process.env.NODE_ENV !== 'production') {
-				console.log('[getSession] Dev mode: returning mock user');
+				logDebug('[getSession] Dev mode: returning mock user');
 				return {
 					user: {
 						id: 'dev-user-123',
@@ -38,7 +45,7 @@ export const getSession = createServerFn({ method: "GET" }).handler(
 			}
 
 			if (!session?.user) {
-				console.log('[getSession] No user in session, returning null');
+				logDebug('[getSession] No user in session, returning null');
 				return null;
 			}
 
@@ -51,7 +58,7 @@ export const getSession = createServerFn({ method: "GET" }).handler(
 					emailVerified: session.user.emailVerified,
 				},
 			};
-			console.log('[getSession] Returning user:', result);
+			logDebug('[getSession] Returning user:', result);
 			return result;
 		} catch (error) {
 			console.error("[getSession] Session verification failed:", error);

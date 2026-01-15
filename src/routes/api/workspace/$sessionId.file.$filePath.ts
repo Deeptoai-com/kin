@@ -5,7 +5,7 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
@@ -14,6 +14,10 @@ import { getWorkspaceSession } from '~/server/workspace-session';
  * Validate file path to prevent path traversal attacks
  */
 function validateFilePath(filePath: string): boolean {
+  if (!filePath || filePath.trim().length === 0) {
+    return false;
+  }
+
   // Reject paths with path traversal patterns
   if (filePath.includes('..') || filePath.includes('~') || path.isAbsolute(filePath)) {
     return false;
@@ -21,7 +25,12 @@ function validateFilePath(filePath: string): boolean {
 
   // Normalize and check again
   const normalized = path.normalize(filePath);
-  if (normalized.includes('..') || normalized.startsWith('/') || normalized.startsWith('\\')) {
+  if (
+    normalized === '.' ||
+    normalized.includes('..') ||
+    normalized.startsWith('/') ||
+    normalized.startsWith('\\')
+  ) {
     return false;
   }
 
@@ -64,6 +73,14 @@ export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')
         const fullFilePath = path.join(workspacePath, filePath);
 
         try {
+          const stats = await stat(fullFilePath);
+          if (!stats.isFile()) {
+            return new Response(
+              JSON.stringify({ error: 'Path is not a file' }),
+              { status: 400, headers: { 'content-type': 'application/json' } }
+            );
+          }
+
           // Read file content
           const content = await readFile(fullFilePath, 'utf-8');
 
@@ -77,6 +94,13 @@ export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')
             return new Response(
               JSON.stringify({ error: 'File not found' }),
               { status: 404, headers: { 'content-type': 'application/json' } }
+            );
+          }
+
+          if ((error as NodeJS.ErrnoException).code === 'EISDIR') {
+            return new Response(
+              JSON.stringify({ error: 'Path is not a file' }),
+              { status: 400, headers: { 'content-type': 'application/json' } }
             );
           }
 

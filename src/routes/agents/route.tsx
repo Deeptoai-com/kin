@@ -1,4 +1,9 @@
-import { Outlet, redirect, createFileRoute, defaultStringifySearch } from '@tanstack/react-router';
+import {
+  Outlet,
+  redirect,
+  createFileRoute,
+  defaultStringifySearch,
+} from '@tanstack/react-router';
 import { AppSidebar } from '~/components/app-sidebar';
 import { SiteHeader } from '~/components/site-header';
 import { SidebarInset, SidebarProvider } from '~/components/ui/sidebar';
@@ -8,46 +13,49 @@ import { EmailVerificationBanner } from '~/components/email-verification-banner'
 export const Route = createFileRoute('/agents')({
   // All children (/agents, /agents/settings, etc.) inherit this guard
   beforeLoad: async ({ location }) => {
-    console.log('[Route /agents] beforeLoad - starting', {
-      pathname: location.pathname,
-      search: location.search,
-      hasSearch: !!location.search,
-      searchType: typeof location.search,
-    });
+    const shouldLog = import.meta.env.DEV;
+    if (shouldLog) {
+      console.log('[Route /agents] beforeLoad - starting', {
+        pathname: location.pathname,
+        search: location.search,
+        hasSearch: !!location.search,
+        searchType: typeof location.search,
+      });
+    }
 
     // Safely handle search params
     const searchParams = location.search || {};
 
     const session = await getSession();
 
-    console.log('[Route /agents] getSession result:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userKeys: session?.user ? Object.keys(session.user) : [],
-      user: session?.user,
-    });
+    if (shouldLog) {
+      console.log('[Route /agents] getSession result:', {
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        userKeys: session?.user ? Object.keys(session.user) : [],
+        user: session?.user,
+      });
+    }
 
     if (!session) {
       // Preserve deep link for redirect after sign-in
+      let redirectPath: string | null = null;
       try {
         const searchString = defaultStringifySearch(searchParams);
-        const redirectPath = `${location.pathname}${searchString}`;
-
-        console.log('[Route /agents] Redirecting to sign-in:', { redirectPath });
-
-        throw redirect({
-          to: '/auth/$pathname',
-          params: { pathname: 'sign-in' },
-          search: { redirect: redirectPath },
-        });
+        redirectPath = `${location.pathname}${searchString}`;
       } catch (error) {
-        console.error('[Route /agents] Error during redirect:', error);
-        // Fallback: redirect without search params
-        throw redirect({
-          to: '/auth/$pathname',
-          params: { pathname: 'sign-in' },
-        });
+        console.error('[Route /agents] Failed to build redirect path:', error);
       }
+
+      if (shouldLog) {
+        console.log('[Route /agents] Redirecting to sign-in:', { redirectPath });
+      }
+
+      throw redirect({
+        to: '/auth/$pathname',
+        params: { pathname: 'sign-in' },
+        ...(redirectPath ? { search: { redirect: redirectPath } } : {}),
+      });
     }
 
     // Ensure user object has all required fields
@@ -59,7 +67,9 @@ export const Route = createFileRoute('/agents')({
       emailVerified: session.user.emailVerified ?? false,
     };
 
-    console.log('[Route /agents] Returning user context:', { user });
+    if (shouldLog) {
+      console.log('[Route /agents] Returning user context:', { user });
+    }
 
     return { user };
   },

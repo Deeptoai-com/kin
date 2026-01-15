@@ -35,20 +35,6 @@ const readEnv = (key: string): string | undefined => {
 };
 type Level = 'verbose' | 'debug' | 'info' | 'warn' | 'error';
 
-// Get LOG_LEVEL from validated environment, default to 'debug' for development
-// const logLevelSchema = serverEnvSchema.pick({ LOG_LEVEL: true }).partial();
-
-const resolvedLogLevel = (() => {
-  return 'debug';
-  // const parsed = logLevelSchema.safeParse(collectRuntimeEnv());
-  // return parsed.success ? parsed.data.LOG_LEVEL : undefined;
-})();
-
-const LOG_LEVEL =
-  resolvedLogLevel ||
-  readEnv('LOG_LEVEL') ||
-  'debug'; // Changed default to 'debug' to see all logs
-
 const LOG_LEVELS: Record<Level, number> = {
   error: 0,
   warn: 1,
@@ -56,6 +42,16 @@ const LOG_LEVELS: Record<Level, number> = {
   debug: 3,
   verbose: 4,
 };
+
+// Get LOG_LEVEL from validated environment, default to 'debug' for development
+// const logLevelSchema = serverEnvSchema.pick({ LOG_LEVEL: true }).partial();
+
+const resolvedLogLevel = (() => {
+  const raw = readEnv('LOG_LEVEL');
+  return raw && raw in LOG_LEVELS ? (raw as Level) : undefined;
+})();
+
+const LOG_LEVEL = resolvedLogLevel || 'debug'; // Changed default to 'debug' to see all logs
 
 const normalizeBool = (value: string | undefined, fallback = true) => {
   if (value === undefined) return fallback;

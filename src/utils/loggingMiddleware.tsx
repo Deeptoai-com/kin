@@ -97,6 +97,7 @@ export const logMiddleware = createMiddleware()
   })
 
 export const requestLoggerMiddleware = createMiddleware().server(async ({ next, request }) => {
+  const isProd = process.env.NODE_ENV === 'production'
   const started = Date.now()
   const method = request?.method || 'GET'
   const url = request?.url ? redact(request.url) : 'unknown'
@@ -105,7 +106,10 @@ export const requestLoggerMiddleware = createMiddleware().server(async ({ next, 
     const result = await next()
 
     const durationMs = Date.now() - started
-    logger.info('http', { method, url, status: (result as any)?.status ?? 200, durationMs })
+    const status = (result as any)?.status ?? 200
+    if (!isProd) {
+      logger.debug('http', { method, url, status, durationMs })
+    }
 
     try {
       const Sentry = await import('@sentry/node')
@@ -113,7 +117,7 @@ export const requestLoggerMiddleware = createMiddleware().server(async ({ next, 
         category: 'http',
         type: 'http',
         level: 'info',
-        data: { method, url, durationMs, status: (result as any)?.status ?? 200 },
+        data: { method, url, durationMs, status },
         message: `${method} ${url}`,
       })
     } catch {
