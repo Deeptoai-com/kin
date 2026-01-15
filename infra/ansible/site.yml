@@ -197,7 +197,6 @@
           - compose.yml
           - build
           - app
-          - worker
       args:
         chdir: '{{ constructa_deploy_dir }}'
       register: compose_build

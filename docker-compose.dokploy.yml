@@ -137,7 +137,7 @@ services:
 
   # Database migrations (runs before app starts)
   migrate:
-    <<: *app_build
+    image: *app_image
     depends_on:
       db:
         condition: service_healthy
@@ -161,7 +161,7 @@ services:
 
   # Background workers for BullMQ (cron + indexing, etc.)
   worker:
-    <<: *app_build
+    image: *app_image
     container_name: ${APP_NAME:-claude-agent-chat}-worker
     depends_on:
       db:
@@ -202,6 +202,7 @@ services:
 
   # Main application (Nitro + WebSocket server)
   app:
+    image: *app_image
     <<: *app_build
     container_name: ${APP_NAME:-claude-agent-chat}-app
     depends_on:

@@ -94,7 +94,7 @@ services:
 
   # migrations run before app starts, re-created for each new image tag
   migrate:
-    <<: *app_build
+    image: *app_image
     depends_on:
       db:
         condition: service_healthy
@@ -127,7 +127,7 @@ services:
 
   # Background workers for BullMQ (cron + indexing, etc.)
   worker:
-    <<: *app_build
+    image: *app_image
     container_name: ex0-worker
     depends_on:
       db:
@@ -167,6 +167,7 @@ services:
 
   # App container (useful for self-host/preview via reverse proxy; in dev run pnpm dev)
   app:
+    image: *app_image
     <<: *app_build
     container_name: ex0-app
     depends_on:

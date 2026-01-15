@@ -124,10 +124,7 @@ services:
     volumes:
     - ex0-meili-data:/meili_data
   migrate:
-    build:
-      context: ./app-source
-      dockerfile: Dockerfile
-      target: runner
+    image: ${APP_IMAGE:-ghcr.io/your-org/your-repo/app}:${APP_TAG:-latest}
     depends_on:
       db:
         condition: service_healthy
@@ -215,10 +212,7 @@ services:
     volumes:
     - ex0-redis-data:/data
   worker:
-    build:
-      context: ./app-source
-      dockerfile: Dockerfile
-      target: runner
+    image: ${APP_IMAGE:-ghcr.io/your-org/your-repo/app}:${APP_TAG:-latest}
     cap_drop:
     - ALL
     command:
