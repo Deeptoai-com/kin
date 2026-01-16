@@ -94,6 +94,13 @@ const ArtifactMetadataSchema = z.object({
     .describe('Array of files that make up this artifact'),
 });
 
+const STRUCTURED_OUTPUT_FILE_REGEX = /(?:^|[^\w])(?:[^\s"'`<>]+)\.(md|html|svg|json|tsx|jsx|css|js)(?=$|[^\w])/i;
+
+function hasStructuredOutputFileHint(prompt) {
+  if (typeof prompt !== 'string' || prompt.length === 0) return false;
+  return STRUCTURED_OUTPUT_FILE_REGEX.test(prompt);
+}
+
 // Convert Zod schema to JSON Schema for SDK
 const artifactJsonSchema = zodToJsonSchema(ArtifactMetadataSchema, {
   name: 'ArtifactMetadata',
@@ -167,10 +174,14 @@ process.stdin.on('end', async () => {
       console.error(`[Worker]   SDK Resume ID: ${sdkResumeId}`);
     }
 
-    // Temporarily disable Structured Outputs for debugging
     const useStructuredOutputs = process.env.ENABLE_STRUCTURED_OUTPUTS === 'true';
+    const shouldUseStructuredOutputs = useStructuredOutputs && hasStructuredOutputFileHint(prompt);
 
-    console.error(`[Worker] Structured Outputs: ${useStructuredOutputs ? 'enabled' : 'disabled'}`);
+    console.error(`[Worker] Structured Outputs: ${
+      useStructuredOutputs
+        ? (shouldUseStructuredOutputs ? 'enabled (file hint)' : 'suppressed (no file hint)')
+        : 'disabled'
+    }`);
     console.error(`[Worker] ======================================`);
 
     console.error('[Worker] Creating query stream...');
@@ -322,7 +333,7 @@ Example bad operations:
         },
         // Enable Structured Outputs for artifact metadata (optional, controlled by env var)
         // IMPORTANT: Use 'outputFormat' parameter (not 'structuredOutput')
-        ...(useStructuredOutputs && {
+        ...(shouldUseStructuredOutputs && {
           outputFormat: {
             type: 'json_schema',
             schema: artifactJsonSchema,

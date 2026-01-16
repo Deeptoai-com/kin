@@ -217,7 +217,7 @@ services:
       PYTHON_RUNNER_TIMEOUT_MS: ${PYTHON_RUNNER_TIMEOUT_MS:-10000}
       PYTHON_RUNNER_MAX_OUTPUT_BYTES: ${PYTHON_RUNNER_MAX_OUTPUT_BYTES:-512000}
       PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
-      # Structured Outputs for Artifacts (default: enabled for testing)
+      # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-true}
     volumes:
       - claude-sessions:/data/users
