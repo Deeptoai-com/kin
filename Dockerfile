@@ -1,8 +1,11 @@
 # ---- Stage 1: Build ----------------------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:24-bookworm-slim AS builder
 
-# Slightly better compatibility on alpine + TLS root store for outbound HTTPS
-RUN apk add --no-cache libc6-compat ca-certificates
+# TLS root store for outbound HTTPS
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    procps \
+  && rm -rf /var/lib/apt/lists/*
 
 # Allow Vite build to use more memory inside the builder container
 ENV NODE_OPTIONS="--max-old-space-size=8192"
@@ -43,10 +46,25 @@ RUN echo "=== Memory before build ===" && free -m && \
     echo "=== Build output size ===" && du -sh .output/
 
 # ---- Stage 2: Runtime --------------------------------------------------------
-FROM node:22-alpine AS runner
+FROM node:24-bookworm-slim AS runner
 
-# Install runtime dependencies including bubblewrap for sandbox-runtime
-RUN apk add --no-cache libc6-compat ca-certificates bubblewrap bash ripgrep
+# Install runtime dependencies including Python and common data libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    bash \
+    bubblewrap \
+    ripgrep \
+    python3 \
+    python3-numpy \
+    python3-pandas \
+    python3-matplotlib \
+    python3-pil \
+    python3-yaml \
+    python3-scipy \
+    python3-seaborn \
+    python3-bs4 \
+    python3-lxml \
+  && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.17.1
 
 WORKDIR /app

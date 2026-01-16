@@ -6,10 +6,12 @@
  * Communication happens via stdin/stdout using JSON messages.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createPathSecurity } from './src/claude/path-security.js';
+import { resolveMcpServerConfigs } from './src/claude/mcp/manager.js';
+import { runPython } from './src/claude/python/runner.js';
 
 // Read configuration from environment
 const config = {
@@ -173,6 +175,61 @@ process.stdin.on('end', async () => {
 
     console.error('[Worker] Creating query stream...');
 
+    const pythonRunTool = tool(
+      'run',
+      'Execute Python code inside the session workspace (no shell).',
+      {
+        code: z.string().min(1).describe('Python code to execute'),
+        timeoutMs: z.number().int().positive().optional().describe('Execution timeout in milliseconds'),
+        maxOutputBytes: z.number().int().positive().optional().describe('Maximum stdout/stderr bytes'),
+      },
+      async (args) => {
+        try {
+          const result = await runPython({
+            code: args.code,
+            cwd: config.cwd,
+            timeoutMs: args.timeoutMs,
+            maxOutputBytes: args.maxOutputBytes,
+          });
+
+          const isError = Boolean(
+            result.timedOut ||
+            result.killedByLimit ||
+            (typeof result.exitCode === 'number' && result.exitCode !== 0)
+          );
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(result),
+              isError,
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+              isError: true,
+            }],
+          };
+        }
+      }
+    );
+
+    const pythonMcpServer = createSdkMcpServer({
+      name: 'python',
+      tools: [pythonRunTool],
+    });
+
+    const mcpServers = await resolveMcpServerConfigs({
+      userId,
+      userHome: process.env.CLAUDE_HOME,
+      sdkServers: {
+        python: pythonMcpServer,
+      },
+    });
+
     // System prompt extension to guide Claude to use relative paths for file operations
     // Using preset form with 'append' to extend Claude Code's default system prompt
     const workspaceInstructions = `
@@ -222,6 +279,11 @@ TOOL USAGE GUIDELINES:
 - NEVER write to /app (it's read-only)
 - NEVER write to .claude/ or ${process.env.CLAUDE_HOME}/.claude/skills/
 
+**Python Tool (MCP)**:
+- Use mcp__python__run to execute Python code
+- Runs inside the session workspace (no shell)
+- Returns stdout/stderr and exit metadata
+
 Example good file operations:
 - Read workspace: Read("src/App.tsx")
 - Read project: Read({ file_path: "/app/src/lib/db.ts" })
@@ -250,6 +312,7 @@ Example bad operations:
         settingSources: ['project'],
         // Use claude_code preset to get all default tools (which includes Skill tool)
         tools: { type: 'preset', preset: 'claude_code' },
+        ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         // Add system prompt to guide file path behavior
         // IMPORTANT: Use 'systemPrompt' (not 'systemMessage') with preset + append
         systemPrompt: {

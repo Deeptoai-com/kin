@@ -9,6 +9,7 @@ export const FEATURE_CONFIG = {
   // Section 1: Claude Agent SDK
   claudeChat: true,       // Claude Chat page - enabled
   skills: true,           // Skills Store page - enabled
+  mcpStore: true,         // MCP Store page - enabled
 
   // Section 2: AI SDK (using @ai-sdk/react + AI Elements)
   aiChat: true,           // AI SDK Chat - enabled (with file attachments)

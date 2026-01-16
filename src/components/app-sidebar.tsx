@@ -19,6 +19,7 @@ import FlowChartIcon from 'virtual:icons/ri/flow-chart';
 import HomeSmileIcon from 'virtual:icons/ri/home-smile-line';
 import SparklingIcon from 'virtual:icons/ri/sparkling-line';
 import SettingsIcon from 'virtual:icons/ri/settings-4-line';
+import PlugIcon from 'virtual:icons/ri/plug-line';
 import { FEATURE_CONFIG } from '~/config/features';
 
 const navSections = [
@@ -36,6 +37,12 @@ const navSections = [
         url: '/agents/skills',
         icon: SettingsIcon,
         enabled: FEATURE_CONFIG.skills,
+      },
+      {
+        title: 'MCP Store',
+        url: '/agents/mcp',
+        icon: PlugIcon,
+        enabled: FEATURE_CONFIG.mcpStore,
       },
     ],
     hasDivider: true,
