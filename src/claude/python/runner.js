@@ -13,6 +13,106 @@ import { promises as fs } from 'node:fs';
 const DEFAULT_TIMEOUT_MS = Number(process.env.PYTHON_RUNNER_TIMEOUT_MS) || 10_000;
 const DEFAULT_MAX_OUTPUT_BYTES = Number(process.env.PYTHON_RUNNER_MAX_OUTPUT_BYTES) || 512_000;
 const DEFAULT_MAX_CODE_BYTES = Number(process.env.PYTHON_RUNNER_MAX_CODE_BYTES) || 200_000;
+const MAX_TRACKED_FILES = 2000;
+const IGNORED_DIRS = new Set(['__python__', '.claude', '.git', 'node_modules', '.output', 'dist', 'build']);
+
+async function listWorkspaceFiles(rootDir) {
+  const files = new Map();
+  const stack = [{ dir: rootDir, relative: '' }];
+  let truncated = false;
+
+  while (stack.length > 0) {
+    const { dir, relative } = stack.pop();
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) {
+        if (entry.isDirectory() && entry.name !== '.claude') {
+          continue;
+        }
+      }
+
+      const nextRelative = relative ? `${relative}/${entry.name}` : entry.name;
+      const nextFull = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (IGNORED_DIRS.has(entry.name)) continue;
+        stack.push({ dir: nextFull, relative: nextRelative });
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      try {
+        const stats = await fs.stat(nextFull);
+        files.set(nextRelative, {
+          size: stats.size,
+          mtimeMs: stats.mtimeMs,
+        });
+      } catch {
+        continue;
+      }
+
+      if (files.size > MAX_TRACKED_FILES) {
+        truncated = true;
+        return { files, truncated };
+      }
+    }
+  }
+
+  return { files, truncated };
+}
+
+function diffWorkspaceFiles(beforeSnapshot, afterSnapshot) {
+  const created = [];
+  const updated = [];
+
+  for (const [filePath, meta] of afterSnapshot.entries()) {
+    const previous = beforeSnapshot.get(filePath);
+    if (!previous) {
+      created.push(filePath);
+      continue;
+    }
+    if (previous.mtimeMs !== meta.mtimeMs || previous.size !== meta.size) {
+      updated.push(filePath);
+    }
+  }
+
+  return { created, updated };
+}
+
+async function collectWorkspaceChanges(rootDir, beforeSnapshot) {
+  if (!beforeSnapshot) {
+    return { filesCreated: [], filesUpdated: [], trackingSkipped: true };
+  }
+
+  if (beforeSnapshot.truncated) {
+    return { filesCreated: [], filesUpdated: [], trackingSkipped: true };
+  }
+
+  let afterSnapshot;
+  try {
+    afterSnapshot = await listWorkspaceFiles(rootDir);
+  } catch {
+    return { filesCreated: [], filesUpdated: [], trackingSkipped: true };
+  }
+
+  if (afterSnapshot.truncated) {
+    return { filesCreated: [], filesUpdated: [], trackingSkipped: true };
+  }
+
+  const diff = diffWorkspaceFiles(beforeSnapshot.files, afterSnapshot.files);
+  return {
+    filesCreated: diff.created,
+    filesUpdated: diff.updated,
+    trackingSkipped: false,
+  };
+}
 
 function ensureAbsoluteDir(value) {
   return path.resolve(String(value || process.cwd()));
@@ -71,6 +171,13 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
   const workDir = path.join(resolvedCwd, '__python__');
   await fs.mkdir(workDir, { recursive: true });
 
+  let beforeSnapshot = null;
+  try {
+    beforeSnapshot = await listWorkspaceFiles(resolvedCwd);
+  } catch {
+    beforeSnapshot = null;
+  }
+
   const filename = `run_${Date.now()}_${randomBytes(4).toString('hex')}.py`;
   const filePath = path.join(workDir, filename);
 
@@ -123,6 +230,7 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
 
     child.on('error', async (error) => {
       clearTimeout(timer);
+      const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
       await fs.unlink(filePath).catch(() => {});
       resolve({
         stdout: stdoutCollector.content,
@@ -133,11 +241,13 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
         timedOut: false,
         truncated: stdoutCollector.truncated || stderrCollector.truncated,
         killedByLimit,
+        ...fileTracking,
       });
     });
 
     child.on('close', async (code, signal) => {
       clearTimeout(timer);
+      const fileTracking = await collectWorkspaceChanges(resolvedCwd, beforeSnapshot);
       await fs.unlink(filePath).catch(() => {});
       resolve({
         stdout: stdoutCollector.content,
@@ -148,6 +258,7 @@ export async function runPython({ code, cwd, timeoutMs, maxOutputBytes, maxCodeB
         timedOut,
         truncated: stdoutCollector.truncated || stderrCollector.truncated,
         killedByLimit,
+        ...fileTracking,
       });
     });
   });

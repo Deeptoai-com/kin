@@ -6,7 +6,8 @@
  */
 
 import { CheckCircledIcon, ChevronDownIcon, ChevronRightIcon, CrossCircledIcon, GearIcon } from '@radix-ui/react-icons';
-import { useState, type FC } from 'react';
+import { useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 
 interface ToolCallPartProps {
   toolCallId: string;
@@ -70,6 +71,28 @@ const formatArgs = (args: Record<string, unknown>, toolName: string): string => 
   return `${keys.length} params`;
 };
 
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
+
+const normalizeFilePath = (filePath: string) => filePath.replace(/^\/+/, '');
+
+const encodeFilePath = (filePath: string) =>
+  normalizeFilePath(filePath)
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+
+const buildWorkspaceFileUrl = (
+  sessionId: string,
+  filePath: string,
+  options: { raw?: boolean; download?: boolean } = {}
+) => {
+  const params = new URLSearchParams();
+  if (options.raw) params.set('raw', '1');
+  if (options.download) params.set('download', '1');
+  const query = params.toString();
+  return `/api/workspace/${sessionId}/file/${encodeFilePath(filePath)}${query ? `?${query}` : ''}`;
+};
+
 export const ToolCallPart: FC<ToolCallPartProps> = ({
   toolName,
   args,
@@ -79,9 +102,41 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   status,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const autoExpandedRef = useRef(false);
   const isRunning = status?.type === 'running';
   const hasResult = result !== undefined;
   const style = getToolStyle(toolName);
+  const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+  const parsedResult = useMemo(() => {
+    if (!result) return null;
+    if (typeof result === 'string') {
+      const trimmed = result.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        return null;
+      }
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return null;
+      }
+    }
+    if (typeof result === 'object') {
+      return result;
+    }
+    return null;
+  }, [result]);
+
+  const filesCreated = Array.isArray(parsedResult?.filesCreated) ? parsedResult.filesCreated : [];
+  const filesUpdated = Array.isArray(parsedResult?.filesUpdated) ? parsedResult.filesUpdated : [];
+  const fileOutputs = filesCreated.length > 0 ? filesCreated : filesUpdated;
+  const hasFileOutputs = fileOutputs.length > 0;
+
+  useEffect(() => {
+    if (!autoExpandedRef.current && hasFileOutputs) {
+      setIsExpanded(true);
+      autoExpandedRef.current = true;
+    }
+  }, [hasFileOutputs]);
 
   return (
     <div className={`my-2 overflow-hidden rounded-lg border border-[#e5e4df] dark:border-[#3a3938] ${style.bg}`}>
@@ -104,6 +159,12 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
         <span className="truncate text-xs text-[#6b6a68] dark:text-[#9a9893]">
           {formatArgs(args, toolName)}
         </span>
+
+        {hasFileOutputs && (
+          <span className="ml-2 rounded-full border border-[#e5e4df] px-2 py-0.5 text-[10px] text-[#6b6a68] dark:border-[#3a3938] dark:text-[#9a9893]">
+            Outputs: {fileOutputs.length}
+          </span>
+        )}
 
         <span className="ml-auto flex items-center gap-1">
           {isRunning && (
@@ -146,6 +207,75 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
               >
                 {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
               </pre>
+            </div>
+          )}
+
+          {hasFileOutputs && (
+            <div>
+              <div className="mb-1 text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
+                Generated Files
+              </div>
+              <div className="space-y-2">
+                {fileOutputs.map((filePath: string) => {
+                  const isImage = IMAGE_EXTENSIONS.test(filePath);
+                  const sessionId = currentSessionId;
+                  const rawUrl = sessionId
+                    ? buildWorkspaceFileUrl(sessionId, filePath, { raw: true })
+                    : null;
+                  const downloadUrl = sessionId
+                    ? buildWorkspaceFileUrl(sessionId, filePath, { raw: true, download: true })
+                    : null;
+
+                  return (
+                    <div
+                      key={filePath}
+                      className="rounded border border-[#e5e4df] bg-white/70 p-2 text-xs dark:border-[#3a3938] dark:bg-[#1f1e1b]"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-mono text-[11px] text-[#333] dark:text-[#e5e4df]">
+                          {filePath}
+                        </span>
+                        {sessionId && (
+                          <div className="flex items-center gap-2 text-[11px]">
+                            {rawUrl && (
+                              <a
+                                href={rawUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary underline underline-offset-2"
+                              >
+                                Open
+                              </a>
+                            )}
+                            {downloadUrl && (
+                              <a
+                                href={downloadUrl}
+                                className="text-primary underline underline-offset-2"
+                              >
+                                Download
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {sessionId && rawUrl && isImage && (
+                        <div className="mt-2 overflow-hidden rounded border border-[#e5e4df] dark:border-[#3a3938]">
+                          <img
+                            src={rawUrl}
+                            alt={filePath}
+                            className="max-h-64 w-full object-contain bg-white dark:bg-[#111]"
+                          />
+                        </div>
+                      )}
+                      {!sessionId && (
+                        <div className="mt-2 text-[11px] text-[#6b6a68] dark:text-[#9a9893]">
+                          Workspace not available for download.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

@@ -48,13 +48,57 @@ function resolveFilePathFromRequest(
     if (url.pathname.startsWith(prefix)) {
       const remainder = url.pathname.slice(prefix.length);
       if (remainder) {
-        return remainder.replace(/^\/+/, '');
+        const trimmed = remainder.replace(/^\/+/, '');
+        try {
+          return decodeURIComponent(trimmed);
+        } catch {
+          return trimmed;
+        }
       }
     }
   } catch {
     // Fall back to the route param if URL parsing fails.
   }
   return fallback;
+}
+
+function parseRawOptions(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const raw = url.searchParams.get('raw');
+    const download = url.searchParams.get('download');
+    return {
+      raw: raw === '1' || raw === 'true',
+      download: download === '1' || download === 'true',
+    };
+  } catch {
+    return { raw: false, download: false };
+  }
+}
+
+const CONTENT_TYPE_BY_EXT: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.ts': 'text/plain; charset=utf-8',
+  '.tsx': 'text/plain; charset=utf-8',
+  '.jsx': 'text/plain; charset=utf-8',
+};
+
+function getContentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  return CONTENT_TYPE_BY_EXT[ext] || 'application/octet-stream';
 }
 
 export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')({
@@ -65,6 +109,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')
         const user = await requireUser(request);
         const { sessionId, filePath: rawFilePath } = params;
         const filePath = resolveFilePathFromRequest(request, sessionId, rawFilePath);
+        const { raw, download } = parseRawOptions(request);
 
         // Validate file path
         if (!validateFilePath(filePath)) {
@@ -102,7 +147,19 @@ export const Route = createFileRoute('/api/workspace/$sessionId/file/$filePath')
             );
           }
 
-          // Read file content
+          if (raw) {
+            const buffer = await readFile(fullFilePath);
+            const headers = new Headers();
+            headers.set('content-type', getContentType(filePath));
+            headers.set('cache-control', 'no-store');
+            if (download) {
+              const filename = path.basename(filePath);
+              headers.set('content-disposition', `attachment; filename="${filename}"`);
+            }
+            return new Response(buffer, { headers });
+          }
+
+          // Read file content as text
           const content = await readFile(fullFilePath, 'utf-8');
 
           return Response.json({
