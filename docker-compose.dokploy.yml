@@ -268,6 +268,11 @@ services:
       CLAUDE_SESSIONS_ROOT: /data/users
       APP_URL: http://localhost:5000
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
+      CLAUDE_MCP_STORE_DIR: ${CLAUDE_MCP_STORE_DIR:-src/mcp-store}
+      MCP_STORE_DIR: ${MCP_STORE_DIR:-src/mcp-store}
+      PYTHON_RUNNER_TIMEOUT_MS: ${PYTHON_RUNNER_TIMEOUT_MS:-10000}
+      PYTHON_RUNNER_MAX_OUTPUT_BYTES: ${PYTHON_RUNNER_MAX_OUTPUT_BYTES:-512000}
+      PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
       # Structured Outputs for Artifacts (default: disabled for stability)
       ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-false}
       # WebSocket URL (frontend configuration)
