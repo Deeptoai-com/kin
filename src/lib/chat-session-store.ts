@@ -96,6 +96,12 @@ interface ChatSessionState {
   // Whether a query is in progress
   isRunning: boolean;
 
+  // Fine-grained agent status for UI indicators
+  agentStatus: 'idle' | 'thinking' | 'reasoning' | 'toolUse' | 'streaming';
+
+  // Current tool being executed (if any)
+  currentToolName: string | null;
+
   // Usage/cost data for current session
   usageData: UsageData | null;
 
@@ -111,6 +117,8 @@ interface ChatSessionState {
   addMessage: (message: ThreadMessage) => void;
   updateLastMessage: (content: ContentPart[]) => void;
   setIsRunning: (isRunning: boolean) => void;
+  setAgentStatus: (status: ChatSessionState['agentStatus']) => void;
+  setCurrentToolName: (toolName: string | null) => void;
   setUsageData: (data: UsageData) => void;
   setSessionMetadata: (data: SessionMetadata) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
@@ -233,6 +241,8 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   currentSessionId: null,
   messages: [],
   isRunning: false,
+  agentStatus: 'idle',
+  currentToolName: null,
   usageData: null,
   sessionMetadata: null,
   lastStructuredOutput: null,
@@ -266,7 +276,20 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   },
 
   setIsRunning: (isRunning) => {
-    set({ isRunning });
+    // When stopping, also reset agent status
+    if (!isRunning) {
+      set({ isRunning, agentStatus: 'idle', currentToolName: null });
+    } else {
+      set({ isRunning, agentStatus: 'thinking' });
+    }
+  },
+
+  setAgentStatus: (agentStatus) => {
+    set({ agentStatus });
+  },
+
+  setCurrentToolName: (currentToolName) => {
+    set({ currentToolName });
   },
 
   setUsageData: (data) => {
