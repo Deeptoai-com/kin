@@ -905,8 +905,33 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   // State for showing usage card
   const [showUsageCard, setShowUsageCard] = useState(false);
 
-  // Get usage data from store (only show for last message)
+  // Get usage data and agent status from store (only show for last message)
   const usageData = useChatSessionStore((state) => state.usageData);
+  const agentStatus = useChatSessionStore((state) => state.agentStatus);
+  const currentToolName = useChatSessionStore((state) => state.currentToolName);
+
+  // Compute status display text based on agentStatus
+  const getStatusDisplay = () => {
+    if (!isRunning) return null;
+
+    switch (agentStatus) {
+      case 'reasoning':
+        return { icon: '🧠', text: 'Reasoning...', color: 'text-purple-500' };
+      case 'toolUse':
+        return {
+          icon: '🔧',
+          text: currentToolName ? `Running ${currentToolName}...` : 'Running tool...',
+          color: 'text-amber-500'
+        };
+      case 'streaming':
+        return { icon: '✨', text: 'Generating...', color: 'text-green-500' };
+      case 'thinking':
+      default:
+        return { icon: '💭', text: 'Thinking...', color: 'text-blue-500' };
+    }
+  };
+
+  const statusDisplay = getStatusDisplay();
 
   // Artifact detection - pass full content array to support both text and tool-call detection
   useArtifactDetection(message.id, messageContent);
@@ -917,58 +942,77 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
         <div className="relative leading-[1.65rem]">
           <div className="grid grid-cols-1 gap-2.5">
             <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
-              {isRunning && !hasContent && (
+              {/* Status indicator - shows different states based on agentStatus */}
+              {statusDisplay && !hasContent && (
                 <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="text-sm">{statusDisplay.icon}</span>
+                  <span className={statusDisplay.color}>{statusDisplay.text}</span>
+                </div>
+              )}
+
+              {/* Inline status when content exists but still running */}
+              {statusDisplay && hasContent && (
+                <div className="mb-2 flex items-center gap-2 text-xs">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-[#ae5630]" />
-                  <span>Thinking...</span>
+                  <span className={`${statusDisplay.color} opacity-80`}>{statusDisplay.text}</span>
                 </div>
               )}
 
               {/* Manual rendering to support custom tool-call type */}
               {messageContent?.map((part, index) => {
                 if (part.type === 'text') {
+                  // Check if this is the last text part and we're streaming
+                  const isLastTextPart = messageContent
+                    .slice(index + 1)
+                    .every(p => p.type !== 'text');
+                  const showCursor = isRunning && agentStatus === 'streaming' && isLastTextPart;
+
                   return (
-                    <ReactMarkdown
-                      key={index}
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
-                        a: ({ href, children }) => (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary underline underline-offset-2 hover:opacity-80"
-                          >
-                            {children}
-                          </a>
-                        ),
-                        ul: ({ children }) => <ul className="mb-4 list-disc pl-6 last:mb-0">{children}</ul>,
-                        ol: ({ children }) => <ol className="mb-4 list-decimal pl-6 last:mb-0">{children}</ol>,
-                        li: ({ children }) => <li className="mb-1">{children}</li>,
-                        code: ({ children }) => (
-                          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
-                            {children}
-                          </code>
-                        ),
-                        pre: ({ children }) => (
-                          <pre className="mb-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm last:mb-0">
-                            {children}
-                          </pre>
-                        ),
-                        blockquote: ({ children }) => (
-                          <blockquote className="mb-4 border-l-2 border-muted-foreground pl-4 italic last:mb-0">
-                            {children}
-                          </blockquote>
-                        ),
-                        h1: ({ children }) => <h1 className="mb-4 text-2xl font-bold">{children}</h1>,
-                        h2: ({ children }) => <h2 className="mb-3 text-xl font-bold">{children}</h2>,
-                        h3: ({ children }) => <h3 className="mb-2 text-lg font-semibold">{children}</h3>,
-                        h4: ({ children }) => <h4 className="mb-2 font-semibold">{children}</h4>,
-                      }}
-                    >
-                      {part.text}
-                    </ReactMarkdown>
+                    <div key={index} className="relative">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
+                          a: ({ href, children }) => (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary underline underline-offset-2 hover:opacity-80"
+                            >
+                              {children}
+                            </a>
+                          ),
+                          ul: ({ children }) => <ul className="mb-4 list-disc pl-6 last:mb-0">{children}</ul>,
+                          ol: ({ children }) => <ol className="mb-4 list-decimal pl-6 last:mb-0">{children}</ol>,
+                          li: ({ children }) => <li className="mb-1">{children}</li>,
+                          code: ({ children }) => (
+                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
+                              {children}
+                            </code>
+                          ),
+                          pre: ({ children }) => (
+                            <pre className="mb-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm last:mb-0">
+                              {children}
+                            </pre>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className="mb-4 border-l-2 border-muted-foreground pl-4 italic last:mb-0">
+                              {children}
+                            </blockquote>
+                          ),
+                          h1: ({ children }) => <h1 className="mb-4 text-2xl font-bold">{children}</h1>,
+                          h2: ({ children }) => <h2 className="mb-3 text-xl font-bold">{children}</h2>,
+                          h3: ({ children }) => <h3 className="mb-2 text-lg font-semibold">{children}</h3>,
+                          h4: ({ children }) => <h4 className="mb-2 font-semibold">{children}</h4>,
+                        }}
+                      >
+                        {part.text}
+                      </ReactMarkdown>
+                      {showCursor && (
+                        <span className="inline-block h-4 w-0.5 animate-pulse bg-[#ae5630] ml-0.5" />
+                      )}
+                    </div>
                   );
                 }
                 if (part.type === 'reasoning') {
