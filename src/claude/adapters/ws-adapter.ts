@@ -23,7 +23,7 @@ type SDKContentBlock =
 
 // Local SDKMessage type for this adapter (content is always an array from streaming)
 type SDKMessage = {
-  type: 'system' | 'assistant' | 'user' | 'result' | 'error';
+  type: 'system' | 'assistant' | 'user' | 'result' | 'error' | 'stream_event';
   subtype?: string;
   uuid?: string;
   session_id?: string;
@@ -59,6 +59,24 @@ type SDKMessage = {
   cwd?: string;
   // Structured Outputs field (from outputFormat)
   structured_output?: unknown;
+  // Stream event fields (from includePartialMessages)
+  event?: StreamEvent;
+};
+
+// Stream event types (from Anthropic SDK RawMessageStreamEvent)
+type StreamEvent = {
+  type: 'content_block_start' | 'content_block_delta' | 'content_block_stop' | 'message_start' | 'message_delta' | 'message_stop';
+  index?: number;
+  content_block?: {
+    type: string;
+    name?: string;
+    id?: string;
+  };
+  delta?: {
+    type: string;
+    text?: string;
+    thinking?: string;
+  };
 };
 
 // WebSocket message types (matching ws-server.ts)
@@ -314,8 +332,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
   async *run({ messages, abortSignal, runConfig }: ChatModelRunOptions) {
     console.log('[WS Adapter] run() called with', messages.length, 'messages');
 
-    // Mark query as running
+    // Mark query as running and sync to store (sets agentStatus to 'thinking')
     isQueryRunning = true;
+    useChatSessionStore.getState().setIsRunning(true);
 
     // 1. Extract the latest user message
     const lastMessage = messages.at(-1);
@@ -388,6 +407,11 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
     // Track accumulated text length for proper streaming
     let accumulatedTextLength = 0;
 
+    // Streaming throttle: buffer text updates to reduce render frequency
+    const STREAMING_THROTTLE_MS = 100;
+    let lastTextYieldTime = 0;
+    let pendingTextYield = false;
+
     try {
       while (!isComplete && !error) {
         if (isAborted) {
@@ -440,8 +464,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
               case 'assistant':
                 if (event.message?.content) {
-                  // Track if we should yield (only if content actually changed)
-                  let shouldYield = false;
+                  // Track what types of content changed
+                  let hasTextChange = false;
+                  let hasNonTextChange = false;
 
                   for (const block of event.message.content) {
                     switch (block.type) {
@@ -452,8 +477,11 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                           if (newTextLength > accumulatedTextLength) {
                             // We have new text to add
                             accumulatedTextLength = newTextLength;
-                            shouldYield = true;
+                            hasTextChange = true;
                           }
+
+                          // Update agent status to streaming when text is coming in
+                          useChatSessionStore.getState().setAgentStatus('streaming');
 
                           // Always update the text part with the full accumulated text
                           let existingText = content.find(
@@ -474,12 +502,17 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                             type: 'reasoning',
                             text: block.thinking,
                           });
-                          shouldYield = true;
+                          hasNonTextChange = true;
+                          // Update agent status to reasoning
+                          useChatSessionStore.getState().setAgentStatus('reasoning');
                         }
                         break;
 
                       case 'tool_use':
                         if (block.id && block.name) {
+                          // Update agent status to toolUse and set current tool name
+                          useChatSessionStore.getState().setAgentStatus('toolUse');
+                          useChatSessionStore.getState().setCurrentToolName(block.name);
                           // Ensure args is always a plain object (never array or primitive)
                           let safeArgs: Record<string, unknown>;
                           const inputType = block.input == null ? 'null' : Array.isArray(block.input) ? 'array' : typeof block.input;
@@ -511,18 +544,41 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
                           toolCalls.set(block.id, toolPart);
                           content.push(toolPart);
-                          shouldYield = true;
+                          hasNonTextChange = true;
                         }
                         break;
                     }
                   }
 
-                  // Only yield if content actually changed
-                  if (shouldYield) {
+                  // Throttled yield logic:
+                  // - Non-text changes (tool calls, thinking) always yield immediately
+                  // - Text-only changes are throttled to reduce render frequency
+                  const now = Date.now();
+
+                  if (hasNonTextChange) {
+                    // Important event: yield immediately and flush any pending text
+                    pendingTextYield = false;
+                    lastTextYieldTime = now;
                     yield {
                       content: [...content] as ChatModelRunResult['content'],
                       status: { type: 'running' },
                     } satisfies ChatModelRunResult;
+                  } else if (hasTextChange) {
+                    // Text-only change: check throttle
+                    const timeSinceLastYield = now - lastTextYieldTime;
+
+                    if (timeSinceLastYield >= STREAMING_THROTTLE_MS) {
+                      // Enough time has passed, yield now
+                      pendingTextYield = false;
+                      lastTextYieldTime = now;
+                      yield {
+                        content: [...content] as ChatModelRunResult['content'],
+                        status: { type: 'running' },
+                      } satisfies ChatModelRunResult;
+                    } else {
+                      // Mark as pending, will be flushed later
+                      pendingTextYield = true;
+                    }
                   }
                 }
                 break;
@@ -533,6 +589,10 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                     if (block.type === 'tool_result' && block.tool_use_id) {
                       const toolPart = toolCalls.get(block.tool_use_id);
                       if (toolPart) {
+                        // Clear current tool name after result is received
+                        useChatSessionStore.getState().setCurrentToolName(null);
+                        useChatSessionStore.getState().setAgentStatus('thinking');
+
                         // Normalize block.content to a safe string format
                         // block.content can be: string | array | object
                         let resultContent: string;
@@ -608,6 +668,97 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
               case 'error':
                 error = new Error(event.error || 'Unknown error');
                 break;
+
+              case 'stream_event':
+                // Handle streaming partial messages (enabled via includePartialMessages: true)
+                // event.event contains the raw Anthropic stream event
+                if (event.event) {
+                  const streamEvent = event.event;
+
+                  switch (streamEvent.type) {
+                    case 'content_block_start':
+                      // A new content block is starting
+                      if (streamEvent.content_block?.type === 'thinking') {
+                        useChatSessionStore.getState().setAgentStatus('reasoning');
+                      } else if (streamEvent.content_block?.type === 'tool_use') {
+                        useChatSessionStore.getState().setAgentStatus('toolUse');
+                        useChatSessionStore.getState().setCurrentToolName(streamEvent.content_block.name || 'tool');
+                      } else if (streamEvent.content_block?.type === 'text') {
+                        useChatSessionStore.getState().setAgentStatus('streaming');
+                      }
+                      break;
+
+                    case 'content_block_delta':
+                      // Incremental content update
+                      if (streamEvent.delta?.type === 'text_delta' && streamEvent.delta.text) {
+                        // Accumulate text delta
+                        let existingText = content.find(
+                          (p): p is TextPart => p.type === 'text'
+                        );
+                        if (existingText) {
+                          const index = content.indexOf(existingText);
+                          content[index] = { type: 'text', text: existingText.text + streamEvent.delta.text };
+                        } else {
+                          content.push({ type: 'text', text: streamEvent.delta.text });
+                        }
+
+                        // Throttled yield for text streaming
+                        const now = Date.now();
+                        if (now - lastTextYieldTime >= STREAMING_THROTTLE_MS) {
+                          lastTextYieldTime = now;
+                          yield {
+                            content: [...content] as ChatModelRunResult['content'],
+                            status: { type: 'running' },
+                          } satisfies ChatModelRunResult;
+                        } else {
+                          pendingTextYield = true;
+                        }
+                      } else if (streamEvent.delta?.type === 'thinking_delta' && streamEvent.delta.thinking) {
+                        // Accumulate thinking delta
+                        let existingReasoning = content.find(
+                          (p): p is ReasoningPart => p.type === 'reasoning'
+                        );
+                        if (existingReasoning) {
+                          const index = content.indexOf(existingReasoning);
+                          content[index] = { type: 'reasoning', text: existingReasoning.text + streamEvent.delta.thinking };
+                        } else {
+                          content.push({ type: 'reasoning', text: streamEvent.delta.thinking });
+                        }
+
+                        // Yield immediately for reasoning updates
+                        yield {
+                          content: [...content] as ChatModelRunResult['content'],
+                          status: { type: 'running' },
+                        } satisfies ChatModelRunResult;
+                      }
+                      break;
+
+                    case 'content_block_stop':
+                      // Content block finished - flush any pending content
+                      if (pendingTextYield) {
+                        pendingTextYield = false;
+                        yield {
+                          content: [...content] as ChatModelRunResult['content'],
+                          status: { type: 'running' },
+                        } satisfies ChatModelRunResult;
+                      }
+                      break;
+
+                    case 'message_start':
+                      // Message starting
+                      useChatSessionStore.getState().setAgentStatus('thinking');
+                      break;
+
+                    case 'message_delta':
+                      // Message state change (e.g., stop_reason)
+                      break;
+
+                    case 'message_stop':
+                      // Message complete
+                      break;
+                  }
+                }
+                break;
             }
             break;
 
@@ -629,6 +780,14 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         }
       }
 
+      // Flush any pending text content before completion
+      if (pendingTextYield && content.length > 0) {
+        yield {
+          content: [...content] as ChatModelRunResult['content'],
+          status: { type: 'running' },
+        } satisfies ChatModelRunResult;
+      }
+
       if (error) {
         throw error;
       }
@@ -637,10 +796,14 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
       messageHandler = null;
       isQueryRunning = false;
       hasPendingChat = false;
+      // Sync to store - this also resets agentStatus to 'idle' and currentToolName to null
+      useChatSessionStore.getState().setIsRunning(false);
     }
 
     if (isAborted) {
+      // Include any content that was already generated before the abort
       yield {
+        content: (content.length > 0 ? content : [{ type: 'text', text: '' }]) as ChatModelRunResult['content'],
         status: { type: 'incomplete', reason: 'cancelled' },
       } satisfies ChatModelRunResult;
       return;

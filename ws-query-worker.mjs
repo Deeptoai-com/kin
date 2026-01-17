@@ -313,6 +313,7 @@ Example bad operations:
       options: {
         cwd: config.cwd,
         model: config.model,
+        includePartialMessages: true, // Enable streaming events for real-time UI updates
         permissionMode,
         disallowedTools,
         ...(allowDangerouslySkipPermissions && { allowDangerouslySkipPermissions: true }),
