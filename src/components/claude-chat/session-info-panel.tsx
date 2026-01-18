@@ -15,12 +15,19 @@ import { Cross2Icon, CopyIcon, CheckIcon } from '@radix-ui/react-icons';
 import { SkillsManagerPanel } from './skills-manager-panel';
 import { useChatSessionStore } from '~/lib/chat-session-store';
 
+export interface McpServerStatus {
+  name: string;
+  status: 'connected' | 'failed' | 'pending';
+  error?: string;
+  tool_count?: number;
+}
+
 export interface SessionMetadata {
   session_id: string;
   user_id: string;  // 真实的用户 ID，用于 Skills 隔离
   model: string;
   skills: string[];
-  mcp_servers: string[];
+  mcp_servers: string[] | McpServerStatus[];
   agents: string[];
   tools: string[];
   slash_commands: string[];
@@ -79,7 +86,6 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
 
   // Safely convert arrays to strings (SDK may return objects with {name, status})
   const skills = toStringArray(data.skills || []);
-  const mcpServers = toStringArray(data.mcp_servers || []);
   const agents = toStringArray(data.agents || []);
   const tools = toStringArray(data.tools || []);
 
@@ -131,15 +137,34 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
         {/* MCP 服务器 */}
         <div>
           <div className="mb-1.5 font-medium text-[#1a1a18] dark:text-[#eee]">
-            🔌 MCP 服务器 {mcpServers.length > 0 && `(${mcpServers.length})`}
+            🔌 MCP 服务器 {data.mcp_servers?.length > 0 && `(${data.mcp_servers.length})`}
           </div>
-          {mcpServers.length > 0 ? (
+          {data.mcp_servers && data.mcp_servers.length > 0 ? (
             <ul className="space-y-1 pl-4">
-              {mcpServers.map((server) => (
-                <li key={server} className="text-[#6b6a68] dark:text-[#9a9893]">
-                  • {server}
-                </li>
-              ))}
+              {data.mcp_servers.map((server) => {
+                // Check if server is a status object or string
+                const statusObj = typeof server === 'object' ? server : null;
+                const name = statusObj?.name || (typeof server === 'string' ? server : String(server));
+                const status = statusObj?.status || 'unknown';
+                const toolCount = statusObj?.tool_count;
+                const error = statusObj?.error;
+
+                // Status indicator
+                const statusIndicator = status === 'connected' ? '🟢' :
+                  status === 'failed' ? '🔴' :
+                  status === 'pending' ? '🟡' : '⚪';
+
+                return (
+                  <li key={name} className="flex items-start gap-1.5 text-[#6b6a68] dark:text-[#9a9893]">
+                    <span>{statusIndicator}</span>
+                    <span className="flex-1">
+                      {name}
+                      {toolCount !== undefined && <span className="ml-1 text-[#8a8985]">({toolCount} tools)</span>}
+                    </span>
+                    {error && <span className="text-red-500 text-[10px]" title={error}>⚠️</span>}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div className="pl-4 text-[#8a8985] italic dark:text-[#b8b5a9]">
