@@ -1,8 +1,9 @@
 import { FC, useState } from 'react';
-import { X, File, Folder, FolderOpen, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, File, Folder, FolderOpen, ChevronRight, ChevronDown, Settings } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/lib/utils';
 import type { McpDetail, McpFile } from '~/claude/mcp';
+import { McpToolsEditor } from './mcp-tools-editor';
 
 interface McpDetailDialogProps {
   mcp: McpDetail | null;
@@ -17,8 +18,7 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
 }) => {
   const [selectedFile, setSelectedFile] = useState<McpFile | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['/']));
-
-  if (!isOpen || !mcp) return null;
+  const [activeTab, setActiveTab] = useState<'files' | 'tools'>('files');
 
   if (!selectedFile && mcp.files.length > 0) {
     const manifest = findFileByName(mcp.files, 'MCP.md');
@@ -87,27 +87,64 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
           </div>
 
           <div className="flex-1 overflow-hidden flex flex-col">
-            {selectedFile ? (
-              <>
-                <div className="flex items-center justify-between border-b px-6 py-3">
-                  <div className="flex items-center gap-2">
-                    <File className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{selectedFile.name}</span>
-                    {selectedFile.size !== undefined && (
-                      <span className="text-sm text-muted-foreground">
-                        ({formatFileSize(selectedFile.size)})
-                      </span>
-                    )}
-                  </div>
-                </div>
+            {/* Tab headers */}
+            <div className="flex border-b border-[#e5e4df] dark:border-[#3a3938]">
+              <button
+                onClick={() => setActiveTab('files')}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                  activeTab === 'files'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-[#6b6a68] hover:text-[#1a1a18] dark:hover:text-[#9a9893]'
+                }`}
+              >
+                <File className="inline h-4 w-4 mr-1" />
+                Files
+              </button>
+              <button
+                onClick={() => setActiveTab('tools')}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                  activeTab === 'tools'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-[#6b6a68] hover:text-[#1a1a18] dark:hover:text-[#9a9893]'
+                }`}
+              >
+                <Settings className="inline h-4 w-4 mr-1" />
+                Tool Permissions
+              </button>
+            </div>
 
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  <FileContent file={selectedFile} />
-                </div>
+            {/* Tab content */}
+            {activeTab === 'files' && (
+              <>
+                {selectedFile ? (
+                  <>
+                    <div className="flex items-center justify-between border-b border-[#e5e4df] dark:border-[#3a3938] px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <File className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{selectedFile.name}</span>
+                        {selectedFile.size !== undefined && (
+                          <span className="text-sm text-muted-foreground">
+                            ({formatFileSize(selectedFile.size)})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-6 py-4">
+                      <FileContent file={selectedFile} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                    <p>Select a file to view its content</p>
+                  </div>
+                )}
               </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <p>Select a file to view its content</p>
+            )}
+
+            {activeTab === 'tools' && (
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <McpToolsEditor slug={mcp.slug} />
               </div>
             )}
           </div>

@@ -1,18 +1,22 @@
-import { FC, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { CheckCircle, Circle, Code, Database, Plug, Search } from 'lucide-react';
+import { FC, useMemo, useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle, Circle, Code, Database, Plug, Search, Plus, User, Globe } from 'lucide-react';
 import { Input } from '~/components/ui/input';
+import { Button } from '~/components/ui/button';
 import { useServerFn } from '@tanstack/react-start';
 import {
   disableMcpServerFn,
   enableMcpServerFn,
   getMcpDetailFn,
   verifyMcpServerFn,
+  deleteCustomMcpFn,
+  listAllMcpsFn,
 } from '~/server/function/mcp.server';
 import type { ExtendedMcpInfo, McpDetail } from '~/claude/mcp';
 import { McpSidebar } from './mcp-sidebar';
 import { McpGrid } from './mcp-grid';
 import { McpDetailDialog } from './mcp-detail-dialog';
+import { AddCustomMcpDialog } from './add-custom-mcp-dialog';
 
 interface CategoryItem {
   id: string;
@@ -25,22 +29,36 @@ const CATEGORIES: CategoryItem[] = [
   { id: 'development', label: 'Development', icon: Code },
   { id: 'data', label: 'Data', icon: Database },
   { id: 'installed', label: 'Enabled', icon: CheckCircle },
+  { id: 'system', label: 'System MCPs', icon: Globe },
+  { id: 'custom', label: 'My MCPs', icon: User },
 ];
 
 export const McpPageComponent: FC<{
   mcps: ExtendedMcpInfo[];
+  systemMcps: ExtendedMcpInfo[];
+  userMcps: ExtendedMcpInfo[];
   enabledMcps: string[];
-}> = ({ mcps, enabledMcps: initialEnabled }) => {
+}> = ({ mcps: initialMcps, systemMcps: initialSystemMcps, userMcps: initialUserMcps, enabledMcps: initialEnabled }) => {
+  const queryClient = useQueryClient();
   const enableMcp = useServerFn(enableMcpServerFn);
   const disableMcp = useServerFn(disableMcpServerFn);
   const verifyMcp = useServerFn(verifyMcpServerFn);
+  const deleteCustomMcp = useServerFn(deleteCustomMcpFn);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [mcps, setMcps] = useState<ExtendedMcpInfo[]>(() => initialMcps);
+  const [systemMcps, setSystemMcps] = useState<ExtendedMcpInfo[]>(() => initialSystemMcps);
+  const [userMcps, setUserMcps] = useState<ExtendedMcpInfo[]>(() => initialUserMcps);
   const [enabledMcps, setEnabledMcps] = useState<string[]>(() => initialEnabled);
   const [verifyingSlug, setVerifyingSlug] = useState<string | null>(null);
+  const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+
+  // Combine official, system, and user MCPs
+  const allMcps = useMemo(() => [...mcps, ...systemMcps, ...userMcps], [mcps, systemMcps, userMcps]);
 
   const { data: detail } = useQuery({
     queryKey: ['mcp-detail', selectedSlug],
@@ -98,11 +116,62 @@ export const McpPageComponent: FC<{
     }
   };
 
+  const handleDeleteCustomMcp = async (slug: string) => {
+    // Find the MCP to determine its store type
+    const mcp = allMcps.find((m) => m.slug === slug);
+    const storeType = mcp?.store;
+    const isSystemMcp = storeType === 'system';
+
+    const confirmMsg = isSystemMcp
+      ? `Are you sure you want to delete system MCP "${slug}"? This will affect all users. This action cannot be undone.`
+      : `Are you sure you want to delete "${slug}"? This action cannot be undone.`;
+
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    try {
+      setDeletingSlug(slug);
+      const result = await deleteCustomMcp({ data: { slug, scope: isSystemMcp ? 'system' : 'personal' } });
+      if (result.ok) {
+        if (isSystemMcp) {
+          setSystemMcps((prev) => prev.filter((mcp) => mcp.slug !== slug));
+        } else {
+          setUserMcps((prev) => prev.filter((mcp) => mcp.slug !== slug));
+        }
+        setEnabledMcps((prev) => prev.filter((s) => s !== slug));
+      } else {
+        alert(result.error || 'Failed to delete MCP.');
+      }
+    } catch (error) {
+      console.error('Failed to delete MCP:', error);
+      alert('Failed to delete MCP.');
+    } finally {
+      setDeletingSlug(null);
+    }
+  };
+
+  const handleAddSuccess = useCallback(async () => {
+    // Refresh MCP list
+    try {
+      const result = await listAllMcpsFn();
+      setMcps(result.official);
+      setSystemMcps(result.system);
+      setUserMcps(result.user);
+    } catch (error) {
+      console.error('Failed to refresh MCP list:', error);
+    }
+  }, []);
+
   const filteredMcps = useMemo(() => {
-    let result = mcps;
+    let result = allMcps;
 
     if (activeFilter === 'installed') {
       result = result.filter((mcp) => enabledMcps.includes(mcp.slug));
+    } else if (activeFilter === 'system') {
+      result = systemMcps;
+    } else if (activeFilter === 'custom') {
+      result = userMcps;
     } else if (activeFilter !== 'all') {
       result = result.filter((mcp) => mcp.category === activeFilter);
     }
@@ -117,12 +186,14 @@ export const McpPageComponent: FC<{
     }
 
     return result;
-  }, [mcps, activeFilter, searchQuery, enabledMcps]);
+  }, [allMcps, systemMcps, userMcps, activeFilter, searchQuery, enabledMcps]);
 
   const getCategoryCount = (categoryId: string) => {
-    if (categoryId === 'all') return mcps.length;
+    if (categoryId === 'all') return allMcps.length;
     if (categoryId === 'installed') return enabledMcps.length;
-    return mcps.filter((mcp) => mcp.category === categoryId).length;
+    if (categoryId === 'system') return systemMcps.length;
+    if (categoryId === 'custom') return userMcps.length;
+    return allMcps.filter((mcp) => mcp.category === categoryId).length;
   };
 
   return (
@@ -152,6 +223,10 @@ export const McpPageComponent: FC<{
                 className="w-64 pl-9"
               />
             </div>
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add MCP
+            </Button>
           </div>
         </div>
 
@@ -171,9 +246,11 @@ export const McpPageComponent: FC<{
               mcps={filteredMcps}
               enabledMcps={enabledMcps}
               verifyingSlug={verifyingSlug}
+              deletingSlug={deletingSlug}
               onToggleMcp={handleToggleMcp}
               onViewDetails={handleViewDetails}
               onVerifyMcp={handleVerify}
+              onDeleteMcp={handleDeleteCustomMcp}
             />
           )}
         </div>
@@ -183,6 +260,12 @@ export const McpPageComponent: FC<{
         mcp={detail as McpDetail | null}
         isOpen={isDetailOpen}
         onClose={handleCloseDetail}
+      />
+
+      <AddCustomMcpDialog
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
+        onSuccess={handleAddSuccess}
       />
     </div>
   );
