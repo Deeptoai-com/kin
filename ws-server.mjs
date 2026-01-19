@@ -565,6 +565,7 @@ async function handleChat(ws, prompt, resumeSessionId) {
       workerEnv.ANTHROPIC_API_URL = config.baseURL;
     }
     if (config.model) workerEnv.ANTHROPIC_MODEL = config.model;
+    workerEnv.ENABLE_TOOL_SEARCH = 'auto:10';  // Enable Tool Search when many MCP tools available
 
     // Fetch permission info from API (includes organization settings)
     const permissionInfo = await fetchPermissionInfo(ws.cookie);

@@ -105,6 +105,7 @@ function extractMcpMetadataFromMarkdown(content, fallbackName) {
               description: typeof c.description === 'string' ? c.description : null,
               required: Boolean(c.required),
               sensitive: Boolean(c.sensitive ?? true),
+              envFallback: typeof c.envFallback === 'string' ? c.envFallback : null,
             }))
             .filter(c => c.key !== null);
         }

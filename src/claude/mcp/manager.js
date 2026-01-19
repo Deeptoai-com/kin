@@ -199,15 +199,39 @@ export async function setMcpAllowedToolsOverride(userId, slug, allowedTools) {
 
 /**
  * Resolve environment variable templates like ${VAR_NAME}
+ * Supports:
+ * - Full match: "${VAR_NAME}" -> "value"
+ * - Partial match: "Bearer ${VAR_NAME}" -> "Bearer value"
+ * - envFallback: if user credential is empty, fall back to process.env
  */
-function resolveEnvTemplate(template, credentials) {
+function resolveEnvTemplate(template, credentials, credentialDefs = []) {
   if (!template || typeof template !== 'object') return {};
+
+  // Build envFallback map from credential definitions
+  const envFallbackMap = {};
+  for (const def of credentialDefs) {
+    if (def.key && def.envFallback) {
+      envFallbackMap[def.key] = def.envFallback;
+    }
+  }
 
   const result = {};
   for (const [key, value] of Object.entries(template)) {
-    if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
-      const credKey = value.slice(2, -1);
-      result[key] = credentials[credKey] || '';
+    if (typeof value === 'string') {
+      // Replace all ${VAR_NAME} patterns in the string
+      result[key] = value.replace(/\$\{([^}]+)\}/g, (match, credKey) => {
+        // Priority: user credential > envFallback from process.env
+        const userValue = credentials[credKey];
+        if (userValue && userValue.trim()) {
+          return userValue;
+        }
+        // Check if there's an envFallback for this credential
+        const fallbackEnvVar = envFallbackMap[credKey];
+        if (fallbackEnvVar && process.env[fallbackEnvVar]) {
+          return process.env[fallbackEnvVar];
+        }
+        return '';
+      });
     } else {
       result[key] = value;
     }
@@ -339,20 +363,32 @@ export async function resolveMcpServerConfigs({ userId, userHome, sdkServers = {
     }
 
     if (mcpConfig.type === 'stdio') {
-      // Resolve env templates with user credentials
-      const resolvedEnv = resolveEnvTemplate(mcpConfig.env, credentials);
+      // Resolve env templates with user credentials (with envFallback support)
+      const resolvedEnv = resolveEnvTemplate(mcpConfig.env, credentials, entry.credentials || []);
+
+      // IMPORTANT: Merge with essential system environment variables (PATH, HOME, etc.)
+      // to ensure child process can find executables like 'node', 'npx'
+      // Claude Agent SDK may use this env as the complete environment for subprocess
+      const mergedEnv = Object.keys(resolvedEnv).length > 0
+        ? {
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            NODE_PATH: process.env.NODE_PATH,
+            ...resolvedEnv,
+          }
+        : undefined;
 
       configMap[name] = {
         command: mcpConfig.command,
         ...(mcpConfig.args ? { args: mcpConfig.args } : {}),
-        ...(Object.keys(resolvedEnv).length > 0 ? { env: resolvedEnv } : {}),
+        ...(mergedEnv ? { env: mergedEnv } : {}),
       };
       continue;
     }
 
     if (mcpConfig.type === 'sse' || mcpConfig.type === 'http') {
-      // Resolve header templates with user credentials
-      const resolvedHeaders = resolveEnvTemplate(mcpConfig.headers, credentials);
+      // Resolve header templates with user credentials (with envFallback support)
+      const resolvedHeaders = resolveEnvTemplate(mcpConfig.headers, credentials, entry.credentials || []);
 
       configMap[name] = {
         type: mcpConfig.type,

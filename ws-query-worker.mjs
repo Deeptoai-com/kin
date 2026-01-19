@@ -330,10 +330,8 @@ Example bad operations:
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         // allowedTools: control which MCP tools can be used
         ...(allowedTools.length > 0 && { allowedTools }),
-        // Enable Tool Search when many MCP tools are available (auto:10 = when tools > 10% of context)
-        env: {
-          ENABLE_TOOL_SEARCH: 'auto:10',
-        },
+        // Note: ENABLE_TOOL_SEARCH is set in ws-server.mjs workerEnv
+        // Do NOT set env here - SDK treats it as complete environment, clearing PATH
         // Add system prompt to guide file path behavior
         // IMPORTANT: Use 'systemPrompt' (not 'systemMessage') with preset + append
         systemPrompt: {
