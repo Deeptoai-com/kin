@@ -880,6 +880,31 @@ export const getMcpToolsFn = createServerFn({ method: 'POST' })
             requestInit: { headers: resolvedHeaders },
           });
         }
+      } else if (mcpConfig.type === 'sdk') {
+        // SDK type MCPs run in-process (Claude Agent SDK only)
+        // Return predefined tools from allowedTools in MCP.md
+        const allowedTools = entry.allowedTools || [];
+        if (allowedTools.length === 0) {
+          return {
+            ok: false,
+            error: `SDK MCP "${slug}" has no allowedTools defined`,
+            tools: [],
+          };
+        }
+        // Parse tool names from full names (e.g., "mcp__glm-image__generate" -> "generate")
+        const tools = allowedTools.map((fullName: string) => {
+          const parts = fullName.split('__');
+          const toolName = parts.length >= 3 ? parts.slice(2).join('__') : fullName;
+          return {
+            name: toolName,
+            description: `SDK tool: ${toolName}`,
+            fullName,
+          };
+        });
+        return {
+          ok: true,
+          tools,
+        };
       } else {
         return {
           ok: false,
