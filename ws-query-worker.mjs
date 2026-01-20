@@ -12,6 +12,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createPathSecurity } from './src/claude/path-security.js';
 import { resolveMcpServerConfigs } from './src/claude/mcp/manager.js';
 import { runPython } from './src/claude/python/runner.js';
+import { generateImage } from './src/claude/glm-image/runner.js';
 
 // Read configuration from environment
 const config = {
@@ -232,11 +233,63 @@ process.stdin.on('end', async () => {
       tools: [pythonRunTool],
     });
 
+    // GLM-Image MCP Tool - Image generation using Zhipu API
+    const glmImageGenerateTool = tool(
+      'generate',
+      'Generate an image using Zhipu GLM-Image API (cogview series models). Returns the saved image path.',
+      {
+        prompt: z.string().min(1).describe('Image generation prompt (required)'),
+        imagePath: z.string().optional().describe('Output image path relative to workspace (default: generated.png)'),
+        model: z.literal('glm-image').optional().describe('Model ID (default: glm-image)'),
+        size: z.enum([
+          '1024x1024', '1280x1280', '768x1344', '1344x768',
+          '864x1152', '1152x864', '1440x720', '720x1440',
+          '1280x720', '720x1280', '1280x960', '960x1280',
+        ]).optional().describe('Image size (default: 1024x1024)'),
+        quality: z.enum(['hd', 'standard']).optional().describe('Quality level (default: hd)'),
+        watermark: z.boolean().optional().describe('Enable watermark (default: false)'),
+      },
+      async (args) => {
+        try {
+          const result = await generateImage({
+            prompt: args.prompt,
+            imagePath: args.imagePath,
+            cwd: config.cwd,
+            model: args.model,
+            size: args.size,
+            quality: args.quality,
+            watermark: args.watermark,
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(result),
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+              isError: true,
+            }],
+          };
+        }
+      }
+    );
+
+    const glmImageMcpServer = createSdkMcpServer({
+      name: 'glm-image',
+      tools: [glmImageGenerateTool],
+    });
+
     const { mcpServers, allowedTools } = await resolveMcpServerConfigs({
       userId,
       userHome: process.env.CLAUDE_HOME,
       sdkServers: {
         python: pythonMcpServer,
+        'glm-image': glmImageMcpServer,
       },
     });
 
