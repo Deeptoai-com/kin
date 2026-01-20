@@ -12,10 +12,20 @@ const API_ENDPOINT = 'https://open.bigmodel.cn/api/paas/v4/images/generations';
 
 const VALID_MODELS = ['glm-image'];
 
+// Valid sizes must be:
+// - Width/Height: 512-2880px, multiple of 32
+// - Total pixels: < 2^22 (4,194,304)
 const VALID_SIZES = [
-  '1024x1024', '1280x1280', '768x1344', '1344x768',
-  '864x1152', '1152x864', '1440x720', '720x1440',
-  '1280x720', '720x1280', '1280x960', '960x1280',
+  '1024x1024',  // 1:1 square
+  '1280x1280',  // 1:1 large square
+  '768x1344',   // 4:7 portrait
+  '1344x768',   // 7:4 landscape (use instead of 16:9)
+  '864x1152',   // 3:4 portrait
+  '1152x864',   // 4:3 landscape
+  '1024x1792',  // 9:16 portrait
+  '1792x1024',  // 16:9 landscape (recommended for slides)
+  '960x1280',   // 3:4 portrait
+  '1280x960',   // 4:3 landscape
 ];
 
 const DEFAULT_MODEL = 'glm-image';

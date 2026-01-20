@@ -243,9 +243,9 @@ process.stdin.on('end', async () => {
         model: z.literal('glm-image').optional().describe('Model ID (default: glm-image)'),
         size: z.enum([
           '1024x1024', '1280x1280', '768x1344', '1344x768',
-          '864x1152', '1152x864', '1440x720', '720x1440',
-          '1280x720', '720x1280', '1280x960', '960x1280',
-        ]).optional().describe('Image size (default: 1024x1024)'),
+          '864x1152', '1152x864', '1024x1792', '1792x1024',
+          '960x1280', '1280x960',
+        ]).optional().describe('Image size (default: 1024x1024). For slides use 1792x1024 (16:9)'),
         quality: z.enum(['hd', 'standard']).optional().describe('Quality level (default: hd)'),
         watermark: z.boolean().optional().describe('Enable watermark (default: false)'),
       },

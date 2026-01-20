@@ -290,8 +290,8 @@ Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
 |-----------|------|-------------|
 | `prompt` | string (required) | Image generation prompt |
 | `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
-| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
-| `size` | string (optional) | Size: 1024x1024 (default), 1280x720, 720x1280, etc. |
+| `model` | string (optional) | Model: glm-image (default) |
+| `size` | string (optional) | Size: 1024x1024 (default), 1792x1024, 1024x1792, etc. |
 | `quality` | string (optional) | Quality: hd (default), standard |
 | `watermark` | boolean (optional) | Enable watermark (default: false) |
 

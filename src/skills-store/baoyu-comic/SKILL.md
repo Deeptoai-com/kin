@@ -282,7 +282,7 @@ Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
 |-----------|------|-------------|
 | `prompt` | string (required) | Image generation prompt |
 | `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
-| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
+| `model` | string (optional) | Model: glm-image (default) |
 | `size` | string (optional) | Size based on aspect ratio (see below) |
 | `quality` | string (optional) | Quality: hd (default), standard |
 | `watermark` | boolean (optional) | Enable watermark (default: false) |
@@ -290,7 +290,7 @@ Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
 **Size Mapping for Aspect Ratios**:
 - 3:4 Portrait (default): `768x1344` or `960x1280`
 - 4:3 Landscape: `1344x768` or `1280x960`
-- 16:9 Widescreen: `1280x720`
+- 16:9 Widescreen: `1792x1024`
 
 **Character Reference Handling**:
 Since MCP tool does NOT support reference images, include `characters/characters.md` content in prompt for visual consistency.

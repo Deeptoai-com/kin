@@ -185,13 +185,13 @@ Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
 |-----------|------|-------------|
 | `prompt` | string (required) | Image generation prompt |
 | `imagePath` | string (optional) | Output path relative to workspace (default: generated.png) |
-| `model` | string (optional) | Model: cogview-4 (default), glm-image, cogview-4-250304, cogview-3-flash |
-| `size` | string (optional) | Size: 1280x720 (16:9 recommended), 1024x1024, etc. |
+| `model` | string (optional) | Model: glm-image (default) |
+| `size` | string (optional) | Size: 1792x1024 (16:9 recommended), 1024x1024, etc. |
 | `quality` | string (optional) | Quality: hd (default), standard |
 | `watermark` | boolean (optional) | Enable watermark (default: false) |
 
 **Size for Slides**:
-- Landscape 16:9 (recommended): `1280x720`
+- Landscape 16:9 (recommended): `1792x1024`
 - Landscape 4:3: `1280x960`
 - Square: `1024x1024`
 
@@ -200,7 +200,7 @@ Use the built-in MCP tool `mcp__glm-image__generate` to generate images.
 mcp__glm-image__generate({
   prompt: "Blueprint style slide cover for AI presentation, technical grid texture...",
   imagePath: "content/slide-deck/01-slide-cover.png",
-  size: "1280x720",
+  size: "1792x1024",
   quality: "hd"
 })
 ```
