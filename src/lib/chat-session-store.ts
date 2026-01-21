@@ -24,12 +24,16 @@ export type ReasoningContentPart = {
   readonly text: string;
 };
 
+// Tool execution status (Craft-aligned)
+export type ToolStatus = 'executing' | 'completed' | 'error';
+
 export type ToolCallContentPart = {
   readonly type: 'tool-call';
   readonly toolCallId: string;
   readonly toolName: string;
   readonly args: Record<string, unknown>;
   readonly argsText: string;
+  readonly toolStatus?: ToolStatus;
   readonly result?: unknown;
   readonly isError?: boolean;
 };
@@ -54,7 +58,7 @@ type SDKContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; thinking: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: unknown };
+  | { type: 'tool_result'; tool_use_id: string; content: unknown; is_error?: boolean; isError?: boolean };
 
 export type SDKMessage = {
   type: 'system' | 'assistant' | 'user' | 'result' | 'error';
@@ -114,6 +118,9 @@ interface ChatSessionState {
   // UI Settings: Whether to show thinking/reasoning blocks
   showThinking: boolean;
 
+  // Queue count: number of pending runs waiting to be processed
+  queueCount: number;
+
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setMessages: (messages: ThreadMessage[]) => void;
@@ -126,6 +133,7 @@ interface ChatSessionState {
   setSessionMetadata: (data: SessionMetadata) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
   setShowThinking: (show: boolean) => void;
+  setQueueCount: (count: number) => void;
   clearMessages: () => void;
 
   // Load historical messages from SDK format
@@ -211,9 +219,11 @@ function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
         // Update the corresponding tool call with its result
         const existingTool = toolCalls.get(block.tool_use_id);
         if (existingTool) {
+          const isError = Boolean(block.is_error ?? (block as { isError?: boolean }).isError);
           const updatedPart: ToolCallContentPart = {
             ...existingTool,
             result: block.content,
+            isError,
           };
           toolCalls.set(block.tool_use_id, updatedPart);
           // Update in parts array
@@ -251,6 +261,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   sessionMetadata: null,
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
+  queueCount: 0, // Number of pending runs waiting to be processed
 
   setSessionId: (sessionId) => {
     set({ currentSessionId: sessionId });
@@ -311,6 +322,10 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setShowThinking: (show) => {
     set({ showThinking: show });
+  },
+
+  setQueueCount: (count) => {
+    set({ queueCount: count });
   },
 
   clearMessages: () => {

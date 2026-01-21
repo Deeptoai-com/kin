@@ -19,7 +19,7 @@ type SDKContentBlock =
   | { type: 'text'; text: string }
   | { type: 'thinking'; thinking: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: unknown };
+  | { type: 'tool_result'; tool_use_id: string; content: unknown; is_error?: boolean; isError?: boolean };
 
 // MCP Server status from SDK system.init event
 type McpServerStatus = {
@@ -114,12 +114,16 @@ type ReasoningPart = {
   readonly text: string;
 };
 
+// Tool execution status (Craft-aligned)
+type ToolStatus = 'executing' | 'completed' | 'error';
+
 type ToolCallPart = {
   readonly type: 'tool-call';
   readonly toolCallId: string;
   readonly toolName: string;
   readonly args: Record<string, unknown>;
   readonly argsText: string;
+  readonly toolStatus?: ToolStatus;
   readonly result?: unknown;
   readonly isError?: boolean;
 };
@@ -134,11 +138,43 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY_MS = 1000;
 
-// Track if a query is currently running (set when chat message sent, cleared on done/error)
+// Track if a query is currently running (set when run starts, cleared on completion)
 let isQueryRunning = false;
 
-// Track pending chat request at WebSocket level (more reliable than generator state)
-let hasPendingChat = false;
+// Track queued + active runs to guard session switches and serialize streams
+let pendingRuns = 0;
+
+// Serialize runs to avoid overlapping streams (Craft queues + interrupts)
+let runQueue = Promise.resolve();
+const enqueueRunGate = () => {
+  let release: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const previous = runQueue;
+  runQueue = next;
+  return { previous, release: release! };
+};
+
+let queueEpoch = 0;
+
+/**
+ * Sync queue count to store for UI display
+ * Called whenever pendingRuns changes
+ */
+function syncQueueCount(): void {
+  // queueCount = pendingRuns - 1 (current running) when running, or pendingRuns when not
+  // If pendingRuns >= 1, at least one is "processing", the rest are "queued"
+  const queueCount = Math.max(0, pendingRuns - 1);
+  useChatSessionStore.getState().setQueueCount(queueCount);
+}
+
+export function notifyUserAbort(): void {
+  queueEpoch += 1;
+  // Reset queue count since all queued runs will be cancelled
+  pendingRuns = 0;
+  syncQueueCount();
+}
 
 // Message queue for handling responses
 type MessageHandler = (msg: OutboundMessage) => void;
@@ -175,13 +211,13 @@ export function clearSession(): void {
 /**
  * Check if a query is currently running
  * Uses multiple indicators for reliability:
- * - hasPendingChat flag (set when chat message sent via WebSocket)
+ * - pendingRuns count (queued + active)
  * - isQueryRunning flag (set at start of run())
  * - messageHandler existence (set during active message processing)
  */
 export function checkIsQueryRunning(): boolean {
-  const running = hasPendingChat || isQueryRunning || messageHandler !== null;
-  console.log('[WS Adapter] checkIsQueryRunning:', running, { hasPendingChat, isQueryRunning, hasMessageHandler: messageHandler !== null });
+  const running = pendingRuns > 0 || isQueryRunning || messageHandler !== null;
+  console.log('[WS Adapter] checkIsQueryRunning:', running, { pendingRuns, isQueryRunning, hasMessageHandler: messageHandler !== null });
   return running;
 }
 
@@ -352,85 +388,120 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
   async *run({ messages, abortSignal, runConfig }: ChatModelRunOptions) {
     console.log('[WS Adapter] run() called with', messages.length, 'messages');
 
-    // Mark query as running and sync to store (sets agentStatus to 'thinking')
-    isQueryRunning = true;
-    useChatSessionStore.getState().setIsRunning(true);
+    pendingRuns += 1;
+    syncQueueCount(); // Update UI queue count
+    const runEpoch = queueEpoch;
+    const { previous, release } = enqueueRunGate();
 
-    // 1. Extract the latest user message
-    const lastMessage = messages.at(-1);
-    if (!lastMessage || lastMessage.role !== 'user') {
-      throw new Error('No user message to process');
-    }
-
-    const textParts = lastMessage.content.filter(
-      (part): part is { type: 'text'; text: string } => part.type === 'text'
-    );
-    const prompt = textParts.map((p) => p.text).join('\n');
-
-    if (!prompt.trim()) {
-      throw new Error('Empty prompt');
-    }
-
-    // 2. Create message queue for async iteration
-    const messageQueue: OutboundMessage[] = [];
-    let resolveNext: (() => void) | null = null;
-    let isComplete = false;
-    let error: Error | null = null;
-    let isAborted = false;
-
-    // 3. Set up abort handler
-    const abortHandler = () => {
-      isAborted = true;
-      abort();
-      if (resolveNext) {
-        resolveNext();
-        resolveNext = null;
-      }
-    };
-    abortSignal?.addEventListener('abort', abortHandler);
-
-    messageHandler = (msg: OutboundMessage) => {
-      messageQueue.push(msg);
-      if (resolveNext) {
-        resolveNext();
-        resolveNext = null;
-      }
-    };
-
-    // Note: thinkingMode is no longer sent to server - SDK's claude_code preset handles this automatically
-    // The showThinking toggle in UI only controls whether to display received reasoning content
-
-    // 4. Send chat message
-    try {
-      console.log('[WS Adapter] Sending chat message:', { type: 'chat', content: prompt.substring(0, 50), sessionId: currentSessionId });
-      console.log('[WS Adapter] Full prompt length:', prompt.length);
-      // Set pending flag BEFORE sending so switch detection works immediately
-      hasPendingChat = true;
-      await send({
-        type: 'chat',
-        content: prompt,
-        sessionId: currentSessionId,
-      });
-      console.log('[WS Adapter] ✅ Message sent successfully');
-    } catch (connectError) {
-      hasPendingChat = false;
-      console.error('[WS Adapter] ❌ Failed to send message:', connectError);
-      throw new Error('Failed to connect to WebSocket server');
-    }
-
-    // 5. Process messages
-    const content: ContentPart[] = [];
-    const toolCalls = new Map<string, ToolCallPart>();
-
-    // Track accumulated text length for proper streaming
-    let accumulatedTextLength = 0;
-
-    // Streaming throttle: buffer text updates to reduce render frequency
-    const STREAMING_THROTTLE_MS = 100;
-    let lastTextYieldTime = 0;
-    let pendingTextYield = false;
+    await previous;
 
     try {
+      if (abortSignal?.aborted || runEpoch !== queueEpoch) {
+        yield {
+          content: [{ type: 'text', text: '' }] as ChatModelRunResult['content'],
+          status: { type: 'incomplete', reason: 'cancelled' },
+        } satisfies ChatModelRunResult;
+        return;
+      }
+
+      // Mark query as running and sync to store (sets agentStatus to 'thinking')
+      isQueryRunning = true;
+      useChatSessionStore.getState().setIsRunning(true);
+
+      // 1. Extract the latest user message
+      const lastMessage = messages.at(-1);
+      if (!lastMessage || lastMessage.role !== 'user') {
+        throw new Error('No user message to process');
+      }
+
+      const textParts = lastMessage.content.filter(
+        (part): part is { type: 'text'; text: string } => part.type === 'text'
+      );
+      const prompt = textParts.map((p) => p.text).join('\n');
+
+      if (!prompt.trim()) {
+        throw new Error('Empty prompt');
+      }
+
+      // 2. Create message queue for async iteration
+      const messageQueue: OutboundMessage[] = [];
+      let resolveNext: (() => void) | null = null;
+      let isComplete = false;
+      let error: Error | null = null;
+      let isAborted = false;
+
+      // 3. Set up abort handler
+      const abortHandler = () => {
+        isAborted = true;
+        abort();
+        if (resolveNext) {
+          resolveNext();
+          resolveNext = null;
+        }
+      };
+      abortSignal?.addEventListener('abort', abortHandler);
+
+      messageHandler = (msg: OutboundMessage) => {
+        messageQueue.push(msg);
+        if (resolveNext) {
+          resolveNext();
+          resolveNext = null;
+        }
+      };
+
+      // Note: thinkingMode is no longer sent to server - SDK's claude_code preset handles this automatically
+      // The showThinking toggle in UI only controls whether to display received reasoning content
+
+      // 4. Send chat message
+      try {
+        console.log('[WS Adapter] Sending chat message:', { type: 'chat', content: prompt.substring(0, 50), sessionId: currentSessionId });
+        console.log('[WS Adapter] Full prompt length:', prompt.length);
+        await send({
+          type: 'chat',
+          content: prompt,
+          sessionId: currentSessionId,
+        });
+        console.log('[WS Adapter] ✅ Message sent successfully');
+      } catch (connectError) {
+        console.error('[WS Adapter] ❌ Failed to send message:', connectError);
+        throw new Error('Failed to connect to WebSocket server');
+      }
+
+      // 5. Process messages
+      const content: ContentPart[] = [];
+      const toolCalls = new Map<string, ToolCallPart>();
+
+      // Track accumulated text length for proper streaming
+      let accumulatedTextLength = 0;
+
+      // Streaming throttle: buffer text updates to reduce render frequency
+      const STREAMING_THROTTLE_MS = 100;
+      let lastTextYieldTime = 0;
+      let pendingTextYield = false;
+      let pendingErrorStatus: ChatModelRunResult['status'] | null = null;
+
+      const markPendingToolsAsError = (message: string): boolean => {
+        let updated = false;
+
+        for (let i = 0; i < content.length; i++) {
+          const part = content[i];
+          if (part.type === 'tool-call' && part.result === undefined) {
+            const updatedPart: ToolCallPart = {
+              ...part,
+              result: message,
+              isError: true,
+              toolStatus: 'error', // Craft-aligned: fail-safe convergence
+            };
+            content[i] = updatedPart;
+            toolCalls.set(part.toolCallId, updatedPart);
+            updated = true;
+          }
+        }
+
+        return updated;
+      };
+
+      try {
       while (!isComplete && !error) {
         if (isAborted) {
           break;
@@ -556,6 +627,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                             toolName: block.name,
                             args: safeArgs,
                             argsText: JSON.stringify(block.input ?? {}),
+                            toolStatus: 'executing', // Craft-aligned: mark as executing on creation
                           };
 
                           console.log('[WS Adapter] Created toolPart:', { type: toolPart.type, toolName: toolPart.toolName, argsType: typeof toolPart.args, argsIsArray: Array.isArray(toolPart.args) });
@@ -630,10 +702,12 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                           resultContent = JSON.stringify(block.content, null, 2);
                         }
 
+                        const isError = Boolean(block.is_error ?? (block as { isError?: boolean }).isError);
                         const updatedPart: ToolCallPart = {
                           ...toolPart,
                           result: resultContent,
-                          isError: false,
+                          isError,
+                          toolStatus: isError ? 'error' : 'completed', // Craft-aligned: set status based on result
                         };
                         toolCalls.set(block.tool_use_id, updatedPart);
 
@@ -677,6 +751,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                 }
 
                 if (event.is_error || event.subtype?.startsWith('error')) {
+                  if (markPendingToolsAsError('Error occurred')) {
+                    pendingErrorStatus = { type: 'incomplete', reason: 'error' };
+                  }
                   error = new Error(event.result || 'Agent execution failed');
                 }
                 // Treat the result event as the end of the run in case "done" is missing.
@@ -685,6 +762,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
               case 'error':
                 error = new Error(event.error || 'Unknown error');
+                if (markPendingToolsAsError('Error occurred')) {
+                  pendingErrorStatus = { type: 'incomplete', reason: 'error' };
+                }
                 break;
 
               case 'stream_event':
@@ -792,6 +872,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
           case 'aborted':
             console.log('[WS Adapter] ⛔ Received aborted message');
+            markPendingToolsAsError('Interrupted');
             isAborted = true;
             isComplete = true;
             break;
@@ -806,32 +887,43 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         } satisfies ChatModelRunResult;
       }
 
+      if (error && pendingErrorStatus && content.length > 0) {
+        yield {
+          content: [...content] as ChatModelRunResult['content'],
+          status: pendingErrorStatus,
+        } satisfies ChatModelRunResult;
+      }
+
       if (error) {
         throw error;
       }
-    } finally {
-      abortSignal?.removeEventListener('abort', abortHandler);
-      messageHandler = null;
-      isQueryRunning = false;
-      hasPendingChat = false;
-      // Sync to store - this also resets agentStatus to 'idle' and currentToolName to null
-      useChatSessionStore.getState().setIsRunning(false);
-    }
+      } finally {
+        abortSignal?.removeEventListener('abort', abortHandler);
+        messageHandler = null;
+        isQueryRunning = false;
+        // Sync to store - this also resets agentStatus to 'idle' and currentToolName to null
+        useChatSessionStore.getState().setIsRunning(false);
+      }
 
-    if (isAborted) {
-      // Include any content that was already generated before the abort
+      if (isAborted) {
+        // Include any content that was already generated before the abort
+        yield {
+          content: (content.length > 0 ? content : [{ type: 'text', text: '' }]) as ChatModelRunResult['content'],
+          status: { type: 'incomplete', reason: 'cancelled' },
+        } satisfies ChatModelRunResult;
+        return;
+      }
+
+      // 6. Yield final result
       yield {
         content: (content.length > 0 ? content : [{ type: 'text', text: '' }]) as ChatModelRunResult['content'],
-        status: { type: 'incomplete', reason: 'cancelled' },
+        status: { type: 'complete', reason: 'stop' },
       } satisfies ChatModelRunResult;
-      return;
+    } finally {
+      pendingRuns = Math.max(0, pendingRuns - 1);
+      syncQueueCount(); // Update UI queue count
+      release();
     }
-
-    // 6. Yield final result
-    yield {
-      content: (content.length > 0 ? content : [{ type: 'text', text: '' }]) as ChatModelRunResult['content'],
-      status: { type: 'complete', reason: 'stop' },
-    } satisfies ChatModelRunResult;
   },
 };
 

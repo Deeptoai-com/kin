@@ -14,5 +14,6 @@ export {
   setSessionId,
   clearSession,
   checkIsQueryRunning,
+  notifyUserAbort,
   onSessionInit,
 } from './ws-adapter';
