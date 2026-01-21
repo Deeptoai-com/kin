@@ -304,11 +304,10 @@ function parseJsonlContent(content) {
     try {
       const parsed = JSON.parse(trimmed);
 
-      // Skip summary type messages
-      if (parsed.type?.toLowerCase() === 'summary') continue;
+      const parsedType = typeof parsed.type === 'string' ? parsed.type.toLowerCase() : '';
 
-      // Must have message field
-      if (!parsed.message) continue;
+      // Skip summary type messages
+      if (parsedType === 'summary') continue;
 
       // Normalize sessionId to session_id
       const normalized = { ...parsed };
