@@ -31,11 +31,10 @@ import {
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
-import { ThumbsDown, ThumbsUp, FolderOpen, Plus } from 'lucide-react';
-import { useEffect, useState, useCallback, useRef, useMemo, type ChangeEvent, type FC } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { ThumbsDown, ThumbsUp, FolderOpen, Plus, Layers } from 'lucide-react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ChangeEvent, type FC, type FormEvent } from 'react';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
+import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { SessionList } from '~/components/claude-chat/session-list';
 import { UsageCard } from '~/components/claude-chat/usage-card';
 import { SessionInfoPanel, type SessionMetadata } from '~/components/claude-chat/session-info-panel';
@@ -47,6 +46,7 @@ import { InlineStatus, ToolbarStatus, type AgentStatusType } from '~/components/
 import { McpStatusIndicator } from '~/components/claude-chat/mcp-status-indicator';
 import { KnowledgeBasePanel } from '~/components/claude-chat/knowledge-base-panel';
 import { PermissionBadge, type PermissionInfo } from '~/components/claude-chat/permission-badge';
+import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useDraftAutoSave, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
@@ -60,6 +60,7 @@ import {
   newSession,
   onSessionInit,
   checkIsQueryRunning,
+  notifyUserAbort,
 } from '~/claude/adapters';
 import {
   useChatSessionStore,
@@ -69,6 +70,19 @@ import {
   type TextContentPart,
   type ContentPart,
 } from '~/lib/chat-session-store';
+
+// Context for sharing file/URL click handlers across message components
+type FileHandlersContextType = {
+  onFileClick: (path: string) => void;
+  onUrlClick: (url: string) => void;
+};
+
+const FileHandlersContext = createContext<FileHandlersContextType>({
+  onFileClick: () => {},
+  onUrlClick: () => {},
+});
+
+const useFileHandlers = () => useContext(FileHandlersContext);
 
 export const Route = createFileRoute('/agents/claude-chat')({
   component: RouteComponent,
@@ -508,52 +522,131 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
   const [showWorkspace, setShowWorkspace] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
 
+  // Global file preview state
+  const [filePreview, setFilePreview] = useState<{
+    isOpen: boolean;
+    content: string;
+    filePath: string;
+    error?: string;
+    isLoading: boolean;
+  }>({ isOpen: false, content: '', filePath: '', isLoading: false });
+
+  // Handler for file path clicks - fetches file content and opens overlay
+  const handleFileClick = useCallback(async (path: string) => {
+    if (!currentSessionId) {
+      console.warn('[Route] No session ID, cannot read file:', path);
+      setFilePreview({
+        isOpen: true,
+        content: '',
+        filePath: path,
+        error: '请先创建会话后再查看文件',
+        isLoading: false,
+      });
+      return;
+    }
+
+    // Show loading state
+    setFilePreview({
+      isOpen: true,
+      content: '',
+      filePath: path,
+      isLoading: true,
+    });
+
+    try {
+      console.log('[Route] Reading workspace file:', path);
+      const content = await readWorkspaceFile(currentSessionId, path);
+      if (content === null) {
+        setFilePreview({
+          isOpen: true,
+          content: '',
+          filePath: path,
+          error: `文件不存在或无法读取: ${path}`,
+          isLoading: false,
+        });
+      } else {
+        setFilePreview({
+          isOpen: true,
+          content,
+          filePath: path,
+          isLoading: false,
+        });
+      }
+    } catch (error) {
+      console.error('[Route] Failed to read file:', path, error);
+      setFilePreview({
+        isOpen: true,
+        content: '',
+        filePath: path,
+        error: error instanceof Error ? error.message : '读取文件失败',
+        isLoading: false,
+      });
+    }
+  }, [currentSessionId]);
+
+  // Handler for URL clicks
+  const handleUrlClick = useCallback((url: string) => {
+    console.log('[Route] URL clicked:', url);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, []);
+
   // Session protection: warn before closing page during active query
   useBeforeUnloadProtection();
 
   return (
-    <div className="flex h-full flex-col">
-      <AssistantRuntimeProvider runtime={runtime}>
-        <ThreadPrimitive.Root className="flex h-full flex-col items-stretch bg-background p-4 pt-16 font-sans">
-          <ThreadPrimitive.Viewport className="flex-1 min-h-0 overflow-y-auto">
-            {/* Show empty state only when no historical messages */}
-            {!hasHistoricalMessages && (
-              <ThreadPrimitive.Empty>
-                <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-                  <div className="text-4xl font-semibold text-foreground">
-                    Claude Agent
+    <FileHandlersContext.Provider value={{ onFileClick: handleFileClick, onUrlClick: handleUrlClick }}>
+      <div className="flex h-full flex-col">
+        <AssistantRuntimeProvider runtime={runtime}>
+          <ThreadPrimitive.Root className="flex h-full flex-col items-stretch bg-background p-4 pt-16 font-sans">
+            <ThreadPrimitive.Viewport className="flex-1 min-h-0 overflow-y-auto">
+              {/* Show empty state only when no historical messages */}
+              {!hasHistoricalMessages && (
+                <ThreadPrimitive.Empty>
+                  <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+                    <div className="text-4xl font-semibold text-foreground">
+                      Claude Agent
+                    </div>
+                    <p className="max-w-md text-muted-foreground">
+                      Powered by Claude Agent SDK. I can read files, execute code, and help with various
+                      tasks.
+                    </p>
                   </div>
-                  <p className="max-w-md text-muted-foreground">
-                    Powered by Claude Agent SDK. I can read files, execute code, and help with various
-                    tasks.
-                  </p>
-                </div>
-              </ThreadPrimitive.Empty>
-            )}
+                </ThreadPrimitive.Empty>
+              )}
 
-            {/* Render historical messages from store */}
-            {historicalMessages.map((msg) => (
-              <HistoricalMessage key={msg.id} message={msg} />
-            ))}
+              {/* Render historical messages from store */}
+              {historicalMessages.map((msg) => (
+                <HistoricalMessage key={msg.id} message={msg} />
+              ))}
 
-            {/* Render live messages from runtime */}
-            <ThreadPrimitive.Messages components={{ Message: ChatMessage }} />
-            <ThreadArtifactCallout />
-            <div aria-hidden="true" className="h-4" />
-          </ThreadPrimitive.Viewport>
+              {/* Render live messages from runtime */}
+              <ThreadPrimitive.Messages components={{ Message: ChatMessage }} />
+              <ThreadArtifactCallout />
+              <div aria-hidden="true" className="h-4" />
+            </ThreadPrimitive.Viewport>
 
-          <ChatComposer
-            permissionInfo={permissionInfo}
-            currentSessionId={currentSessionId}
-            showWorkspace={showWorkspace}
-            setShowWorkspace={setShowWorkspace}
-            showSessionInfo={showSessionInfo}
-            setShowSessionInfo={setShowSessionInfo}
-            sessionMetadata={sessionMetadata}
-          />
-        </ThreadPrimitive.Root>
-      </AssistantRuntimeProvider>
-    </div>
+            <ChatComposer
+              permissionInfo={permissionInfo}
+              currentSessionId={currentSessionId}
+              showWorkspace={showWorkspace}
+              setShowWorkspace={setShowWorkspace}
+              showSessionInfo={showSessionInfo}
+              setShowSessionInfo={setShowSessionInfo}
+              sessionMetadata={sessionMetadata}
+            />
+          </ThreadPrimitive.Root>
+        </AssistantRuntimeProvider>
+
+        {/* Global file preview overlay */}
+        <CodePreviewOverlay
+          isOpen={filePreview.isOpen}
+          onClose={() => setFilePreview(prev => ({ ...prev, isOpen: false }))}
+          content={filePreview.isLoading ? 'Loading...' : filePreview.content}
+          filePath={filePreview.filePath}
+          error={filePreview.error}
+        />
+      </div>
+    </FileHandlersContext.Provider>
   );
 }
 
@@ -623,6 +716,8 @@ const ChatComposer: FC<ChatComposerProps> = ({
   const api = useAssistantApi();
   const composerText = useComposer((state) => state.text);
   const composerSetText = useComposer((state) => state.setText);
+  const composerIsEditing = useComposer((state) => state.isEditing);
+  const composerIsEmpty = useComposer((state) => state.isEmpty);
   const isRunning = useThread((state) => state.isRunning);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -632,6 +727,7 @@ const ChatComposer: FC<ChatComposerProps> = ({
   // Get agent status from store for ToolbarStatus
   const agentStatus = useChatSessionStore((state) => state.agentStatus);
   const currentToolName = useChatSessionStore((state) => state.currentToolName);
+  const queueCount = useChatSessionStore((state) => state.queueCount);
   const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
 
   // Draft auto-save: persist unsent input to localStorage
@@ -727,8 +823,21 @@ const ChatComposer: FC<ChatComposerProps> = ({
     }
   }, [api, currentSessionId]);
 
+  const canSend = composerIsEditing && !composerIsEmpty;
+
+  const handleSend = useCallback((event?: FormEvent) => {
+    if (event) {
+      event.preventDefault();
+    }
+    if (!canSend) return;
+    api.composer().send();
+  }, [api, canSend]);
+
   return (
-    <ComposerPrimitive.Root className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow">
+    <ComposerPrimitive.Root
+      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow"
+      onSubmit={handleSend}
+    >
       <div className="m-3.5 flex flex-col gap-3.5">
         <div className="relative z-10">
           <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
@@ -851,23 +960,27 @@ const ChatComposer: FC<ChatComposerProps> = ({
               <ToolbarStatus
                 status={displayStatus}
                 toolName={currentToolName}
-                onAbort={() => api.composer().cancel()}
+                queueCount={queueCount}
+                onAbort={() => {
+                  notifyUserAbort();
+                  api.composer().cancel();
+                }}
               />
             )}
 
             {/* MCP Status Indicator */}
             <McpStatusIndicator className="ml-2" />
 
-            {/* Send button - only show when not running */}
-            {!isRunning && (
-              <ComposerPrimitive.Send
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                title="发送消息"
-                aria-label="发送消息"
-              >
-                <ArrowUpIcon width={16} height={16} />
-              </ComposerPrimitive.Send>
-            )}
+            {/* Send button */}
+            <button
+              type="submit"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+              title={isRunning ? '发送消息（将打断当前回复并排队）' : '发送消息'}
+              aria-label="发送消息"
+              disabled={!canSend}
+            >
+              <ArrowUpIcon width={16} height={16} />
+            </button>
           </div>
         </div>
       </div>
@@ -921,6 +1034,45 @@ const ComposerAttachmentsSection: FC<{
   );
 };
 
+// File handlers are now provided via FileHandlersContext from ClaudeChatSurface
+
+/**
+ * Extract file changes from message content for multi-diff overlay
+ */
+function extractFileChanges(content: ContentPart[], messageId: string): FileChange[] {
+  const changes: FileChange[] = [];
+  let changeIndex = 0;
+
+  for (const part of content) {
+    if (part.type !== 'tool-call') continue;
+
+    const toolName = part.toolName?.toLowerCase() ?? '';
+    const args = part.args as Record<string, unknown> | undefined;
+
+    if (toolName === 'edit' && args?.old_string !== undefined && args?.new_string !== undefined) {
+      changes.push({
+        id: `${messageId}-${changeIndex++}`,
+        filePath: String(args.file_path ?? 'unknown'),
+        toolType: 'Edit',
+        original: String(args.old_string),
+        modified: String(args.new_string),
+        error: part.isError ? String(part.result ?? 'Error') : undefined,
+      });
+    } else if (toolName === 'write' && args?.content !== undefined) {
+      changes.push({
+        id: `${messageId}-${changeIndex++}`,
+        filePath: String(args.file_path ?? 'unknown'),
+        toolType: 'Write',
+        original: '',
+        modified: String(args.content),
+        error: part.isError ? String(part.result ?? 'Error') : undefined,
+      });
+    }
+  }
+
+  return changes;
+}
+
 /**
  * Assistant Message Component - with manual part rendering
  * Manually renders all content parts to support custom tool-call type
@@ -930,6 +1082,9 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   const message = useMessage();
   const messageStatus = message.status;
 
+  // Get file handlers from context
+  const { onFileClick, onUrlClick } = useFileHandlers();
+
   // Access content parts - cast to our ContentPart type
   const messageContent = (message as any).content as ContentPart[] | undefined;
   const isRunning = messageStatus?.type === 'running';
@@ -937,6 +1092,9 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
 
   // State for showing usage card
   const [showUsageCard, setShowUsageCard] = useState(false);
+
+  // State for multi-diff overlay
+  const [showMultiDiff, setShowMultiDiff] = useState(false);
 
   // Get usage data and agent status from store (only show for last message)
   const usageData = useChatSessionStore((state) => state.usageData);
@@ -948,6 +1106,16 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
 
   // Artifact detection - pass full content array to support both text and tool-call detection
   useArtifactDetection(message.id, messageContent);
+
+  // Extract file changes for multi-diff overlay
+  const fileChanges = useMemo(() => {
+    if (!messageContent) return [];
+    return extractFileChanges(messageContent, message.id);
+  }, [messageContent, message.id]);
+
+  // Filter to only successful changes for multi-diff display
+  const successfulChanges = useMemo(() => fileChanges.filter(c => !c.error), [fileChanges]);
+  const hasMultipleFileChanges = successfulChanges.length > 1;
 
   return (
     <MessagePrimitive.Root className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
@@ -978,46 +1146,13 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
 
                   return (
                     <div key={index} className="relative">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
-                          a: ({ href, children }) => (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary underline underline-offset-2 hover:opacity-80"
-                            >
-                              {children}
-                            </a>
-                          ),
-                          ul: ({ children }) => <ul className="mb-4 list-disc pl-6 last:mb-0">{children}</ul>,
-                          ol: ({ children }) => <ol className="mb-4 list-decimal pl-6 last:mb-0">{children}</ol>,
-                          li: ({ children }) => <li className="mb-1">{children}</li>,
-                          code: ({ children }) => (
-                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
-                              {children}
-                            </code>
-                          ),
-                          pre: ({ children }) => (
-                            <pre className="mb-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm last:mb-0">
-                              {children}
-                            </pre>
-                          ),
-                          blockquote: ({ children }) => (
-                            <blockquote className="mb-4 border-l-2 border-muted-foreground pl-4 italic last:mb-0">
-                              {children}
-                            </blockquote>
-                          ),
-                          h1: ({ children }) => <h1 className="mb-4 text-2xl font-bold">{children}</h1>,
-                          h2: ({ children }) => <h2 className="mb-3 text-xl font-bold">{children}</h2>,
-                          h3: ({ children }) => <h3 className="mb-2 text-lg font-semibold">{children}</h3>,
-                          h4: ({ children }) => <h4 className="mb-2 font-semibold">{children}</h4>,
-                        }}
-                      >
-                        {part.text}
-                      </ReactMarkdown>
+                      <StreamingMarkdown
+                        content={part.text}
+                        isStreaming={showCursor}
+                        mode="minimal"
+                        onUrlClick={onUrlClick}
+                        onFileClick={onFileClick}
+                      />
                       {showCursor && (
                         <span className="inline-block h-4 w-0.5 animate-pulse bg-[#ae5630] ml-0.5" />
                       )}
@@ -1043,6 +1178,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                       argsText={part.argsText}
                       result={part.result}
                       isError={part.isError}
+                      toolStatus={part.toolStatus}
                       status={messageStatus}
                     />
                   );
@@ -1050,6 +1186,18 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                 console.warn('[AssistantMessage] Unknown part type:', part.type, part);
                 return null;
               })}
+
+              {/* Multi-diff aggregation button */}
+              {hasMultipleFileChanges && !isRunning && (
+                <button
+                  type="button"
+                  onClick={() => setShowMultiDiff(true)}
+                  className="mt-3 flex items-center gap-1.5 rounded-md border border-[#e5e4df] bg-[#f8f8f6] px-2.5 py-1.5 text-xs text-[#6b6a68] transition-colors hover:bg-[#f0f0eb] dark:border-[#3a3938] dark:bg-[#1f1e1b] dark:text-[#9a9893] dark:hover:bg-[#2a2928]"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>View all {successfulChanges.length} file changes</span>
+                </button>
+              )}
 
             </div>
           </div>
@@ -1097,6 +1245,13 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
           </ActionBarPrimitive.Root>
         </div>
       </div>
+
+      {/* Multi-diff overlay */}
+      <MultiDiffPreviewOverlay
+        isOpen={showMultiDiff}
+        onClose={() => setShowMultiDiff(false)}
+        changes={successfulChanges}
+      />
     </MessagePrimitive.Root>
   );
 };
@@ -1106,6 +1261,20 @@ const ChatMessage: FC = () => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const isLast = message.isLast;
+
+  // Get file handlers from context for user messages
+  const { onFileClick, onUrlClick } = useFileHandlers();
+
+  // Extract text content for user messages
+  const userTextContent = useMemo(() => {
+    if (!isUser) return '';
+    const content = (message as any).content as Array<{ type: string; text?: string }> | undefined;
+    if (!content) return '';
+    return content
+      .filter((p) => p.type === 'text' && p.text)
+      .map((p) => p.text)
+      .join('\n');
+  }, [isUser, message]);
 
   if (isUser) {
     return (
@@ -1119,8 +1288,14 @@ const ChatMessage: FC = () => {
             </div>
             <div className="flex-1">
               <div className="relative grid grid-cols-1 gap-2 py-0.5">
-                <div className="wrap-break-word whitespace-pre-wrap">
-                  <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
+                <div className="wrap-break-word whitespace-normal">
+                  <StreamingMarkdown
+                    content={userTextContent}
+                    isStreaming={false}
+                    mode="minimal"
+                    onUrlClick={onUrlClick}
+                    onFileClick={onFileClick}
+                  />
                 </div>
               </div>
             </div>
@@ -1160,6 +1335,12 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
+  // Get file handlers from context
+  const { onFileClick, onUrlClick } = useFileHandlers();
+
+  // State for multi-diff overlay
+  const [showMultiDiff, setShowMultiDiff] = useState(false);
+
   // Get text content for user messages
   const textContent = message.content
     .filter((p): p is TextContentPart => p.type === 'text')
@@ -1169,6 +1350,16 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
   // Artifact detection for assistant messages - pass full content array to support both text and tool-call detection
   const artifact = useArtifactDetection(message.id, isAssistant ? message.content : undefined);
   const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
+
+  // Extract file changes for multi-diff overlay (only for assistant messages)
+  const fileChanges = useMemo(() => {
+    if (!isAssistant) return [];
+    return extractFileChanges(message.content, message.id);
+  }, [isAssistant, message.content, message.id]);
+
+  // Filter to only successful changes for multi-diff display
+  const successfulChanges = useMemo(() => fileChanges.filter(c => !c.error), [fileChanges]);
+  const hasMultipleFileChanges = successfulChanges.length > 1;
 
   if (isUser) {
     return (
@@ -1182,8 +1373,14 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
             </div>
             <div className="flex-1">
               <div className="relative grid grid-cols-1 gap-2 py-0.5">
-                <div className="wrap-break-word whitespace-pre-wrap">
-                  {textContent}
+                <div className="wrap-break-word whitespace-normal">
+                  <StreamingMarkdown
+                    content={textContent}
+                    isStreaming={false}
+                    mode="minimal"
+                    onUrlClick={onUrlClick}
+                    onFileClick={onFileClick}
+                  />
                 </div>
               </div>
             </div>
@@ -1203,47 +1400,14 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
                 {message.content.map((part, index) => {
                   if (part.type === 'text') {
                     return (
-                      <ReactMarkdown
+                      <StreamingMarkdown
                         key={index}
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
-                          a: ({ href, children }) => (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary underline underline-offset-2 hover:opacity-80"
-                            >
-                              {children}
-                            </a>
-                          ),
-                          ul: ({ children }) => <ul className="mb-4 list-disc pl-6 last:mb-0">{children}</ul>,
-                          ol: ({ children }) => <ol className="mb-4 list-decimal pl-6 last:mb-0">{children}</ol>,
-                          li: ({ children }) => <li className="mb-1">{children}</li>,
-                          code: ({ children }) => (
-                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
-                              {children}
-                            </code>
-                          ),
-                          pre: ({ children }) => (
-                            <pre className="mb-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm last:mb-0">
-                              {children}
-                            </pre>
-                          ),
-                          blockquote: ({ children }) => (
-                            <blockquote className="mb-4 border-l-2 border-muted-foreground pl-4 italic last:mb-0">
-                              {children}
-                            </blockquote>
-                          ),
-                          h1: ({ children }) => <h1 className="mb-4 text-2xl font-bold">{children}</h1>,
-                          h2: ({ children }) => <h2 className="mb-3 text-xl font-bold">{children}</h2>,
-                          h3: ({ children }) => <h3 className="mb-2 text-lg font-semibold">{children}</h3>,
-                          h4: ({ children }) => <h4 className="mb-2 font-semibold">{children}</h4>,
-                        }}
-                      >
-                        {part.text}
-                      </ReactMarkdown>
+                        content={part.text}
+                        isStreaming={false}
+                        mode="minimal"
+                        onUrlClick={onUrlClick}
+                        onFileClick={onFileClick}
+                      />
                     );
                   }
                   if (part.type === 'reasoning') {
@@ -1264,6 +1428,7 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
                         argsText={part.argsText}
                         result={part.result}
                         isError={part.isError}
+                        toolStatus={part.toolStatus}
                       />
                     );
                   }
@@ -1279,10 +1444,29 @@ const HistoricalMessage: FC<{ message: ThreadMessage }> = ({ message }) => {
                     />
                   </div>
                 )}
+
+                {/* Multi-diff aggregation button */}
+                {hasMultipleFileChanges && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMultiDiff(true)}
+                    className="mt-3 flex items-center gap-1.5 rounded-md border border-[#e5e4df] bg-[#f8f8f6] px-2.5 py-1.5 text-xs text-[#6b6a68] transition-colors hover:bg-[#f0f0eb] dark:border-[#3a3938] dark:bg-[#1f1e1b] dark:text-[#9a9893] dark:hover:bg-[#2a2928]"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    <span>View all {successfulChanges.length} file changes</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Multi-diff overlay */}
+        <MultiDiffPreviewOverlay
+          isOpen={showMultiDiff}
+          onClose={() => setShowMultiDiff(false)}
+          changes={successfulChanges}
+        />
       </div>
     );
   }

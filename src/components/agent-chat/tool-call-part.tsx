@@ -4,12 +4,21 @@
  * Displays tool invocations with their arguments and results.
  * Provides expandable details and status indicators.
  * Includes Diff view for Edit/Write tools.
+ * Supports fullscreen overlay previews for various tool outputs.
  */
 
 import { CheckCircledIcon, ChevronDownIcon, ChevronRightIcon, CrossCircledIcon, GearIcon } from '@radix-ui/react-icons';
+import { Maximize2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { useChatSessionStore } from '~/lib/chat-session-store';
+import { useChatSessionStore, type ToolStatus } from '~/lib/chat-session-store';
 import { DiffView } from './diff-view';
+import {
+  CodePreviewOverlay,
+  TerminalPreviewOverlay,
+  DiffPreviewOverlay,
+  JSONPreviewOverlay,
+  type ToolType,
+} from '~/components/claude-chat/overlay';
 
 interface ToolCallPartProps {
   toolCallId: string;
@@ -18,6 +27,7 @@ interface ToolCallPartProps {
   argsText: string;
   result?: unknown;
   isError?: boolean;
+  toolStatus?: ToolStatus;
   status?: { type: string };
 }
 
@@ -122,6 +132,7 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   argsText,
   result,
   isError,
+  toolStatus,
   status,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -129,15 +140,20 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number | null>(null);
 
-  // A tool is running if message is running AND this tool has no result yet
-  const isRunning = status?.type === 'running' && result === undefined;
+  // Overlay state
+  const [overlayType, setOverlayType] = useState<'code' | 'terminal' | 'diff' | 'json' | null>(null);
+
+  // Use toolStatus if available, otherwise fall back to legacy detection
+  const isExecuting = toolStatus === 'executing' || (status?.type === 'running' && result === undefined);
+  const isCompleted = toolStatus === 'completed' || (result !== undefined && !isError);
+  const isErrorState = toolStatus === 'error' || isError;
   const hasResult = result !== undefined;
   const style = getToolStyle(toolName);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
 
-  // Track elapsed time when running
+  // Track elapsed time when executing
   useEffect(() => {
-    if (isRunning) {
+    if (isExecuting) {
       if (!startTimeRef.current) {
         startTimeRef.current = Date.now();
       }
@@ -149,7 +165,7 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
       startTimeRef.current = null;
       setElapsedTime(0);
     }
-  }, [isRunning]);
+  }, [isExecuting]);
   const parsedResult = useMemo(() => {
     if (!result) return null;
     if (typeof result === 'string') {
@@ -182,7 +198,7 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
   }, [hasFileOutputs]);
 
   return (
-    <div className={`my-2 overflow-hidden rounded-lg border ${isRunning ? 'border-[#ae5630] ring-1 ring-[#ae5630]/30' : 'border-[#e5e4df] dark:border-[#3a3938]'} ${style.bg}`}>
+    <div className={`my-2 overflow-hidden rounded-lg border ${isExecuting ? 'border-[#ae5630] ring-1 ring-[#ae5630]/30' : isErrorState ? 'border-red-400 dark:border-red-600' : 'border-[#e5e4df] dark:border-[#3a3938]'} ${style.bg}`}>
       {/* Header */}
       <button
         type="button"
@@ -210,17 +226,31 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
         )}
 
         <span className="ml-auto flex items-center gap-1.5">
-          {isRunning && (
+          {/* Status badge based on toolStatus */}
+          {isExecuting && (
             <>
+              <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                executing
+              </span>
               <span className="text-[10px] text-[#ae5630]">{elapsedTime}s</span>
               <GearIcon className="h-4 w-4 animate-spin text-[#ae5630]" />
             </>
           )}
-          {hasResult && !isError && (
-            <CheckCircledIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+          {isCompleted && !isErrorState && (
+            <>
+              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                completed
+              </span>
+              <CheckCircledIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </>
           )}
-          {hasResult && isError && (
-            <CrossCircledIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
+          {isErrorState && (
+            <>
+              <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                error
+              </span>
+              <CrossCircledIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
+            </>
           )}
         </span>
       </button>
@@ -235,11 +265,22 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
                 <span className="text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
                   Changes
                 </span>
-                {args.file_path ? (
-                  <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400">
-                    {String(args.file_path)}
-                  </span>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  {args.file_path ? (
+                    <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400">
+                      {String(args.file_path)}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setOverlayType('diff')}
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[#6b6a68] hover:bg-black/5 dark:text-[#9a9893] dark:hover:bg-white/5"
+                    title="View fullscreen"
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                    <span>Full</span>
+                  </button>
+                </div>
               </div>
               <DiffView
                 oldString={String(args.old_string)}
@@ -256,11 +297,22 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
                 <span className="text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
                   New File Content
                 </span>
-                {args.file_path ? (
-                  <span className="font-mono text-[10px] text-green-600 dark:text-green-400">
-                    {String(args.file_path)}
-                  </span>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  {args.file_path ? (
+                    <span className="font-mono text-[10px] text-green-600 dark:text-green-400">
+                      {String(args.file_path)}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setOverlayType('code')}
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[#6b6a68] hover:bg-black/5 dark:text-[#9a9893] dark:hover:bg-white/5"
+                    title="View fullscreen"
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                    <span>Full</span>
+                  </button>
+                </div>
               </div>
               <DiffView
                 oldString=""
@@ -288,8 +340,32 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
           {/* Result */}
           {hasResult && (
             <div>
-              <div className="mb-1 text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
-                {isError ? 'Error' : 'Result'}
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-[#6b6a68] dark:text-[#9a9893]">
+                  {isError ? 'Error' : 'Result'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Determine overlay type based on tool and result
+                    const name = toolName.toLowerCase();
+                    // Force CodePreviewOverlay for Read tool or when args.file_path exists
+                    if (name.includes('read') || args.file_path) {
+                      setOverlayType('code');
+                    } else if (name.includes('bash') || name.includes('grep') || name.includes('glob')) {
+                      setOverlayType('terminal');
+                    } else if (parsedResult && typeof parsedResult === 'object') {
+                      setOverlayType('json');
+                    } else {
+                      setOverlayType('terminal');
+                    }
+                  }}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[#6b6a68] hover:bg-black/5 dark:text-[#9a9893] dark:hover:bg-white/5"
+                  title="View fullscreen"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  <span>Full</span>
+                </button>
               </div>
               <pre
                 className={`max-h-64 overflow-auto rounded p-2 font-mono text-xs ${
@@ -373,8 +449,93 @@ export const ToolCallPart: FC<ToolCallPartProps> = ({
           )}
         </div>
       )}
+
+      {/* Overlay Components */}
+      {/* Diff Preview Overlay - for Edit tool */}
+      <DiffPreviewOverlay
+        isOpen={overlayType === 'diff'}
+        onClose={() => setOverlayType(null)}
+        oldContent={String(args.old_string ?? '')}
+        newContent={String(args.new_string ?? '')}
+        filePath={String(args.file_path ?? 'unknown')}
+        error={isErrorState ? String(result) : undefined}
+      />
+
+      {/* Code Preview Overlay - for Write/Read tool */}
+      <CodePreviewOverlay
+        isOpen={overlayType === 'code'}
+        onClose={() => setOverlayType(null)}
+        content={typeof result === 'string' ? result : String(args.content ?? result ?? '')}
+        filePath={String(args.file_path ?? 'file')}
+        language={getLanguageFromPath(String(args.file_path ?? ''))}
+        error={isErrorState ? String(result) : undefined}
+      />
+
+      {/* Terminal Preview Overlay - for Bash/Grep/Glob tool */}
+      <TerminalPreviewOverlay
+        isOpen={overlayType === 'terminal'}
+        onClose={() => setOverlayType(null)}
+        command={String(args.command ?? args.pattern ?? '')}
+        output={typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+        exitCode={isErrorState ? 1 : 0}
+        toolType={getTerminalToolType(toolName)}
+        error={isErrorState ? String(result) : undefined}
+      />
+
+      {/* JSON Preview Overlay - for structured results */}
+      <JSONPreviewOverlay
+        isOpen={overlayType === 'json'}
+        onClose={() => setOverlayType(null)}
+        data={parsedResult ?? result}
+        title={`${toolName} Result`}
+        error={isErrorState ? 'Tool execution failed' : undefined}
+      />
     </div>
   );
 };
+
+/**
+ * Get language from file path extension
+ */
+function getLanguageFromPath(filePath: string): string | undefined {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  const extMap: Record<string, string> = {
+    ts: 'typescript',
+    tsx: 'tsx',
+    js: 'javascript',
+    jsx: 'jsx',
+    py: 'python',
+    rb: 'ruby',
+    go: 'go',
+    rs: 'rust',
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    h: 'c',
+    hpp: 'cpp',
+    css: 'css',
+    scss: 'scss',
+    html: 'html',
+    json: 'json',
+    yaml: 'yaml',
+    yml: 'yaml',
+    md: 'markdown',
+    sh: 'bash',
+    bash: 'bash',
+    sql: 'sql',
+  };
+  return ext ? extMap[ext] : undefined;
+}
+
+/**
+ * Get terminal tool type for overlay badge
+ */
+function getTerminalToolType(toolName: string): ToolType {
+  const name = toolName.toLowerCase();
+  if (name.includes('bash') || name.includes('shell') || name.includes('exec')) return 'bash';
+  if (name.includes('grep')) return 'grep';
+  if (name.includes('glob')) return 'glob';
+  return 'bash';
+}
 
 export default ToolCallPart;

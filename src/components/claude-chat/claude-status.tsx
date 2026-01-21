@@ -220,13 +220,14 @@ export const InlineStatus: FC<{
 /**
  * Toolbar Status Component
  * Displays status in the composer toolbar with h-8 (32px) height
- * Shows elapsed time, animated spinner, and stop button
+ * Shows elapsed time, animated spinner, queue count, and stop button
  */
 export const ToolbarStatus: FC<{
   status: AgentStatusType;
   toolName?: string | null;
+  queueCount?: number;
   onAbort?: () => void;
-}> = ({ status, toolName, onAbort }) => {
+}> = ({ status, toolName, queueCount = 0, onAbort }) => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [animationPhase, setAnimationPhase] = useState(0);
 
@@ -303,6 +304,13 @@ export const ToolbarStatus: FC<{
         <span className="text-[10px] text-[#6b6a68] dark:text-[#9a9893]">
           {elapsedTime}s
         </span>
+
+        {/* Queue count badge */}
+        {queueCount > 0 && (
+          <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            +{queueCount} queued
+          </span>
+        )}
       </div>
 
       {/* Abort button */}
