@@ -25,7 +25,11 @@ export type ReasoningContentPart = {
 };
 
 // Tool execution status (Craft-aligned)
-export type ToolStatus = 'executing' | 'completed' | 'error';
+// - executing: tool is currently running
+// - completed: tool finished successfully
+// - error: tool failed
+// - backgrounded: tool is running in background (Bash with shell_id or Task with agentId)
+export type ToolStatus = 'executing' | 'completed' | 'error' | 'backgrounded';
 
 export type ToolCallContentPart = {
   readonly type: 'tool-call';
@@ -36,6 +40,12 @@ export type ToolCallContentPart = {
   readonly toolStatus?: ToolStatus;
   readonly result?: unknown;
   readonly isError?: boolean;
+  // Backgrounded task fields (Craft-aligned)
+  readonly backgroundTaskId?: string;  // For Task tool with agentId
+  readonly backgroundShellId?: string; // For Bash tool with shell_id
+  readonly intent?: string;            // Description/intent of the background task
+  readonly command?: string;           // Command for Bash background task
+  readonly elapsedSeconds?: number;    // From tool_progress events
 };
 
 export type ContentPart = TextContentPart | ReasoningContentPart | ToolCallContentPart;
