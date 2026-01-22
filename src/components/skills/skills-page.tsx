@@ -9,6 +9,7 @@ import {
   enableUserUploadedSkillFn,
   disableUserUploadedSkillFn,
   deleteUserSkillFn,
+  deleteGitHubSkillFn,
   getSkillDetailFn,
 } from '~/server/function/skills.server';
 import type { ExtendedSkillInfo, SkillDetail } from '~/claude/skills';
@@ -52,6 +53,7 @@ export const SkillsPageComponent: FC<{
   const enableUserSkillServer = useServerFn(enableUserUploadedSkillFn);
   const disableUserSkillServer = useServerFn(disableUserUploadedSkillFn);
   const deleteUserSkill = useServerFn(deleteUserSkillFn);
+  const deleteGitHubSkill = useServerFn(deleteGitHubSkillFn);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,28 +111,39 @@ export const SkillsPageComponent: FC<{
     }
   };
 
-  // Handle delete user skill
+  // Handle delete skill (user skills or GitHub-installed skills)
   const handleDeleteSkill = async (skillSlug: string) => {
-    // Find the skill to verify it's a user skill
+    // Find the skill
     const skill = skills.find(s => s.slug === skillSlug);
     if (!skill) {
       console.error('Skill not found:', skillSlug);
       return;
     }
 
-    // Only allow deleting user skills
-    if (skill.store !== 'user') {
+    // Check if skill can be deleted
+    const canDelete = skill.store === 'user' || skill.deletable === true;
+    if (!canDelete) {
       console.error('Cannot delete official skill:', skillSlug);
-      alert('只能删除自定义技能，不能删除官方技能');
+      alert('这是内置技能，无法删除');
       return;
     }
 
-    if (!confirm('确定要删除这个技能吗？此操作无法撤销。')) {
+    const confirmMessage = skill.store === 'user'
+      ? '确定要删除这个自定义技能吗？此操作无法撤销。'
+      : '确定要从全局技能库删除这个 GitHub 技能吗？所有用户将无法再看到此技能。';
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
-      await deleteUserSkill({ data: { skillName: skillSlug } });
+      if (skill.store === 'user') {
+        // Delete user-uploaded skill
+        await deleteUserSkill({ data: { skillName: skillSlug } });
+      } else {
+        // Delete GitHub-installed skill
+        await deleteGitHubSkill({ data: { skillName: skillSlug } });
+      }
       // Refresh page to update list
       window.location.reload();
     } catch (error) {

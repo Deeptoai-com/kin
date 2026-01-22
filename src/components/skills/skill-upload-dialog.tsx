@@ -1,5 +1,5 @@
 import { FC, useState, useCallback } from 'react';
-import { Upload, X, FileArchive, FileText, Loader2 } from 'lucide-react';
+import { Upload, X, FileArchive, FileText, Loader2, TriangleAlert, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,14 @@ import {
 } from '~/components/ui/dialog';
 import { Button } from '~/components/ui/button';
 import { useServerFn } from '@tanstack/react-start';
-import { uploadUserSkillFn } from '~/server/function/skills.server';
+import { uploadUserSkillFn, checkSkillCompatibilityFn } from '~/server/function/skills.server';
 import JSZip from 'jszip';
+
+interface CompatibilityWarning {
+  compatible: boolean;
+  formattedWarnings: string[];
+  rawWarnings: string[];
+}
 
 interface SkillUploadDialogProps {
   open: boolean;
@@ -31,11 +37,16 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
   onSuccess,
 }) => {
   const uploadSkill = useServerFn(uploadUserSkillFn);
+  const checkCompatibility = useServerFn(checkSkillCompatibilityFn);
+
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [parsedFiles, setParsedFiles] = useState<Array<{ path: string; content: string }> | null>(null);
+  const [compatibilityWarning, setCompatibilityWarning] = useState<CompatibilityWarning | null>(null);
+  const [hasCheckedCompatibility, setHasCheckedCompatibility] = useState(false);
 
   // Handle drag events
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -71,6 +82,8 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
   const validateAndParseFile = async (selectedFile: File) => {
     setError(null);
     setParsedFiles(null);
+    setCompatibilityWarning(null);
+    setHasCheckedCompatibility(false);
 
     // Check file extension
     const fileName = selectedFile.name.toLowerCase();
@@ -142,6 +155,26 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
       return;
     }
 
+    // Step 1: Check compatibility first
+    if (!hasCheckedCompatibility) {
+      setIsChecking(true);
+      setError(null);
+      try {
+        const checkResult = await checkCompatibility({
+          data: { files: parsedFiles },
+        });
+        setCompatibilityWarning(checkResult);
+        setHasCheckedCompatibility(true);
+        return;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '兼容性检查失败');
+      } finally {
+        setIsChecking(false);
+      }
+      return;
+    }
+
+    // Step 2: Proceed with upload
     setIsUploading(true);
     setError(null);
 
@@ -173,12 +206,21 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
     }
   };
 
-  // Reset state
+  // Reset compatibility check (e.g., after selecting new file)
   const handleReset = () => {
     setFile(null);
     setError(null);
     setDragActive(false);
     setParsedFiles(null);
+    setCompatibilityWarning(null);
+    setHasCheckedCompatibility(false);
+  };
+
+  // Reset to check compatibility again (e.g., after selecting new file)
+  const handleRecheck = () => {
+    setCompatibilityWarning(null);
+    setHasCheckedCompatibility(false);
+    setError(null);
   };
 
   return (
@@ -257,6 +299,28 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
             )}
           </div>
 
+          {/* Compatibility Warnings */}
+          {compatibilityWarning && compatibilityWarning.formattedWarnings.length > 0 && (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              <div className="flex items-start gap-2">
+                <TriangleAlert className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <p className="font-medium text-amber-600 dark:text-amber-400">
+                    兼容性警告
+                  </p>
+                  <div className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                    {compatibilityWarning.formattedWarnings.map((warning, idx) => (
+                      <p key={idx}>{warning}</p>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-600/70 dark:text-amber-400/70">
+                    建议谨慎安装。如仍要上传，请再次点击"上传"按钮继续。
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
@@ -266,24 +330,43 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2">
+            {compatibilityWarning && compatibilityWarning.formattedWarnings.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={handleRecheck}
+                disabled={isUploading}
+              >
+                重新检查
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => {
                 onOpenChange(false);
                 handleReset();
               }}
-              disabled={isUploading}
+              disabled={isUploading || isChecking}
             >
               取消
             </Button>
             <Button
               onClick={handleUpload}
-              disabled={!parsedFiles || parsedFiles.length === 0 || isUploading}
+              disabled={!parsedFiles || parsedFiles.length === 0 || isChecking || isUploading}
             >
-              {isUploading ? (
+              {isChecking ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  检查中...
+                </>
+              ) : isUploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   上传中...
+                </>
+              ) : hasCheckedCompatibility && compatibilityWarning?.formattedWarnings.length > 0 ? (
+                <>
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  仍然上传
                 </>
               ) : (
                 '上传'

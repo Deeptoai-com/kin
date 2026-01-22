@@ -18,8 +18,9 @@ export const SkillCard: FC<SkillCardProps> = ({
   onViewDetails,
   onDeleteSkill,
 }) => {
-  // Determine if this is a user skill (for badge and delete button)
+  // Determine if this is a user skill (for badge) and if it's deletable (for delete button)
   const isUserSkill = skill.store === 'user';
+  const isDeletable = skill.deletable === true; // GitHub-installed skills
 
   return (
     <div className="group relative rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
@@ -36,12 +37,16 @@ export const SkillCard: FC<SkillCardProps> = ({
           </div>
           <p className="mt-1 text-xs text-muted-foreground capitalize">
             {skill.category}
-            {/* Show "自定义" badge for user skills */}
-            {isUserSkill && (
+            {/* Show badges for skill source */}
+            {isUserSkill ? (
               <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
                 自定义
               </span>
-            )}
+            ) : isDeletable ? (
+              <span className="ml-2 text-xs bg-secondary/50 text-secondary-foreground px-2 py-0.5 rounded">
+                GitHub
+              </span>
+            ) : null}
           </p>
         </div>
       </div>
@@ -72,14 +77,14 @@ export const SkillCard: FC<SkillCardProps> = ({
         >
           <Eye className="h-4 w-4" />
         </Button>
-        {/* Delete button: only for user skills */}
-        {isUserSkill && onDeleteSkill && (
+        {/* Delete button: for user skills or GitHub-installed skills (deletable) */}
+        {(isUserSkill || isDeletable) && onDeleteSkill && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDeleteSkill(skill.slug)}
             className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-            title="删除技能"
+            title={isDeletable ? "删除 GitHub 安装的技能" : "删除自定义技能"}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
