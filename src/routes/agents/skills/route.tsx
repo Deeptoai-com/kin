@@ -86,6 +86,7 @@ export const Route = createFileRoute('/agents/skills')({
         <SkillsPageComponent
           skills={allSkills}
           enabledSkills={enabledSkills}
+          isAdmin={isAdmin}
         />
 
         {/* Upload Dialog */}

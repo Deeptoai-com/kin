@@ -16,6 +16,7 @@ import type { ExtendedSkillInfo, SkillDetail } from '~/claude/skills';
 import { SkillsSidebar } from './skills-sidebar';
 import { SkillsGrid } from './skills-grid';
 import { SkillDetailDialog } from './skill-detail-dialog';
+import { SchemaManageDialog } from './schema-manage-dialog';
 
 interface CategoryItem {
   id: string;
@@ -46,7 +47,8 @@ const CATEGORIES: CategoryItem[] = [
 export const SkillsPageComponent: FC<{
   skills: ExtendedSkillInfo[];
   enabledSkills: string[];
-}> = ({ skills, enabledSkills: initialEnabledSkills }) => {
+  isAdmin: boolean;
+}> = ({ skills, enabledSkills: initialEnabledSkills, isAdmin }) => {
   // Server Functions (type-safe RPC)
   const enableOfficialSkill = useServerFn(enableUserSkillFn);
   const disableOfficialSkill = useServerFn(disableUserSkillFn);
@@ -61,6 +63,8 @@ export const SkillsPageComponent: FC<{
   const [selectedSkillSlug, setSelectedSkillSlug] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [enabledSkills, setEnabledSkills] = useState<string[]>(() => initialEnabledSkills);
+  const [schemaManageSlug, setSchemaManageSlug] = useState<string | null>(null);
+  const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
 
   // Query for skill detail (lazy loading on dialog open)
   const { data: skillDetail, isLoading: isLoadingDetail } = useQuery({
@@ -164,6 +168,24 @@ export const SkillsPageComponent: FC<{
     setSelectedSkillSlug(null);
   };
 
+  // Handle open schema manage dialog (admin only)
+  const handleManageSchema = (skillSlug: string) => {
+    setSchemaManageSlug(skillSlug);
+    setIsSchemaDialogOpen(true);
+  };
+
+  // Handle close schema dialog
+  const handleCloseSchemaDialog = () => {
+    setIsSchemaDialogOpen(false);
+    setSchemaManageSlug(null);
+  };
+
+  // Handle schema generation success
+  const handleSchemaSuccess = () => {
+    // Refresh page to show updated status
+    window.location.reload();
+  };
+
   // Filter skills based on search and category (computed on render)
   const filteredSkills = useMemo(() => {
     let result = skills;
@@ -246,9 +268,11 @@ export const SkillsPageComponent: FC<{
             <SkillsGrid
               skills={filteredSkills}
               enabledSkills={enabledSkills}
+              isAdmin={isAdmin}
               onToggleSkill={handleToggleSkill}
               onViewDetails={handleViewDetails}
               onDeleteSkill={handleDeleteSkill}
+              onManageSchema={handleManageSchema}
             />
           )}
         </div>
@@ -260,6 +284,17 @@ export const SkillsPageComponent: FC<{
         isOpen={isDetailOpen}
         onClose={handleCloseDetail}
       />
+
+      {/* Schema Manage Dialog - Admin Only */}
+      {isAdmin && (
+        <SchemaManageDialog
+          skillSlug={schemaManageSlug}
+          skillName={skills.find(s => s.slug === schemaManageSlug)?.name ?? ''}
+          isOpen={isSchemaDialogOpen}
+          onClose={handleCloseSchemaDialog}
+          onSuccess={handleSchemaSuccess}
+        />
+      )}
     </div>
   );
 };
