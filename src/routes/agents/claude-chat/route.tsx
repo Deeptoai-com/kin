@@ -9,48 +9,39 @@ import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
   AttachmentPrimitive,
-  ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
   useAssistantApi,
-  useComposer,
   useLocalRuntime,
   useMessage,
   useThread,
 } from '@assistant-ui/react';
 import * as Avatar from '@radix-ui/react-avatar';
 import {
-  ArrowUpIcon,
   BarChartIcon,
   ClipboardIcon,
-  Cross2Icon,
-  InfoCircledIcon,
   Pencil1Icon,
-  PlusIcon,
   ReloadIcon,
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
-import { ThumbsDown, ThumbsUp, FolderOpen, Plus, Layers, FolderTree, Paperclip } from 'lucide-react';
-import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ChangeEvent, type FC, type FormEvent, type MutableRefObject } from 'react';
+import { ThumbsDown, ThumbsUp, Layers, Paperclip, FolderOpen, Plus } from 'lucide-react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type FC, type MutableRefObject } from 'react';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { SessionList } from '~/components/claude-chat/session-list';
 import { UsageCard } from '~/components/claude-chat/usage-card';
-import { SessionInfoPanel, type SessionMetadata } from '~/components/claude-chat/session-info-panel';
+import { type SessionMetadata } from '~/components/claude-chat/session-info-panel';
 import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
 import { ReasoningPart } from '~/components/agent-chat/reasoning-part';
 import { ToolCallPart } from '~/components/agent-chat/tool-call-part';
-import { InlineStatus, ToolbarStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
-import { McpStatusIndicator } from '~/components/claude-chat/mcp-status-indicator';
-import { KnowledgeBasePanel } from '~/components/claude-chat/knowledge-base-panel';
-import { PermissionBadge, type PermissionInfo } from '~/components/claude-chat/permission-badge';
+import { InlineStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
 import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
-import { ContextBadges } from '~/components/claude-chat/context-badges';
-import { SessionFilesPanel } from '~/components/claude-chat/session-files-panel';
+import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
+import { ChatComposer } from '~/components/claude-chat/chat-composer';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
-import { useBeforeUnloadProtection, useDraftAutoSave, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
+import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
 import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
@@ -437,37 +428,6 @@ function RouteComponent() {
   );
 }
 
-type UploadedWorkspaceFile = {
-  name: string;
-  path: string;
-  mimeType?: string;
-  fileSize?: number;
-  status: 'uploaded' | 'error';
-  error?: string;
-};
-
-async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: string) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('filePath', filePath ?? file.name);
-
-  const response = await fetch(`/api/workspace/${sessionId}/files`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    const message = payload?.error || `Upload failed (${response.status})`;
-    throw new Error(message);
-  }
-
-  return response.json() as Promise<{
-    filePath: string;
-    storedPath: string;
-  }>;
-}
-
 async function hydrateArtifactsFromRegistry(sessionId: string) {
   const registry = await fetchArtifactRegistry(sessionId);
   if (registry.length === 0) {
@@ -751,6 +711,8 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
               showSessionInfo={showSessionInfo}
               setShowSessionInfo={setShowSessionInfo}
               sessionMetadata={sessionMetadata}
+              onSessionFileClick={handleSessionFileClick}
+              onAbort={notifyUserAbort}
             />
           </ThreadPrimitive.Root>
         </AssistantRuntimeProvider>
@@ -890,419 +852,6 @@ const ThreadArtifactCallout: FC = () => {
   );
 };
 
-type ChatComposerProps = {
-  permissionInfo: PermissionInfo;
-  currentSessionId: string | null;
-  showWorkspace: boolean;
-  setShowWorkspace: (value: boolean) => void;
-  showSessionFiles: boolean;
-  setShowSessionFiles: (value: boolean) => void;
-  showSessionInfo: boolean;
-  setShowSessionInfo: (value: boolean) => void;
-  sessionMetadata: SessionMetadata | null;
-};
-
-const ChatComposer: FC<ChatComposerProps> = ({
-  permissionInfo,
-  currentSessionId,
-  showWorkspace,
-  setShowWorkspace,
-  showSessionFiles,
-  setShowSessionFiles,
-  showSessionInfo,
-  setShowSessionInfo,
-  sessionMetadata,
-}) => {
-  const api = useAssistantApi();
-  const composerText = useComposer((state) => state.text);
-  const composerSetText = useComposer((state) => state.setText);
-  const composerIsEditing = useComposer((state) => state.isEditing);
-  const composerIsEmpty = useComposer((state) => state.isEmpty);
-  const isRunning = useThread((state) => state.isRunning);
-  const threadMessages = useThread((state) => state.messages) as Array<{ id: string; role: string }>;
-  const { onSessionFileClick } = useFileHandlers();
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const { persistAttachments } = useMessageAttachments();
-  const pendingAttachmentsRef = useRef<PendingAttachment[] | null>(null);
-  const lastPersistedMessageIdRef = useRef<string | null>(null);
-
-  // Get agent status from store for ToolbarStatus
-  const agentStatus = useChatSessionStore((state) => state.agentStatus);
-  const currentToolName = useChatSessionStore((state) => state.currentToolName);
-  const queueCount = useChatSessionStore((state) => state.queueCount);
-  const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
-
-  // Draft auto-save: persist unsent input to localStorage
-  const { saveDraft, clearDraft } = useDraftAutoSave(
-    useCallback(() => composerText, [composerText]),
-    useCallback((text: string) => composerSetText(text), [composerSetText])
-  );
-
-  // Save draft whenever text changes
-  useEffect(() => {
-    saveDraft(composerText);
-  }, [composerText, saveDraft]);
-
-  // Clear draft when query starts (message sent successfully)
-  const prevIsRunning = useRef(isRunning);
-  useEffect(() => {
-    // Detect transition from not running to running (query started)
-    if (isRunning && !prevIsRunning.current) {
-      clearDraft();
-    }
-    prevIsRunning.current = isRunning;
-  }, [isRunning, clearDraft]);
-
-  useEffect(() => {
-    setUploadedFiles([]);
-    setUploadError(null);
-  }, [currentSessionId]);
-
-  useEffect(() => {
-    pendingAttachmentsRef.current = null;
-    lastPersistedMessageIdRef.current = null;
-  }, [currentSessionId]);
-
-  useEffect(() => {
-    if (!currentSessionId) return;
-    const pending = pendingAttachmentsRef.current;
-    if (!pending || pending.length === 0) return;
-
-    const lastUserMessage = [...threadMessages].reverse().find((msg) => msg.role === 'user');
-    if (!lastUserMessage || lastUserMessage.id === lastPersistedMessageIdRef.current) return;
-
-    persistAttachments(currentSessionId, lastUserMessage.id, pending).then(() => {
-      lastPersistedMessageIdRef.current = lastUserMessage.id;
-      pendingAttachmentsRef.current = null;
-      setUploadedFiles([]);
-      setUploadError(null);
-    });
-  }, [currentSessionId, threadMessages, persistAttachments]);
-
-  // Note: thinkingMode toggle removed - SDK's claude_code preset handles this automatically
-  // Use showThinking in session-info-panel to control UI display of reasoning content
-
-  const handleClearInput = useCallback(async () => {
-    setUploadedFiles([]);
-    setUploadError(null);
-    await api.composer().reset();
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  }, [api]);
-
-  const handleUploadClick = useCallback(() => {
-    if (!currentSessionId) {
-      setUploadError('请先发送一条消息以创建会话，再上传文件。');
-      return;
-    }
-    setUploadError(null);
-    fileInputRef.current?.click();
-  }, [currentSessionId]);
-
-  const handleFilesSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) {
-      return;
-    }
-    if (!currentSessionId) {
-      setUploadError('请先发送一条消息以创建会话，再上传文件。');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadError(null);
-
-    for (const file of Array.from(files)) {
-      try {
-        const result = await uploadWorkspaceFile(currentSessionId, file);
-        setUploadedFiles((prev) => ([
-          ...prev,
-          {
-            name: file.name,
-            path: result.filePath,
-            mimeType: file.type,
-            fileSize: file.size,
-            status: 'uploaded',
-          },
-        ]));
-        await api.composer().addAttachment(file);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '上传失败';
-        setUploadedFiles((prev) => ([
-          ...prev,
-          {
-            name: file.name,
-            path: file.name,
-            mimeType: file.type,
-            fileSize: file.size,
-            status: 'error',
-            error: message,
-          },
-        ]));
-        setUploadError(message);
-      }
-    }
-
-    setIsUploading(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  }, [api, currentSessionId]);
-
-  const canSend = composerIsEditing && !composerIsEmpty && !isRunning;
-
-  const handleSend = useCallback((event?: FormEvent) => {
-    if (event) {
-      event.preventDefault();
-    }
-    if (!canSend || isRunning) return;
-    const pendingAttachments = uploadedFiles
-      .filter((file) => file.status === 'uploaded')
-      .map((file) => ({
-        originalName: file.name,
-        filePath: file.path,
-        mimeType: file.mimeType,
-        fileSize: file.fileSize,
-      }));
-    pendingAttachmentsRef.current = pendingAttachments.length > 0 ? pendingAttachments : null;
-    api.composer().send();
-  }, [api, canSend, isRunning, uploadedFiles]);
-
-  return (
-    <ComposerPrimitive.Root
-      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow"
-      onSubmit={handleSend}
-    >
-      <div className="m-3.5 flex flex-col gap-3.5">
-        {/* Context badges - show active Skills and MCP sources */}
-        {!isRunning && sessionMetadata && (
-          <ContextBadges sessionMetadata={sessionMetadata} maxVisible={5} />
-        )}
-        <div className="relative z-10">
-          <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
-            <ComposerPrimitive.Input
-              placeholder="How can I help you today?"
-              className="block min-h-6 w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-        </div>
-        <div className="flex w-full items-center gap-2">
-          <div className="relative flex min-w-0 flex-1 shrink items-center gap-2">
-            <button
-              type="button"
-              onClick={handleUploadClick}
-              className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="上传文件"
-              disabled={!currentSessionId || isUploading}
-              title={!currentSessionId ? '请先创建会话再上传文件' : '上传文件到工作区'}
-            >
-              <PlusIcon width={16} height={16} />
-            </button>
-            <button
-              type="button"
-              onClick={handleClearInput}
-              className="flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98]"
-              aria-label="清空输入"
-              title="清空输入"
-            >
-              <ReloadIcon width={16} height={16} />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={handleFilesSelected}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Model indicator - only show when not running */}
-            {!isRunning && (
-              <div
-                className="flex h-8 min-w-16 items-center justify-center rounded-md px-2 text-xs text-muted-foreground"
-                title="当前模型"
-              >
-                <span className="font-serif text-[14px] text-foreground">GLM 4.7</span>
-              </div>
-            )}
-
-            {/* Workspace Toggle Button - only show when not running */}
-            {!isRunning && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowWorkspace(!showWorkspace)}
-                  className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="切换工作空间"
-                  title="知识库 / 工作区"
-                  disabled={!currentSessionId}
-                >
-                  <FolderOpen width={16} height={16} />
-                </button>
-
-                {/* Workspace Panel */}
-                {showWorkspace && currentSessionId && (
-                  <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
-                    {/* Header */}
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="font-semibold text-[#1a1a18] text-sm dark:text-[#eee]">
-                        📚 Knowledge Base
-                      </h3>
-                      <button
-                        onClick={() => setShowWorkspace(false)}
-                        className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
-                        aria-label="关闭"
-                      >
-                        <Cross2Icon width={14} height={14} />
-                      </button>
-                    </div>
-
-                    <div className="space-y-3 text-xs">
-                      <KnowledgeBasePanel sessionId={currentSessionId} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Session Files Button - only show when not running */}
-            {!isRunning && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowSessionFiles(!showSessionFiles)}
-                  className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="会话文件"
-                  title="会话文件"
-                  disabled={!currentSessionId}
-                >
-                  <FolderTree width={16} height={16} />
-                </button>
-
-                {/* Session Files Panel */}
-                {showSessionFiles && currentSessionId && (
-                  <div className="absolute bottom-full right-0 z-50 mb-2 w-64 h-80 overflow-hidden rounded-lg border border-[#e5e4df] bg-white shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
-                    <SessionFilesPanel
-                      sessionId={currentSessionId}
-                      onClose={() => setShowSessionFiles(false)}
-                      onFileSelect={onSessionFileClick}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Session Info Button - only show when not running */}
-            {!isRunning && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowSessionInfo(!showSessionInfo)}
-                  className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="查看会话信息"
-                  title="会话信息"
-                  disabled={!sessionMetadata}
-                >
-                  <InfoCircledIcon width={16} height={16} />
-                </button>
-
-                {/* Session Info Panel */}
-                {showSessionInfo && sessionMetadata && (
-                  <SessionInfoPanel
-                    data={sessionMetadata}
-                    onClose={() => setShowSessionInfo(false)}
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Permission Badge - only show when not running */}
-            {!isRunning && (
-              <PermissionBadge permissionInfo={permissionInfo} />
-            )}
-
-            {/* ToolbarStatus - show when running */}
-            {isRunning && (
-              <ToolbarStatus
-                status={displayStatus}
-                toolName={currentToolName}
-                queueCount={queueCount}
-                onAbort={() => {
-                  notifyUserAbort();
-                  api.composer().cancel();
-                }}
-              />
-            )}
-
-            {/* MCP Status Indicator */}
-            <McpStatusIndicator className="ml-2" />
-
-            {/* Send button */}
-            <button
-              type="submit"
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-              title={isRunning ? '正在生成，先停止或等待' : '发送消息'}
-              aria-label="发送消息"
-              disabled={!canSend}
-            >
-              <ArrowUpIcon width={16} height={16} />
-            </button>
-          </div>
-        </div>
-      </div>
-      <ComposerAttachmentsSection
-        uploadedFiles={uploadedFiles}
-        uploadError={uploadError}
-        isUploading={isUploading}
-      />
-    </ComposerPrimitive.Root>
-  );
-};
-
-const ComposerAttachmentsSection: FC<{
-  uploadedFiles: UploadedWorkspaceFile[];
-  uploadError: string | null;
-  isUploading: boolean;
-}> = ({ uploadedFiles, uploadError, isUploading }) => {
-  const hasUploads = uploadedFiles.length > 0;
-  const hasContent = hasUploads || uploadError || isUploading;
-
-  // Only render if there's something to show
-  if (!hasContent) return null;
-
-  return (
-    <div className="relative z-40 overflow-visible rounded-b-2xl">
-      <div className="overflow-x-auto overflow-y-visible rounded-b-2xl border border-t bg-muted px-3.5 py-2">
-        <div className="relative z-50 flex flex-wrap items-center gap-3" data-attachments="true">
-          <ComposerPrimitive.Attachments components={{ Attachment: ClaudeAttachment }} />
-          {hasUploads && (
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {uploadedFiles.map((file) => (
-                <span
-                  key={`${file.path}-${file.status}`}
-                  className={`rounded-md border px-2 py-0.5 ${file.status === 'error' ? 'border-destructive text-destructive' : 'border-transparent bg-card text-foreground'}`}
-                  title={file.error || file.path}
-                >
-                  {file.path}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        {(uploadError || isUploading) && (
-          <div className="mt-2 text-xs">
-            {isUploading && <span className="text-muted-foreground">正在上传文件...</span>}
-            {uploadError && <span className="text-destructive">{uploadError}</span>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 // File handlers are now provided via FileHandlersContext from ClaudeChatSurface
 
@@ -1939,31 +1488,3 @@ const ClaudeMessageAttachment: FC = () => {
   );
 };
 
-const ClaudeAttachment: FC = () => {
-  return (
-    <AttachmentPrimitive.Root className="group/thumbnail relative">
-      <div
-        className="can-focus-within overflow-hidden rounded-lg border shadow-sm hover:shadow-md"
-        style={{
-          width: '120px',
-          height: '120px',
-          minWidth: '120px',
-          minHeight: '120px',
-        }}
-      >
-        <button
-          type="button"
-          className="relative flex h-full w-full items-center justify-center bg-card text-muted-foreground"
-        >
-          <AttachmentPrimitive.unstable_Thumb className="text-xs" />
-        </button>
-      </div>
-      <AttachmentPrimitive.Remove
-        className="-left-2 -top-2 absolute flex h-5 w-5 items-center justify-center rounded-full border bg-card/90 text-muted-foreground opacity-0 backdrop-blur-sm transition-all hover:bg-card hover:text-foreground group-focus-within/thumbnail:opacity-100 group-hover/thumbnail:opacity-100"
-        aria-label="Remove attachment"
-      >
-        <Cross2Icon width={12} height={12} />
-      </AttachmentPrimitive.Remove>
-    </AttachmentPrimitive.Root>
-  );
-};
