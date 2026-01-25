@@ -2,6 +2,23 @@
   "mcpServers": {
     "context7": {
       "url": "https://mcp.context7.com/mcp"
+    },
+    "intlayer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@intlayer/mcp"
+      ]
+    },
+    "docs-filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem"
+      ],
+      "env": {
+        "ALLOWED_DIRECTORIES": "/Users/peng/Dev/Projects/ClaudeAgentChat/docs"
+      }
     }
   }
 }
