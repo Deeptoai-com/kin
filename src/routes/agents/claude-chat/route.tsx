@@ -39,7 +39,8 @@ import { ToolCallPart } from '~/components/agent-chat/tool-call-part';
 import { InlineStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
 import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
 import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
-import { ChatComposer } from '~/components/claude-chat/chat-composer';
+import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
+import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
@@ -658,6 +659,27 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
   // Esc interrupt state
   const [escPressedOnce, setEscPressedOnce] = useState(false);
   const escTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composerRef = useRef<ChatComposerRef | null>(null);
+  const [composerText, setComposerText] = useState('');
+
+  // A2ComposerPanel reset handler
+  const [a2ComposerKey, setA2ComposerKey] = useState(0);
+  const handleA2ComposerReset = useCallback(() => {
+    // Force remount to reset state
+    setA2ComposerKey((k) => k + 1);
+  }, []);
+
+  const handleSetComposerText = useCallback((text: string) => {
+    composerRef.current?.setText(text);
+    composerRef.current?.focus();
+  }, []);
+
+  // Handle message send - reset A2ComposerPanel
+  const handleComposerSend = useCallback(() => {
+    // Reset panel to minimized state after send
+    handleA2ComposerReset();
+  }, [handleA2ComposerReset]);
+
 
   return (
     <FileHandlersContext.Provider value={{ onFileClick: handleFileClick, onSessionFileClick: handleSessionFileClick, onUrlClick: handleUrlClick }}>
@@ -701,7 +723,17 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
               <div aria-hidden="true" className="h-4" />
             </ThreadPrimitive.Viewport>
 
-            <ChatComposer
+            <div className="mb-3">
+              <A2ComposerPanel
+                key={a2ComposerKey}
+                composerText={composerText}
+                onSetComposerText={handleSetComposerText}
+                onReset={handleA2ComposerReset}
+              />
+            </div>
+
+            <ChatComposerWithRef
+              composerRef={composerRef}
               permissionInfo={permissionInfo}
               currentSessionId={currentSessionId}
               showWorkspace={showWorkspace}
@@ -713,6 +745,8 @@ function ClaudeChatSurface({ permissionInfo }: { permissionInfo: PermissionInfo 
               sessionMetadata={sessionMetadata}
               onSessionFileClick={handleSessionFileClick}
               onAbort={notifyUserAbort}
+              onTextChange={setComposerText}
+              onSend={handleComposerSend}
             />
           </ThreadPrimitive.Root>
         </AssistantRuntimeProvider>
@@ -1487,4 +1521,3 @@ const ClaudeMessageAttachment: FC = () => {
     </AttachmentPrimitive.Root>
   );
 };
-
