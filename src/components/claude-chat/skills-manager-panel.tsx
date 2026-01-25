@@ -1,6 +1,7 @@
 import { FC, useEffect, useState } from 'react'
 import { Cross2Icon } from '@radix-ui/react-icons'
 import { useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useServerFn } from '@tanstack/react-start'
 import {
   listSkillsStore,
@@ -54,7 +55,13 @@ export const SkillsManagerPanel: FC<SkillsManagerPanelProps> = ({ userId, onClos
       }
     } catch (error) {
       console.error('Failed to toggle skill:', error)
-      // TODO: Show error toast to user
+      const message = error instanceof Error ? error.message : '启用技能失败'
+      if (message.startsWith('SKILL_NOT_SYNCED:')) {
+        const slug = message.split(':')[1]?.trim() ?? skillSlug
+        toast.error(`技能未同步到运行时目录：${slug}。当前启用不会生效。`)
+      } else {
+        toast.error(message)
+      }
     }
   }
 

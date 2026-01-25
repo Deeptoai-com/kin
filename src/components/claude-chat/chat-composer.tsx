@@ -87,6 +87,10 @@ export interface ChatComposerProps {
   onSessionFileClick?: (path: string) => void;
   /** Handler for aborting the current query */
   onAbort?: () => void;
+  /** Notify parent of composer text changes */
+  onTextChange?: (text: string) => void;
+  /** Called when user sends a message */
+  onSend?: () => void;
 }
 
 /**
@@ -145,6 +149,8 @@ export function ChatComposer({
   setShowSessionInfo,
   onSessionFileClick,
   onAbort,
+  onTextChange,
+  onSend,
 }: ChatComposerProps) {
   const api = useAssistantApi();
   const composerText = useAssistantState(({ composer }) => composer.text);
@@ -177,6 +183,10 @@ export function ChatComposer({
   useEffect(() => {
     saveDraft(composerText);
   }, [composerText, saveDraft]);
+
+  useEffect(() => {
+    onTextChange?.(composerText);
+  }, [composerText, onTextChange]);
 
   // Clear draft when query starts (message sent successfully)
   const prevIsRunning = useRef(isRunning);
@@ -297,8 +307,10 @@ export function ChatComposer({
         fileSize: file.fileSize,
       }));
     pendingAttachmentsRef.current = pendingAttachments.length > 0 ? pendingAttachments : null;
+    // Notify parent before sending (for auto-collapse A2ComposerPanel)
+    onSend?.();
     api.composer().send();
-  }, [api, canSend, isRunning, uploadedFiles]);
+  }, [api, canSend, isRunning, uploadedFiles, onSend]);
 
   return (
     <ComposerPrimitive.Root
@@ -580,7 +592,7 @@ interface ChatComposerWithRefProps extends ChatComposerProps {
   composerRef: MutableRefObject<ChatComposerRef | null>;
 }
 
-export function ChatComposerWithRef({ composerRef, ...props }: ChatComposerWithRefProps) {
+export function ChatComposerWithRef({ composerRef, onSend, ...props }: ChatComposerWithRefProps) {
   const api = useAssistantApi();
 
   // Expose control methods to parent via ref
@@ -605,5 +617,5 @@ export function ChatComposerWithRef({ composerRef, ...props }: ChatComposerWithR
     },
   }), [api]);
 
-  return <ChatComposer {...props} />;
+  return <ChatComposer {...props} onSend={onSend} />;
 }
