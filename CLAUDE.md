@@ -42,11 +42,11 @@
 
 ## 开发目录规则
 
-**正确的开发目录**: `/Users/peng/Dev/Projects/ClaudeAgentChat/constructa-starter/`
+**正确的开发目录**: 项目根目录（仓库 clone 后的目录）
 
 **禁止在以下目录开发**:
-- `/Users/peng/Dev/Projects/ClaudeAgentChat/` (父目录，仅用于文档和参考)
-- `/Users/peng/Dev/Projects/ClaudeAgentChat/claude-agent-chat/` (原始参考代码)
+- 父目录（仅用于文档和参考）
+- 其他项目目录（原始参考代码等）
 - 任何 `constructa-phase*` 目录（临时开发目录，已清理）
 
 ## 项目结构
@@ -145,8 +145,7 @@ const result = await query({
 
 Claude Agent SDK 文档相对较新，**无法通过 MCP 工具获取**，需要：
 1. 通过 Web 搜索获取最新文档
-2. 参考 `references/useful_frameworks/claude-agent-kit/` 目录下的参考实现
-3. 查看 SDK 源码和 TypeScript 类型定义
+2. 查看 SDK 源码和 TypeScript 类型定义
 
 ### 环境变量
 
@@ -643,8 +642,8 @@ function ParentIndex() {
 
 #### 1. 对比原始脚手架
 ```bash
-# 在参考目录验证原始行为
-cd /Users/peng/Dev/Projects/ClaudeAgentChat/references/useful_frameworks/starter
+# 在参考目录验证原始行为（若本地有原始脚手架）
+cd <path-to-original-starter>
 pnpm run build
 # 检查输出结构
 ls -la .output/
@@ -681,8 +680,8 @@ TanStack Start + Nitro 已提供的能力，**不要重新实现**：
 
 **正确路径**：
 ```
-1. 对比原始脚手架
-   cd /Users/peng/Dev/Projects/ClaudeAgentChat/references/useful_frameworks/starter
+1. 对比原始脚手架（若本地有原始脚手架）
+   cd <path-to-original-starter>
    pnpm run build
    ls -la .output/  # 发现存在
 

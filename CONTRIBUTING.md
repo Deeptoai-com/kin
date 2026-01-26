@@ -1,117 +1,289 @@
-# Contributing to Deepwiki-to-Markdown MCP Server
+# Contributing to OxyGenie
 
-Thank you for considering contributing to the Deepwiki-to-Markdown MCP Server! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to OxyGenie! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
-Please be respectful and considerate of others when contributing to this project. We aim to foster an inclusive and welcoming community.
+Please be respectful and considerate of others when contributing to this project. We aim to foster an inclusive and welcoming community. Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
-## How to Contribute
+## Getting Started
 
-### Reporting Bugs
+### Prerequisites
 
-If you find a bug, please open an issue with the following information:
+- **Node.js** >= 22.12 (see `package.json` `engines.node`)
+- **pnpm** (recommended package manager)
+- **Docker** (optional, for local database and services)
+- **PostgreSQL** (or use Docker Compose)
 
-- A clear, descriptive title
-- Steps to reproduce the issue
-- Expected behavior
-- Actual behavior
-- Any relevant logs or error messages
-- Environment details (OS, Node.js version, etc.)
+### Development Setup
 
-### Suggesting Enhancements
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   cd OxyGenie
+   ```
 
-For feature requests or enhancements:
+2. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
 
-- Use a clear, descriptive title
-- Provide a detailed description of the proposed functionality
-- Explain why this enhancement would be useful
-- Consider including mockups or examples if applicable
+3. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   ```
+   
+   **Minimum required environment variables** (for basic development):
+   ```bash
+   # Database
+   DATABASE_URL="postgresql://user:password@localhost:5432/oxygenie"
+   
+   # Claude Agent SDK (required for main chat feature)
+   ANTHROPIC_API_KEY="sk-ant-..."
+   
+   # Better Auth (required for authentication)
+   BETTER_AUTH_SECRET="your-secret-key-here"
+   BETTER_AUTH_URL="http://localhost:3000"
+   ```
+   
+   See `.env.example` for all available configuration options.
 
-### Pull Requests
+4. **Set up the database:**
+   ```bash
+   # Run migrations
+   pnpm db:migrate
+   ```
 
-1. Fork the repository
-2. Create a new branch from `main` (`git checkout -b feature/your-feature-name`)
-3. Make your changes
-4. Run tests to ensure they pass (`npm test`)
-5. Run linting to ensure code quality (`npm run lint`)
-6. Update documentation as needed
-7. Commit your changes with a clear message
-8. Push to your fork
-9. Submit a pull request to the `main` branch
+5. **Start the development server:**
+   ```bash
+   # Terminal 1: Start the main app
+   pnpm dev
+   
+   # Terminal 2: Start the WebSocket server (required for Claude Chat)
+   node ws-server.mjs
+   ```
+   
+   The app will be available at `http://localhost:3000`.
 
-### Pull Request Guidelines
+## Development Commands
 
-- Follow the coding style of the project
-- Include tests for new features
-- Update the README.md with details of changes if applicable
-- Update the CHANGELOG.md following the existing format
-- The pull request should work on the latest Node.js LTS version
-
-## Development Workflow
-
-1. Clone the repository: `git clone https://github.com/regenrek/mcp-deepwiki.git`
-2. Install dependencies: `npm install`
-3. Run in development mode: `npm run dev-stdio` (or `dev-http`/`dev-sse`)
-4. Make your changes
-5. Run tests: `npm test`
-6. Run linting: `npm run lint`
+| Command | Description | Required |
+|---------|-------------|----------|
+| `pnpm dev` | Start the development server (Vite + TanStack Start) | ✅ Yes |
+| `node ws-server.mjs` | Start WebSocket server for Claude Agent Chat | ✅ Yes (for Claude Chat) |
+| `pnpm worker` | Start background worker (for jobs, search sync) | ⚠️ Optional |
+| `pnpm db:migrate` | Run database migrations | ✅ Yes (first time) |
+| `pnpm db:studio` | Open Drizzle Studio (database GUI) | ⚠️ Optional |
+| `pnpm build` | Build for production | ⚠️ Optional |
+| `pnpm test` | Run unit tests | ⚠️ Optional |
+| `pnpm test:e2e` | Run end-to-end tests | ⚠️ Optional |
+| `pnpm lint` | Run linter | ⚠️ Optional |
+| `pnpm typecheck` | Run TypeScript type checking | ⚠️ Optional |
+| `pnpm validate-routes` | Validate routes against TanStack Start best practices | ⚠️ Optional |
 
 ## Project Structure
 
 ```
-src/
-├── functions/         # Core functionality
-│   ├── __tests__/     # Unit tests
-│   ├── crawler.ts     # Website crawling logic
-│   ├── converter.ts   # HTML to Markdown conversion
-│   ├── types.ts       # TypeScript interfaces & schemas
-│   └── utils.ts       # Utility functions
-├── tools/             # MCP tool definitions
-│   ├── deepwiki.ts    # Deepwiki fetch tool
-│   └── mytool.ts      # Example tool
-├── index.ts           # Main entry point
-├── server.ts          # MCP server setup
-└── types.ts           # Core type definitions
+oxygenie/
+├── src/
+│   ├── claude/              # Claude Agent SDK integration
+│   │   ├── adapters/        # WebSocket adapter for Assistant UI
+│   │   ├── skills/          # Skills management and loading
+│   │   └── mcp/             # MCP (Model Context Protocol) integration
+│   ├── mastra/              # Mastra AI SDK integration
+│   │   ├── agents/          # Mastra agents
+│   │   └── workflows/       # Mastra workflows
+│   ├── components/          # React UI components
+│   │   ├── claude-chat/     # Claude Chat UI components
+│   │   ├── ai-elements/     # Vercel AI SDK UI components
+│   │   └── ui/              # shadcn/ui components
+│   ├── routes/              # TanStack Router routes
+│   │   ├── agents/          # Agent-related pages
+│   │   └── api/             # REST API endpoints (whitelisted only)
+│   ├── server/              # Server-side logic
+│   │   ├── function/        # Server Functions (preferred)
+│   │   ├── auth.ts          # Better Auth configuration
+│   │   └── s3/              # File storage (S3/MinIO)
+│   ├── db/                  # Database layer
+│   │   ├── schema/          # Drizzle ORM schemas
+│   │   └── repositories/   # Data access layer
+│   └── lib/                 # Shared utilities and stores
+├── ws-server.mjs            # WebSocket server entry point
+├── ws-query-worker.mjs      # Worker process for Claude Agent SDK
+└── docker-compose.yml       # Docker Compose configuration
 ```
+
+### Key Components
+
+- **`ws-server.mjs`**: Main WebSocket server that handles authentication, session management, and process lifecycle for Claude Agent Chat.
+- **`ws-query-worker.mjs`**: Worker process that calls Claude Agent SDK's `query()` function in isolated subprocesses.
+- **`src/claude/`**: Core Claude Agent SDK integration (WebSocket adapter, skills, MCP).
+- **`src/mastra/`**: Mastra AI SDK integration for alternative chat interface.
+- **`src/routes/`**: TanStack Router file-based routes (pages and API endpoints).
+- **`src/server/function/`**: Server Functions (preferred over REST API).
+
+## Code Style and Conventions
+
+### Server Functions First
+
+**✅ Preferred**: Use Server Functions for all new server-side operations.
+
+```typescript
+// src/server/function/example.server.ts
+import { createServerFn } from '@tanstack/react-start';
+import { z } from 'zod';
+
+export const getExampleData = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    return await fetchData();
+  });
+
+export const updateExample = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ id: z.string(), data: z.object({ ... }) }))
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    return await updateData(user.id, data);
+  });
+```
+
+**❌ Avoid**: Creating new REST API routes.
+
+```typescript
+// ❌ Don't do this
+export const Route = createFileRoute('/api/example')({
+  server: {
+    handlers: {
+      GET: async () => Response.json(data),
+    },
+  },
+});
+```
+
+### REST API Whitelist
+
+Only the following REST API endpoints are allowed (for third-party integrations and system endpoints):
+
+- `/api/agent-sessions` - WebSocket server dependency
+- `/api/auth` - Better Auth integration
+- `/api/auth/polar` - Polar webhook
+- `/api/billing`, `/api/subscription`, `/api/invoices` - Billing (Polar)
+- `/api/health` - Health check
+- `/api/jobs` - Background jobs
+- `/api/search` - Search service
+- `/api/workflow` - Workflow API
+
+See `scripts/validate-routes.mjs` for the complete whitelist.
+
+### Before Submitting a PR
+
+Run these checks to ensure code quality:
+
+```bash
+# 1. Type checking
+pnpm typecheck
+
+# 2. Linting
+pnpm lint
+
+# 3. Route validation (TanStack Start best practices)
+pnpm validate-routes
+
+# 4. Tests
+pnpm test
+```
+
+All checks should pass before submitting a PR.
 
 ## Testing
 
-Please ensure all tests pass before submitting a pull request:
+### Unit Tests
 
 ```bash
-npm test
+pnpm test
 ```
 
-Write new tests for new features or bug fixes. We use Vitest for testing.
-
-## Linting
-
-We use ESLint to maintain code quality:
+### End-to-End Tests
 
 ```bash
-npm run lint
+pnpm test:e2e
 ```
 
-## Documentation
+**Note**: E2E tests require:
+- Local development server running (`pnpm dev`)
+- Database configured (`.env` with `DATABASE_URL`)
+- WebSocket server running (optional, depending on test)
 
-Please update the documentation when necessary:
+## Submitting Changes
 
-- README.md for user-facing changes
-- CHANGELOG.md for release notes
-- Code comments for complex logic
+### Branch Naming
 
-## Release Process
+Use descriptive branch names:
+- `feature/add-new-skill` - New features
+- `fix/resolve-websocket-issue` - Bug fixes
+- `refactor/simplify-auth` - Code refactoring
+- `docs/update-readme` - Documentation updates
 
-1. Update version in package.json
-2. Update CHANGELOG.md
-3. Commit changes
-4. Create a tag for the release
-5. Push to GitHub
-6. Publish to npm
+### Pull Request Process
+
+1. **Create a feature branch** from `main`:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes** and ensure all checks pass:
+   ```bash
+   pnpm typecheck
+   pnpm lint
+   pnpm validate-routes
+   pnpm test
+   ```
+
+3. **Commit your changes** with clear, descriptive messages:
+   ```bash
+   git commit -m "feat: add new skill management feature"
+   ```
+
+4. **Push to your fork** and create a pull request:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+5. **PR Requirements**:
+   - Clear, descriptive title
+   - Description explaining what the PR does and why
+   - All CI checks must pass
+   - Link to related issues (if any)
+
+### PR Template
+
+```markdown
+## Summary
+Brief description of changes
+
+## Changes
+- Change 1
+- Change 2
+
+## Testing
+How you tested these changes
+
+## Screenshots (if applicable)
+```
+
+## Key Areas
+
+- **Claude Agent Integration**: `src/claude/` - WebSocket adapter, skills, MCP
+- **Mastra Integration**: `src/mastra/` - Agents and workflows
+- **Server Functions**: `src/server/function/` - Preferred server-side API
+- **Database**: `src/db/` - Schemas and repositories
+- **UI Components**: `src/components/` - React components
 
 ## Questions?
 
-If you have any questions, please open an issue or reach out to the maintainers.
+- Open an issue for bugs or feature requests
+- Check [README.md](README.md) for general information
+- See [SECURITY.md](SECURITY.md) for security-related questions
 
-Thank you for contributing to the Deepwiki-to-Markdown MCP Server!
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.

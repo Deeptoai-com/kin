@@ -1,70 +1,172 @@
-# Constructa Starter
+# OxyGenie
 
-<div align="center">
-  <h2>Claude Agent Chat Application</h2>
-  <p>Powered by Claude Agent SDK + Skills Store + Zhipu AI GLM-4.7</p>
-</div>
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
-> 🚀 **Claude Desktop-Style Agent Chat** - A full-featured AI agent interface built with Claude Agent SDK and Zhipu AI GLM-4.7, featuring Skills Store, Artifacts, Knowledge Base, and Session Management via WebSocket.
+OxyGenie is an **extensible, enterprise-ready AI agent platform for small and medium teams**. It replaces generic GPT products (ChatGPT, 豆包, DeepSeek) with advanced capabilities like Skills Store, MCP integration, Artifacts generation, and Python code execution - all deployable on-premises with support for cost-effective models like GLM 4.7.
 
-## ✨ Features
+Built with Claude Agent SDK and TanStack Start, OxyGenie provides a web-first alternative to desktop AI tools, featuring one-click Skills and MCP integration, real-time streaming, session persistence, and a beautiful, fluid UI.
 
-### Core Features
-- 🤖 **Claude Agent Chat** - Full Claude Desktop replica with Claude Agent SDK integration
-- 🛠️ **Skills Store** - Enable/disable custom skills to extend agent capabilities
-- 📦 **Artifacts System** - Support for HTML, Markdown, React, and SVG artifacts
-- 📚 **Knowledge Base** - Upload and manage documents for context-aware conversations
-- 💾 **Session Management** - Create, resume, and switch between multiple chat sessions
-- 📊 **Usage Statistics** - Track token usage and cost information
-- 🌐 **WebSocket** - Real-time bidirectional communication for complex state management
-- 🔧 **Tool Visualization** - See tool calls, arguments, and results in real-time
+**Key Differentiators**:
+- 🎯 **Enterprise-Ready**: On-premises deployment, data security, team collaboration
+- 🔌 **One-Click Skills & MCP**: Extend capabilities instantly, no complex setup
+- 🎨 **Artifacts System**: Generate web pages, documents, and visualizations
+- 🐍 **Python Code Execution**: Full sandboxed code execution environment
+- 💰 **Cost-Effective Models**: Support for GLM 4.7 and other affordable models
+- 🚀 **Production-Ready**: Built with modern full-stack principles, SSR, type-safe routing
 
-### Additional Features
-- 💬 **Mastra AI Chat** - Simple chat interface using Mastra Agent Framework + SSE
-- 🔐 **Authentication** - Better Auth with email/password, OAuth (GitHub, Google)
-- 💾 **Database** - PostgreSQL with Docker, Drizzle ORM, migrations
-- 🎨 **Beautiful UI** - Built with shadcn/ui components, Tailwind CSS v4, dark mode
+## Features
 
-## 🚀 Quick Start
+### Core Capabilities
 
-### Prerequisites
-- Download & Install **[Node.js](https://nodejs.org/en)** 22.12+
-- Download & Install **[Docker](https://www.docker.com/)** Desktop
-- **pnpm** (recommended package manager)
-- **Zhipu AI API Key** - Get from [https://open.bigmodel.cn/](https://open.bigmodel.cn/)
+- **🎯 Skills Store & MCP Integration**: One-click enable/disable of custom skills and MCP servers to extend agent capabilities dynamically - inspired by craft-agents desktop
+- **🎨 Artifacts System**: Generate and preview web pages, documents (HTML, Markdown, React, SVG) with live editing capabilities
+- **🐍 Python Code Execution**: Full sandboxed Python execution environment for code generation, data analysis, and automation
+- **🏢 On-Premises Deployment**: Deploy in your own infrastructure for data security and compliance
+- **💰 Multi-Model Support**: Support for cost-effective models like GLM 4.7, in addition to Claude and other providers
 
-### Installation
+### Enterprise Features
+
+- **👥 Team Collaboration**: Multi-user support with session management, knowledge base sharing
+- **📚 Knowledge Base**: Upload and manage documents for context-aware conversations
+- **💾 Session Management**: Create, resume, and switch between multiple chat sessions with full persistence
+- **🔐 Authentication**: Better Auth with email/password, OAuth (GitHub, Google)
+- **📊 Usage Tracking**: Monitor token usage and costs per user/session
+
+### Technical Features
+
+- **⚡ Real-time Streaming**: WebSocket-based bidirectional communication for complex state management
+- **🔧 Tool Visualization**: See tool calls, arguments, and results in real-time
+- **🎨 Beautiful UI**: Built with shadcn/ui components, Tailwind CSS v4, dark mode
+- **🔄 Mastra AI Chat**: Alternative chat interface using Mastra Agent Framework + SSE
+
+## Installation
+
+### Build from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/foreveryh/constructa-starter.git
-cd constructa-starter
-
-# Install dependencies
+git clone https://github.com/Deeptoai-com/OxyGenie.git
+cd OxyGenie
 pnpm install
-
-# Create env file
-cp .env.example .env
-
-# Add your Zhipu AI API key to .env
-# For Claude Chat (main feature):
-# ANTHROPIC_API_KEY="your-zhipuai-api-key"
-# ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-# ANTHROPIC_MODEL="glm-4.7"
-#
-# For Mastra AI Chat (secondary feature):
-# ZHIPUAI_API_KEY="your-zhipuai-api-key"
-
-# Start development server
-pnpm dev
-
-# Start WebSocket server (required for Claude Chat in all environments)
-node ws-server.mjs
 ```
 
-Open `http://localhost:3000/agents/claude-chat` for the main Claude Agent Chat interface.
+## Quick Start
 
-**Note**: Claude Chat uses **Zhipu AI GLM-4.7** via their OpenAI-compatible API. The Claude Agent SDK connects to Zhipu AI by setting `ANTHROPIC_BASE_URL` and `ANTHROPIC_MODEL`.
+1. **Clone and install:**
+   ```bash
+   git clone https://github.com/Deeptoai-com/OxyGenie.git
+   cd OxyGenie
+   pnpm install
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   ```
+   
+   **Minimum required environment variables:**
+   ```bash
+   # Database
+   DATABASE_URL="postgresql://user:password@localhost:5432/oxygenie"
+   
+   # Claude Agent SDK (required for main chat feature)
+   ANTHROPIC_API_KEY="sk-ant-..."
+   
+   # Better Auth (required for authentication)
+   BETTER_AUTH_SECRET="your-secret-key-here"
+   BETTER_AUTH_URL="http://localhost:3000"
+   ```
+   
+   See [.env.example](.env.example) for all available configuration options.
+
+3. **Set up the database:**
+   ```bash
+   pnpm db:migrate
+   ```
+
+4. **Start the application:**
+   ```bash
+   # Terminal 1: Start the main app
+   pnpm dev
+   
+   # Terminal 2: Start the WebSocket server (required for Claude Chat)
+   node ws-server.mjs
+   ```
+
+5. **Open the app:**
+   Navigate to `http://localhost:3000/agents/claude-chat` for the main Claude Agent Chat interface.
+
+## Why OxyGenie?
+
+### vs. Generic GPT Products (ChatGPT, 豆包, DeepSeek)
+
+| Feature | Generic GPT Products | OxyGenie |
+|---------|---------------------|----------|
+| **Deployment** | Cloud-only, SaaS | ✅ On-premises, self-hosted |
+| **Data Security** | Data sent to third-party | ✅ Your data stays in your infrastructure |
+| **Skills & MCP** | Limited or none | ✅ One-click Skills Store & MCP integration |
+| **Artifacts** | Basic text output | ✅ Rich Artifacts: web pages, documents, visualizations |
+| **Code Execution** | Limited or none | ✅ Full Python sandbox execution |
+| **Model Choice** | Fixed models | ✅ Support for GLM 4.7 and other cost-effective models |
+| **Team Features** | Limited collaboration | ✅ Multi-user, knowledge base, session sharing |
+| **Customization** | Fixed features | ✅ Extensible with Skills and MCP |
+
+### vs. Desktop AI Tools (Claude Desktop, craft-agents)
+
+| Feature | Desktop Tools | OxyGenie |
+|---------|--------------|----------|
+| **Platform** | Desktop app | ✅ Web app, cross-platform |
+| **Deployment** | Local installation | ✅ Server deployment, team access |
+| **Access** | Single device | ✅ Any device with browser |
+| **Skills & MCP** | ✅ Supported | ✅ Supported (one-click) |
+| **Artifacts** | ✅ Supported | ✅ Supported (web-optimized) |
+
+## Web App Features
+
+### Skills Store & MCP Integration
+
+- **One-Click Enable**: Enable/disable skills and MCP servers instantly through the UI
+- **Dynamic Loading**: Skills are dynamically loaded into agent sessions without restart
+- **Skill Discovery**: Browse and discover available skills from the store
+- **MCP Support**: Full Model Context Protocol integration for extended capabilities
+- **User-Level Control**: Enable/disable skills per user or team
+
+### Artifacts System
+
+- **Web Page Generation**: Generate complete HTML pages with live preview
+- **Document Creation**: Create Markdown, HTML, and formatted documents
+- **Visualizations**: Generate React components, SVG graphics, and charts
+- **Live Preview**: Real-time preview and editing of generated artifacts
+- **Artifact Panel**: Dedicated panel for viewing and managing all artifacts
+
+### Python Code Execution
+
+- **Sandboxed Environment**: Secure, isolated Python execution per session
+- **Full Python Support**: Access to standard library and common packages
+- **Real-time Output**: See code execution results in real-time
+- **Error Handling**: Clear error messages and debugging support
+- **Session Persistence**: Code execution state persists across sessions
+
+### Session Management
+
+- **Session List**: View and manage all your chat sessions
+- **Session Resume**: Continue previous conversations seamlessly
+- **Session Switching**: Switch between multiple active sessions
+- **Session Naming**: AI-generated titles or manual naming
+- **Session Persistence**: Full conversation history saved to database
+
+### Knowledge Base
+
+- **Document Upload**: Upload documents (PDF, Markdown, text files) to your knowledge base
+- **Context-Aware**: Documents are automatically included in conversation context
+- **Document Management**: Organize and manage your knowledge base documents
+- **Team Sharing**: Share knowledge base documents across team members
+
+### Real-time Communication
+
+- **WebSocket Streaming**: Real-time bidirectional communication for complex state management
+- **Tool Visualization**: See tool calls, arguments, and results in real-time
+- **Usage Statistics**: Track token usage and cost information per user/session
 
 ## Architecture
 
@@ -77,7 +179,7 @@ This project features **two independent chat systems**:
 - Claude Agent SDK integration for full agent capabilities
 - Worker process isolation for user sandboxing
 
-**Frontend** (`src/routes/agents/claude-chat/route.tsx`):
+**Frontend**:
 - Assistant UI components with Claude-style design
 - Skills Store for dynamic capability extension
 - Artifacts Panel (HTML, Markdown, React, SVG)
@@ -94,12 +196,12 @@ This project features **two independent chat systems**:
 
 ### 2. Mastra AI Chat (Secondary) `/agents/ai-chat`
 
-**Backend** (`src/routes/api/chat.tsx`):
+**Backend**:
 - Uses `handleChatStream` from `@mastra/ai-sdk`
 - Returns SSE stream via `createUIMessageStreamResponse`
 - Agent: `assistant-agent` with file reading capability
 
-**Frontend** (`src/components/ai-sdk-chat.tsx`):
+**Frontend**:
 - Uses `useChat` hook from `@ai-sdk/react`
 - AI Elements: PromptInput, Actions, Suggestions, Sources, Reasoning
 
@@ -110,59 +212,119 @@ This project features **two independent chat systems**:
 
 ## Tech Stack
 
-### Claude Chat (Main)
-- **[Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk)** - Agent orchestration
-- **[Zhipu AI GLM-4.7](https://open.bigmodel.cn/)** - LLM model via OpenAI-compatible API
-- **[Assistant UI](https://assistant-ui.com)** - React components for AI chat
-- **[WebSocket](https://github.com/websockets/ws)** - Real-time communication
-- **[TanStack Start](https://tanstack.com/start)** - Full-stack React framework
-- **[Zustand](https://zustand-demo.pmnd.rs)** - State management
+| Layer | Technology |
+|-------|------------|
+| **Runtime** | Node.js 22.12+ |
+| **AI (Primary)** | [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) - Claude models |
+| **AI (Alternative)** | [Mastra](https://mastra.ai) - GLM 4.7, GLM 4.6, and other cost-effective models |
+| **Framework** | [TanStack Start](https://tanstack.com/start) - Full-stack React framework |
+| **Routing** | [TanStack Router](https://tanstack.com/router) - Type-safe file-based routing |
+| **UI** | [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS v4 |
+| **Real-time** | [WebSocket](https://github.com/websockets/ws) |
+| **Database** | PostgreSQL + [Drizzle ORM](https://orm.drizzle.team/) |
+| **Auth** | [Better Auth](https://better-auth.com/) |
+| **State** | [Zustand](https://zustand-demo.pmnd.rs) |
+| **Build** | Vite + Nitro |
 
-### Mastra Chat (Secondary)
-- **[Mastra](https://mastra.ai)** - AI Agent Framework (v1.0.0-beta.19)
-- **[Zhipu AI GLM-4.7](https://open.bigmodel.cn/)** - LLM model via Mastra's model gateway
-- **[Vercel AI SDK](https://sdk.vercel.ai)** - `@ai-sdk/react` with `useChat` hook
+## Configuration
 
-### Shared
-- **[TanStack Router](https://tanstack.com/router)** - Type-safe file-based routing
-- **[shadcn/ui](https://ui.shadcn.com/)** - Beautiful component library
-- **[Tailwind CSS v4](https://tailwindcss.com/)** - Modern utility-first CSS
-- **[TypeScript](https://typescriptlang.org/)** - Full type safety
-- **[Better Auth](https://better-auth.com/)** - Authentication
-- **[Drizzle ORM](https://orm.drizzle.team/)** - PostgreSQL ORM
+### Environment Variables
 
-## 📁 Project Structure
-
-```
-constructa-starter/
-├── src/
-│   ├── components/
-│   │   ├── claude-chat/       # Claude Chat UI components
-│   │   │   ├── artifacts-panel.tsx
-│   │   │   ├── session-list.tsx
-│   │   │   ├── skills-manager-panel.tsx
-│   │   │   ├── knowledge-base-panel.tsx
-│   │   │   └── ...
-│   │   ├── ai-elements/       # Vercel AI SDK UI components (Mastra)
-│   │   └── ui/                # shadcn/ui components
-│   ├── lib/
-│   │   ├── claude-agent-ws-adapter.ts  # WebSocket adapter
-│   │   ├── skills-store.ts            # Skills state management
-│   │   └── stores/                    # Various Zustand stores
-│   ├── routes/
-│   │   ├── agents/
-│   │   │   ├── claude-chat/  # Claude Chat route (main)
-│   │   │   └── ai-chat/      # Mastra AI Chat route (secondary)
-│   │   └── api/
-│   │       ├── chat.tsx       # Mastra chat API (SSE)
-│   │       └── skills/       # Skills API endpoints
-│   └── db/                    # Database schema
-├── ws-server.mjs              # WebSocket server (Claude Chat)
-├── ws-query-worker.mjs        # Worker process
-└── CLAUDE.md                  # Development notes
+**Required:**
+```bash
+DATABASE_URL="postgresql://user:password@localhost:5432/oxygenie"
+ANTHROPIC_API_KEY="sk-ant-..."
+BETTER_AUTH_SECRET="your-secret-key-here"
+BETTER_AUTH_URL="http://localhost:3000"
 ```
 
-## 🔌 Routes
+**Optional:**
+```bash
+# WebSocket URL (for production with reverse proxy)
+VITE_WS_URL="wss://your-domain.com/ws/agent"
+
+# Multi-Model Support (Cost-Effective Models)
+# GLM 4.7 and other models via Mastra
+ZHIPU_API_KEY="your-zhipu-api-key"  # For GLM 4.7, GLM 4.6, GLM 4.5
+
+# OAuth Providers
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+```
+
+See [.env.example](.env.example) for complete configuration options.
+
+### Multi-Model Support
+
+OxyGenie supports multiple AI models for cost optimization:
+
+**Claude Models** (via Claude Agent SDK):
+- Claude 3.5 Sonnet
+- Claude 3 Opus
+- Claude 3 Haiku
+
+**GLM Models** (via Mastra, cost-effective):
+- GLM 4.7 (205K context)
+- GLM 4.6 (205K context)
+- GLM 4.5 (131K context)
+- GLM 4 Air/Flash (lightweight versions)
+
+**Configuration**:
+- Claude models: Set `ANTHROPIC_API_KEY` in `.env`
+- GLM models: Set `ZHIPU_API_KEY` in `.env`, use `zhipuai/glm-4.7` in Mastra agents
+
+### On-Premises Deployment
+
+OxyGenie is designed for on-premises deployment, giving you full control over your data:
+
+**Benefits**:
+- ✅ **Data Security**: All data stays in your infrastructure
+- ✅ **Compliance**: Meet enterprise security and privacy requirements
+- ✅ **Cost Control**: Use cost-effective models like GLM 4.7
+- ✅ **Customization**: Full control over Skills, MCP servers, and configurations
+
+**Deployment Options**:
+- Docker Compose (recommended for small teams)
+- Kubernetes (for larger deployments)
+- Traditional server deployment
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed deployment instructions.
+
+## Development
+
+```bash
+# Start development server
+pnpm dev
+
+# Start WebSocket server (required for Claude Chat)
+node ws-server.mjs
+
+# Run database migrations
+pnpm db:migrate
+
+# Quality checks (run before committing)
+pnpm typecheck    # TypeScript type checking
+pnpm lint         # Code linting
+pnpm validate-routes  # TanStack Start route validation
+pnpm test         # Run tests
+```
+
+For detailed development guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## CI/CD
+
+This project uses GitHub Actions for continuous integration. The CI pipeline runs on every push and pull request, checking:
+
+- ✅ **Type checking** (`pnpm typecheck`)
+- ✅ **Linting** (`pnpm lint`)
+- ✅ **Route validation** (`pnpm validate-routes`)
+- ✅ **Tests** (`pnpm test`)
+
+See [.github/workflows/ci.yml](.github/workflows/ci.yml) for the complete CI configuration.
+
+## Routes
 
 | Route | Description | Type |
 |-------|-------------|------|
@@ -172,78 +334,34 @@ constructa-starter/
 | `/api/chat` | Mastra chat API endpoint | POST, SSE |
 | `/api/skills/*` | Skills API endpoints | REST |
 
-## 🔧 Configuration
-
-### Environment Variables
-
-```bash
-# Database
-DATABASE_URL="postgresql://username:password@localhost:5432/constructa"
-
-# Claude Agent Chat (Main Feature) - Uses Zhipu AI GLM-4.7
-# The Claude Agent SDK connects to Zhipu AI via their OpenAI-compatible API
-ANTHROPIC_API_KEY="your-zhipuai-api-key"
-ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-ANTHROPIC_MODEL="glm-4.7"
-
-# Mastra AI Chat (Secondary Feature) - Also uses Zhipu AI GLM-4.7
-ZHIPUAI_API_KEY="your-zhipuai-api-key"
-
-# Better Auth
-BETTER_AUTH_SECRET="your-secret-key-here"
-BETTER_AUTH_URL="http://localhost:3000"
-
-# OAuth Providers (optional)
-GITHUB_CLIENT_ID="your-github-client-id"
-GITHUB_CLIENT_SECRET="your-github-client-secret"
-GOOGLE_CLIENT_ID="your-google-client-id"
-GOOGLE_CLIENT_SECRET="your-google-client-secret"
-```
-
-### Model Configuration
-
-Both chat systems use **Zhipu AI GLM-4.7**:
-
-**Claude Chat**:
-- Uses Claude Agent SDK with `ANTHROPIC_BASE_URL` pointing to Zhipu AI
-- OpenAI-compatible API format: `https://open.bigmodel.cn/api/paas/v4`
-- Model: `glm-4.7`
-
-**Mastra AI Chat**:
-- Uses Mastra Agent Framework with built-in Zhipu AI integration
-- Model gateway automatically routes to `zhipuai/glm-4.7`
-
-## Skills Store
-
-The Skills Store allows users to extend the Claude Agent's capabilities by enabling/disabling custom skills:
-
-- **Available Skills**: Browse and discover available skills
-- **User Skills**: Enable/disable skills per user
-- **Dynamic Loading**: Skills are dynamically loaded into the agent
-- **API Endpoints**:
-  - `GET /api/skills/store` - List available skills
-  - `GET /api/skills/user/:id` - Get user's enabled skills
-  - `POST /api/skills/user/:id/enable/:skill` - Enable a skill
-  - `DELETE /api/skills/user/:id/disable/:skill` - Disable a skill
-
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+### Third-Party Licenses
+
+This project uses the [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), which is subject to [Anthropic's Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms).
+
+Other key dependencies:
+- **Better Auth** - Authentication library
+- **Mastra** - AI Agent Framework
+- **TanStack Start** - Full-stack React framework
+- **Drizzle ORM** - PostgreSQL ORM
+
+See [NOTICE](NOTICE) for complete third-party license information.
+
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Security
+
+To report security vulnerabilities, please see [SECURITY.md](SECURITY.md).
 
 ## Links
 
-- **GitHub**: https://github.com/foreveryh/constructa-starter
-- **Claude Agent SDK**: https://github.com/anthropics/claude-agent-kit
+- **GitHub**: https://github.com/Deeptoai-com/OxyGenie
+- **Claude Agent SDK**: https://github.com/anthropics/claude-agent-sdk
 - **Mastra Docs**: https://mastra.ai
 - **Assistant UI**: https://assistant-ui.com
-
-## References
-
-This project is based on:
-- [constructa-starter](https://github.com/instructa/constructa-starter) by instructa.ai
-- [claude-agent-kit](https://github.com/anthropics/claude-agent-kit) - Reference implementation
-- [ui-dojo](https://github.com/mastrajs/ui-dojo) - Mastra + Vercel AI SDK reference
+- **TanStack Start**: https://tanstack.com/start
