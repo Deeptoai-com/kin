@@ -38,7 +38,7 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
   const handleLogout = async () => {
     try {
       await authClient.signOut();
-      navigate({ to: '/auth/sign-in' });
+      navigate({ to: '/auth/$pathname', params: { pathname: 'sign-in' } });
     } catch (error) {
       console.error('Logout failed:', error);
     }

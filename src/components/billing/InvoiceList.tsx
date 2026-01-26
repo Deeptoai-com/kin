@@ -42,7 +42,7 @@ export function InvoiceList({ items, onGenerate }: InvoiceListProps) {
                 View Online
               </a>
             ) : item.orderId && onGenerate ? (
-              <button className="underline" onClick={() => onGenerate(item.orderId)}>
+              <button className="underline" onClick={() => onGenerate(item.orderId!)}>
                 Generate
               </button>
             ) : null}

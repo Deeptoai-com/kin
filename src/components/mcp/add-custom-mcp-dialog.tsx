@@ -407,11 +407,12 @@ export const AddCustomMcpDialog: FC<{
     const credentials = (data.credentials || []) as CredentialField[];
     const env = (mcp.env || {}) as Record<string, string>;
 
-    setForm({
+    setForm((prev) => ({
       slug: String(data.slug || data.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       name: String(data.name || ''),
       description: String(data.description || ''),
       category: String(data.category || 'general'),
+      scope: prev.scope ?? 'personal',
       type: (mcp.type as 'stdio' | 'http' | 'sse') || 'stdio',
       command: String(mcp.command || ''),
       args: Array.isArray(mcp.args) ? mcp.args.join(' ') : '',
@@ -425,17 +426,18 @@ export const AddCustomMcpDialog: FC<{
         required: c.required ?? true,
         sensitive: c.sensitive ?? true,
       })),
-    });
+    }));
   };
 
   // Load example into form
   const loadFormExample = () => {
     const ex = EXAMPLES.form.config;
-    setForm({
+    setForm((prev) => ({
       slug: ex.slug,
       name: ex.name,
       description: ex.description,
       category: ex.category,
+      scope: prev.scope ?? 'personal',
       type: ex.type as 'stdio',
       command: ex.command,
       args: ex.args,
@@ -443,7 +445,7 @@ export const AddCustomMcpDialog: FC<{
       envVars: ex.envVars,
       headers: [],
       credentials: ex.credentials,
-    });
+    }));
     setShowExample(false);
   };
 

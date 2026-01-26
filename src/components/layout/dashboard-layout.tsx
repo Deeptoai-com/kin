@@ -9,16 +9,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-4 font-bold text-lg">Dashboard</div>
         <nav className="space-y-1 px-2">
           <Link
-            to="/dashboard"
-            className={({ isActive }: { isActive: boolean }) =>
-              cn(
-                'block rounded-md px-3 py-2 text-sm transition-colors',
-                isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              )
-            }
-            end
+            to={"/dashboard" as any}
+            className={cn('block rounded-md px-3 py-2 text-sm transition-colors')}
+            activeProps={{ className: 'bg-primary text-primary-foreground' }}
+            inactiveProps={{ className: 'text-muted-foreground hover:text-foreground' }}
+            activeOptions={{ exact: true }}
           >
             Assistant
           </Link>

@@ -17,9 +17,10 @@ import { ChevronDown, Minimize2 } from 'lucide-react';
 import type { A2Category, A2Template, A2ComposerStore } from '~/lib/a2composer/types';
 import { resolveSkillMatch } from '~/lib/a2composer/skill-match';
 import { applyTemplate, extractVariables } from '~/lib/a2composer/template-utils';
-import { listAllSkillsFn, getSkillSchemaFn } from '~/server/function/skills.server';
+import { listAllSkillsFn, getSkillSchemaFn, ensureUserSkillEnabledFn } from '~/server/function/skills.server';
 import { getA2ComposerStoreFn } from '~/server/function/a2composer.server';
 import type { ExtendedSkillInfo, SkillInputField } from '~/claude/skills';
+import { useChatSessionStore } from '~/lib/chat-session-store';
 
 interface A2ComposerPanelProps {
   composerText: string;
@@ -37,7 +38,9 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset }: A2
 
   const listAllSkills = useServerFn(listAllSkillsFn);
   const getSkillSchema = useServerFn(getSkillSchemaFn);
+  const ensureSkillEnabled = useServerFn(ensureUserSkillEnabledFn);
   const getStore = useServerFn(getA2ComposerStoreFn);
+  const addTemporarySkill = useChatSessionStore((state) => state.addTemporarySkill);
 
   const { data: store } = useQuery<A2ComposerStore>({
     queryKey: ['a2composer-store'],
@@ -174,11 +177,21 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset }: A2
   };
 
   // Handle template selection
-  const handleSelectTemplate = (template: A2Template) => {
+  const handleSelectTemplate = async (template: A2Template) => {
     setSelectedTemplateId(template.id);
     setVariableValues({});
     const appliedText = applyTemplate(template.template, {});
     onSetComposerText(appliedText);
+    if (template.skillId) {
+      try {
+        const result = await ensureSkillEnabled({ data: { skillName: template.skillId } });
+        if (result?.enabledNow) {
+          addTemporarySkill(result.skillName ?? template.skillId);
+        }
+      } catch (error) {
+        console.error('[A2Composer] Failed to auto-enable skill:', error);
+      }
+    }
   };
 
   // Handle variable change

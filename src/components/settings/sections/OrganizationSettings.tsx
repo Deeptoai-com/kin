@@ -72,7 +72,14 @@ export function OrganizationSettings() {
       setLoading(true);
       const result = await authClient.organization.list();
       if (result.data) {
-        setOrganizations(result.data);
+        setOrganizations(
+          result.data.map((org) => ({
+            id: org.id,
+            name: org.name,
+            slug: org.slug ?? null,
+            role: (org as { role?: string }).role ?? 'member',
+          })),
+        );
       }
     } catch (err) {
       console.error('Failed to load organizations:', err);
@@ -90,7 +97,7 @@ export function OrganizationSettings() {
     try {
       const result = await authClient.organization.create({
         name: values.name,
-        slug: values.slug || undefined,
+        slug: values.slug,
       });
 
       if (result.error) {

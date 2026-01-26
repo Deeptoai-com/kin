@@ -41,7 +41,7 @@ export function SessionList({
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery<SessionListResponse>({
-    queryKey: ['agent-sessions'],
+    queryKey: ['agent-sessions', 'list'],
     queryFn: async () => {
       const res = await fetch('/api/agent-sessions?limit=50');
       if (!res.ok) {
@@ -182,5 +182,7 @@ export function SessionList({
  */
 export function useInvalidateSessions() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
+  return () => queryClient.invalidateQueries({
+    predicate: (query) => query.queryKey[0] === 'agent-sessions',
+  });
 }

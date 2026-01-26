@@ -23,15 +23,17 @@ interface FileNode {
   children?: FileNode[]
 }
 
+type BuildNode = Omit<FileNode, 'children'> & { children?: Record<string, BuildNode> }
+
 /**
  * Build a tree structure from flat file paths
  */
 function buildFileTree(filePaths: string[]): FileNode[] {
-  const root: Record<string, FileNode> = {}
+  const root: Record<string, BuildNode> = {}
 
   for (const filePath of filePaths) {
     const parts = filePath.split('/')
-    let current = root
+    let current: Record<string, BuildNode> = root
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]
@@ -48,27 +50,26 @@ function buildFileTree(filePaths: string[]): FileNode[] {
       }
 
       if (!isLast && current[part].children) {
-        current = current[part].children as Record<string, FileNode>
+        current = current[part].children
       }
     }
   }
 
   // Convert record to array and sort
-  const convertToArray = (nodes: Record<string, FileNode>): FileNode[] => {
+  const convertToArray = (nodes: Record<string, BuildNode>): FileNode[] => {
     const result = Object.values(nodes)
-    result.sort((a, b) => {
+      .sort((a, b) => {
       // Directories first, then files
       if (a.isDirectory && !b.isDirectory) return -1
       if (!a.isDirectory && b.isDirectory) return 1
       return a.name.localeCompare(b.name)
-    })
-
-    // Recursively convert children
-    for (const node of result) {
-      if (node.children) {
-        node.children = convertToArray(node.children as Record<string, FileNode>)
-      }
-    }
+      })
+      .map((node) => ({
+        name: node.name,
+        path: node.path,
+        isDirectory: node.isDirectory,
+        children: node.children ? convertToArray(node.children) : undefined,
+      }))
 
     return result
   }
