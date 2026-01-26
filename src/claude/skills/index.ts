@@ -16,6 +16,10 @@ export {
   getUserClaudeHome,
   getSkillsStore,
   getUserEnabledSkills,
+  readGlobalSkills,
+  writeGlobalSkills,
+  setGlobalSkillEnabled,
+  ensureGlobalSkillsForUser,
   enableSkill,
   disableSkill,
   // User skill management

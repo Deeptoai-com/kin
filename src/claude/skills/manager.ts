@@ -158,6 +158,99 @@ export async function disableSkill(userId: string, skillName: string): Promise<v
 }
 
 // ============================================================================
+// Global Skills (Admin-managed, enabled for all users)
+// ============================================================================
+
+const GLOBAL_SKILLS_FILENAME = '.global-skills.json'
+
+type GlobalSkillsFile = {
+  version: number
+  skills: string[]
+  updatedAt?: string
+}
+
+function normalizeSkillList(skills: string[]): string[] {
+  const normalized = skills.map((s) => normalizeSkillName(s))
+  return Array.from(new Set(normalized)).filter(Boolean)
+}
+
+export async function readGlobalSkills(): Promise<string[]> {
+  const storeDir = getSkillsStoreDir()
+  const filePath = path.join(storeDir, GLOBAL_SKILLS_FILENAME)
+
+  try {
+    const raw = await fsp.readFile(filePath, 'utf-8')
+    const parsed = JSON.parse(raw) as GlobalSkillsFile
+    if (!parsed || !Array.isArray(parsed.skills)) {
+      return []
+    }
+    return normalizeSkillList(parsed.skills)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return []
+    }
+    console.warn('[Skills] Failed to read global skills file:', error)
+    return []
+  }
+}
+
+export async function writeGlobalSkills(skills: string[]): Promise<void> {
+  const storeDir = getSkillsStoreDir()
+  const filePath = path.join(storeDir, GLOBAL_SKILLS_FILENAME)
+  const normalized = normalizeSkillList(skills)
+  const payload: GlobalSkillsFile = {
+    version: 1,
+    skills: normalized,
+    updatedAt: new Date().toISOString(),
+  }
+
+  await fsp.mkdir(storeDir, { recursive: true })
+  await fsp.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+}
+
+export async function setGlobalSkillEnabled(skillName: string, enabled: boolean): Promise<string[]> {
+  const normalized = normalizeSkillName(skillName)
+  const current = await readGlobalSkills()
+  const set = new Set(current)
+  if (enabled) {
+    set.add(normalized)
+  } else {
+    set.delete(normalized)
+  }
+  const next = Array.from(set)
+  await writeGlobalSkills(next)
+  return next
+}
+
+export async function ensureGlobalSkillsForUser(userId: string): Promise<string[]> {
+  const globalSkills = await readGlobalSkills()
+  if (globalSkills.length === 0) {
+    return []
+  }
+
+  const enabled = await getUserEnabledSkills(userId)
+  const enabledSet = new Set(enabled)
+
+  for (const skillName of globalSkills) {
+    if (enabledSet.has(skillName)) {
+      continue
+    }
+    try {
+      await enableSkill(userId, skillName)
+      enabledSet.add(skillName)
+    } catch (error) {
+      console.warn('[Skills] Failed to sync global skill for user:', {
+        skillName,
+        userId,
+        error,
+      })
+    }
+  }
+
+  return globalSkills
+}
+
+// ============================================================================
 // User-Uploaded Skills Management (Private Skills Library)
 // ============================================================================
 

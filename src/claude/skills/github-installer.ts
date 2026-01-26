@@ -167,7 +167,7 @@ async function writeSkillSource(skillDir: string, source: SkillSourceInfo): Prom
   await fs.rename(tempPath, sourcePath)
 }
 
-async function findSkillDirectory(rootDir: string, skillName: string): Promise<string> {
+export async function findSkillDirectory(rootDir: string, skillName: string): Promise<string> {
   const normalizedName = normalizeSkillName(skillName)
 
   const directMatch = await findDirectMatch(rootDir, normalizedName)

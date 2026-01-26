@@ -12,6 +12,9 @@ import {
   getSkillsStore,
   normalizeSkillName,
   getUserEnabledSkills,
+  readGlobalSkills,
+  setGlobalSkillEnabled,
+  ensureGlobalSkillsForUser,
   enableSkill,
   disableSkill,
   getSkillDetail,
@@ -133,6 +136,19 @@ const disableSkillSchema = z.object({
   skillName: z.string().min(1),
 });
 
+const setGlobalSkillSchema = z.object({
+  skillName: z.string().min(1),
+  enabled: z.boolean(),
+});
+
+const ensureSkillEnabledSchema = z.object({
+  skillName: z.string().min(1),
+});
+
+const disableSkillsSchema = z.object({
+  skillNames: z.array(z.string().min(1)).min(1),
+});
+
 const getSkillDetailSchema = z.object({
   skillSlug: z.string().min(1),
 });
@@ -151,6 +167,33 @@ export type DisableSkillInput = z.infer<typeof disableSkillSchema>;
 export const listSkillsStore = createServerFn({ method: 'GET' }).handler(async () => {
   return await getSkillsStore();
 });
+
+/**
+ * Get global skills (admin only)
+ */
+export const getGlobalSkillsFn = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireUser();
+  const skills = await readGlobalSkills();
+  return { skills };
+});
+
+/**
+ * Enable/disable a global skill (admin only)
+ */
+export const setGlobalSkillEnabledFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return setGlobalSkillSchema.parse(data);
+  })
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const skills = await setGlobalSkillEnabled(data.skillName, data.enabled);
+    return { skills };
+  });
 
 /**
  * Get schema for a skill (if exists)
@@ -212,12 +255,64 @@ export const getSkillSchemaFn = createServerFn({ method: 'POST' })
  */
 export const listUserSkills = createServerFn({ method: 'GET' }).handler(async () => {
   const user = await requireUser();
+  const globalSkills = await ensureGlobalSkillsForUser(user.id);
   const enabledSlugs = await getUserEnabledSkills(user.id);
   const allSkills = await getSkillsStore();
+  const effective = new Set([...enabledSlugs, ...globalSkills]);
 
   // Return full skill info for enabled skills only
-  return allSkills.filter((skill) => enabledSlugs.includes(skill.slug));
+  return allSkills.filter((skill) => effective.has(skill.slug));
 });
+
+/**
+ * Ensure a skill is enabled for the current user (template/session helper)
+ */
+export const ensureUserSkillEnabledFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return ensureSkillEnabledSchema.parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const normalized = normalizeSkillName(data.skillName);
+    const globalSkills = await readGlobalSkills();
+    if (globalSkills.includes(normalized)) {
+      await ensureGlobalSkillsForUser(user.id);
+      return { skillName: normalized, enabledNow: false };
+    }
+    const enabled = await getUserEnabledSkills(user.id);
+    if (enabled.includes(normalized)) {
+      return { skillName: normalized, enabledNow: false };
+    }
+    await enableSkill(user.id, normalized);
+    return { skillName: normalized, enabledNow: true };
+  });
+
+/**
+ * Disable multiple skills for current user (used for session cleanup)
+ */
+export const disableUserSkillsFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+
+    return disableSkillsSchema.parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const disabled: string[] = [];
+    for (const name of data.skillNames) {
+      await disableSkill(user.id, name);
+      disabled.push(normalizeSkillName(name));
+    }
+    return { disabled };
+  });
 
 /**
  * Enable a skill for the user
@@ -255,6 +350,11 @@ export const disableUserSkill = createServerFn({ method: 'POST' })
   })
   .handler(async ({ data }) => {
     const user = await requireUser();
+    const globalSkills = await readGlobalSkills();
+    const normalized = normalizeSkillName(data.skillName);
+    if (globalSkills.includes(normalized)) {
+      throw new Error('SKILL_GLOBAL_ENABLED');
+    }
     await disableSkill(user.id, data.skillName);
     return { success: true };
   });
@@ -538,7 +638,9 @@ export const listAllSkillsFn = createServerFn({ method: 'GET' })
 
     // Get official skills (from src/skills-store)
     const allOfficialSkills = await getSkillsStore();
+    const globalSkills = await ensureGlobalSkillsForUser(user.id);
     const enabledOfficialSlugs = await getUserEnabledSkills(user.id);
+    const effectiveEnabled = new Set([...enabledOfficialSlugs, ...globalSkills]);
 
     // Check which skills are GitHub-installed (deletable by admin)
     // Use static imports (not dynamic) to avoid runtime issues
@@ -548,7 +650,8 @@ export const listAllSkillsFn = createServerFn({ method: 'GET' })
         return {
           ...skill,
           store: 'official' as const,
-          enabled: enabledOfficialSlugs.includes(skill.slug),
+          enabled: effectiveEnabled.has(skill.slug),
+          globalEnabled: globalSkills.includes(skill.slug),
           deletable: extendedInfo.isGitHubInstalled,
         };
       })
