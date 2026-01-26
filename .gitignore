@@ -109,3 +109,7 @@ infra/ansible/group_vars/constructa/vars.yml
 *.tfstate.backup
 .ansible
 hosts.local.ini
+
+# Test output files with local paths (for open source preparation)
+test-advanced-features.log
+test-advanced-features-results.json
