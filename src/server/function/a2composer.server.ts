@@ -19,6 +19,10 @@ const getA2StoreDir = () => {
   if (skillsDir) {
     return path.join(skillsDir, '.a2composer');
   }
+  // In containers we usually can't write to /app, so prefer /data when cwd is /app.
+  if (process.cwd().startsWith('/app')) {
+    return path.join('/data', 'a2composer');
+  }
   return path.join(process.cwd(), 'data', 'a2composer');
 };
 
