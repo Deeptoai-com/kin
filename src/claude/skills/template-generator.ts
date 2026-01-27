@@ -262,6 +262,9 @@ export async function generateTemplateFromSchema(
         },
         pathToClaudeCodeExecutable: claudeCodeExecutable,
         abortController,
+        // Production fix: Set permission mode to bypass (no tools used anyway)
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
       },
     });
 

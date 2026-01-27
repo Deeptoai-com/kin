@@ -1040,6 +1040,9 @@ export async function generateSchemaFromContent(
         pathToClaudeCodeExecutable: claudeCodeExecutable,
         // P2 fix: Pass abort controller for timeout
         abortController,
+        // Production fix: Set permission mode to bypass (no tools used anyway)
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
       },
     });
 
