@@ -1,5 +1,12 @@
+# OxyGenie Docker Compose
+# Quick Start: see README "Quick Start → Option A: Docker Compose".
+# Usage: docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
+# .env loads last and overrides .env.docker. Use this to keep existing DB (ex0/constructa).
+# App: http://localhost:5050 | WebSocket: ws://localhost:3051/ws/agent
+
 # x-app-image for remote registry (CI/CD deployment)
-x-app-image: &app_image '${APP_IMAGE:-claude-agent-chat}:${APP_TAG:-latest}'
+# Override via APP_IMAGE/APP_TAG in .env. Default: oxygenie:latest.
+x-app-image: &app_image '${APP_IMAGE:-oxygenie}:${APP_TAG:-latest}'
 
 # x-app-build for local development
 x-app-build: &app_build
@@ -24,10 +31,30 @@ services:
     ports:
       - '5432:5432' # expose for host-side tooling (drizzle migrations, etc.)
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d postgres']
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # Ensure POSTGRES_DB exists (handles old volumes created with ex0/constructa).
+  # Uses maintenance DB "postgres"; creates POSTGRES_DB if missing; idempotent.
+  create-db:
+    image: pgvector/pgvector:0.8.0-pg17
+    container_name: ex0-create-db
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: postgres
+      PGUSER: ${POSTGRES_USER:?}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "psql -tc \"SELECT 1 FROM pg_database WHERE datname = '$${POSTGRES_DB}'\" | grep -q 1 || psql -c \"CREATE DATABASE \\\"$${POSTGRES_DB}\\\"\""
+    restart: 'no'
 
   minio:
     image: quay.io/minio/minio:latest
@@ -93,13 +120,16 @@ services:
       retries: 40
 
   # migrations run before app starts, re-created for each new image tag
+  # pull_policy: never — use locally built image (app build tags oxygenie:latest); do not pull from registry
+  # DATABASE_URL is constructed from POSTGRES_* with host "db" so .env (localhost) cannot override it.
   migrate:
     image: *app_image
+    pull_policy: never
     depends_on:
-      db:
-        condition: service_healthy
+      create-db:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: ${DATABASE_URL:?} # e.g. postgres://user:pass@db:5432/ex0
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       NODE_ENV: production
     entrypoint: ['sh', '-c', 'pnpm run db:migrate']
     restart: 'no'
@@ -126,8 +156,10 @@ services:
     restart: unless-stopped
 
   # Background workers for BullMQ (cron + indexing, etc.)
+  # pull_policy: never — use locally built image; do not pull from registry
   worker:
     image: *app_image
+    pull_policy: never
     container_name: ex0-worker
     depends_on:
       db:
@@ -142,7 +174,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       # S3-compatible config to reach MinIO inside the stack
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
@@ -151,7 +183,7 @@ services:
       S3_BUCKET: ${MINIO_BUCKET:?}
       # Job queue + schedules (Docker default: redis container)
       REDIS_URL: redis://redis:6379
-      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-constructa}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       DAILY_CREDIT_REFILL_CRON: ${DAILY_CREDIT_REFILL_CRON:-0 3 * * *}
       JOB_DAILY_CREDIT_REFILL_URL: ${JOB_DAILY_CREDIT_REFILL_URL:-http://app:3000/api/jobs/daily-credit-refill}
       JOBS_SECRET: ${JOBS_SECRET:-}
@@ -185,7 +217,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       # S3-compatible config to reach MinIO inside the stack
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1

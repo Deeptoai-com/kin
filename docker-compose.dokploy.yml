@@ -185,7 +185,7 @@ services:
       S3_BUCKET: ${MINIO_BUCKET:?}
       # Job queue + schedules
       REDIS_URL: redis://redis:6379
-      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-constructa}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
       DAILY_CREDIT_REFILL_CRON: ${DAILY_CREDIT_REFILL_CRON:-0 3 * * *}
       JOB_DAILY_CREDIT_REFILL_URL: ${JOB_DAILY_CREDIT_REFILL_URL:-http://app:5000/api/jobs/daily-credit-refill}
       JOBS_SECRET: ${JOBS_SECRET:-}

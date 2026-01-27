@@ -136,7 +136,7 @@ jobs:
               MEILI_HOST="http://host.docker.internal:7700" \
               MEILI_API_KEY="${MEILI_API_KEY:-$MEILI_MASTER_KEY}" \
               REDIS_URL="redis://host.docker.internal:6379" \
-              BULLMQ_PREFIX="${BULLMQ_PREFIX:-constructa}" \
+              BULLMQ_PREFIX="${BULLMQ_PREFIX:-oxygenie}" \
               DAILY_CREDIT_REFILL_CRON="${DAILY_CREDIT_REFILL_CRON:-0 3 * * *}" \
               JOB_DAILY_CREDIT_REFILL_URL="${JOB_DAILY_CREDIT_REFILL_URL:-http://app:3000/api/jobs/daily-credit-refill}" \
               JOBS_SECRET="${JOBS_SECRET:-}" \
