@@ -23,11 +23,26 @@ export class ResendProvider implements EmailProvider {
     subject: string;
     html: string;
   }) {
-    await this.resend.emails.send({
+    const result = await this.resend.emails.send({
       from,
       to,
       subject,
       html,
+    });
+
+    if (result.error) {
+      console.error('[ResendProvider] Failed to send email:', {
+        to,
+        subject,
+        error: result.error,
+      });
+      throw new Error(`Resend failed: ${result.error.message}`);
+    }
+
+    console.log('[ResendProvider] Email sent successfully:', {
+      to,
+      subject,
+      messageId: result.data?.id,
     });
   }
 }

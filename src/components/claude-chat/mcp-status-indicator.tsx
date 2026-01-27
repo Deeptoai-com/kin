@@ -7,6 +7,7 @@
 
 import type { FC } from 'react';
 import { useChatSessionStore } from '~/lib/chat-session-store';
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 
 export interface McpServerStatus {
   name: string;
@@ -20,55 +21,31 @@ interface McpStatusIndicatorProps {
 }
 
 export const McpStatusIndicator: FC<McpStatusIndicatorProps> = ({ className = '' }) => {
-  const sessionMetadata = useChatSessionStore((state) => state.sessionMetadata);
-  const mcpServers = sessionMetadata?.mcp_servers;
+  const currentToolName = useChatSessionStore((state) => state.currentToolName);
+  const agentStatus = useChatSessionStore((state) => state.agentStatus);
 
-  if (!mcpServers || mcpServers.length === 0) {
+  if (!currentToolName || !currentToolName.startsWith('mcp__') || agentStatus !== 'toolUse') {
     return null;
   }
 
-  // Count by status
-  let connected = 0;
-  let failed = 0;
-  let pending = 0;
-
-  const servers: McpServerStatus[] = mcpServers.map((s) => {
-    if (typeof s === 'string') {
-      return { name: s, status: 'pending' as const };
-    }
-    return s;
-  });
-
-  for (const s of servers) {
-    if (s.status === 'connected') connected++;
-    else if (s.status === 'failed') failed++;
-    else if (s.status === 'pending') pending++;
-  }
-
-  // Overall status
-  const overallStatus = failed > 0 ? 'failed' :
-    pending > 0 && connected === 0 ? 'pending' :
-    'connected';
-
-  const statusColor = overallStatus === 'connected' ? 'text-green-500' :
-    overallStatus === 'failed' ? 'text-red-500' :
-    'text-yellow-500';
-
-  const statusIcon = overallStatus === 'connected' ? '●' :
-    overallStatus === 'failed' ? '●' :
-    '○';
+  const parts = currentToolName.split('__');
+  const server = parts[1] || 'mcp';
+  const tool = parts.length > 2 ? parts.slice(2).join('__') : '';
+  const tooltipLabel = tool ? `${server} · ${tool}` : server;
 
   return (
-    <div className={`flex items-center gap-2 text-xs ${className}`}>
-      <span className={`${statusColor} ${overallStatus === 'pending' ? 'animate-pulse' : ''}`} title="MCP Server Status">
-        {statusIcon} MCP
-      </span>
-      <span className="text-[#6b6a68] dark:text-[#9a9893]">
-        {connected > 0 && <span className="text-green-500">{connected}</span>}
-        {failed > 0 && <span className="text-red-500"> +{failed}</span>}
-        {pending > 0 && <span className="text-yellow-500"> +{pending}</span>}
-      </span>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className={`flex items-center gap-1.5 text-xs ${className}`}>
+          <span className="text-emerald-500 animate-pulse" aria-hidden="true">●</span>
+          <span className="text-[#6b6a68] dark:text-[#9a9893]">MCP</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        <div className="text-muted-foreground">MCP 正在工作</div>
+        <div className="font-mono text-[11px]">{tooltipLabel}</div>
+      </TooltipContent>
+    </Tooltip>
   );
 };
 

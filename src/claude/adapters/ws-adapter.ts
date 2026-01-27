@@ -148,6 +148,163 @@ type ToolCallPart = {
 
 type ContentPart = TextPart | ReasoningPart | ToolCallPart;
 
+type AttachmentDescriptor = {
+  originalName?: string;
+  filePath: string;
+  mimeType?: string;
+  fileSize?: number;
+};
+
+type AttachmentHint = {
+  label: string;
+  action: string;
+};
+
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'svg']);
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'avi', 'webm', 'mkv']);
+const DOC_EXTS = new Set(['doc', 'docx', 'rtf', 'odt', 'wps']);
+const SLIDE_EXTS = new Set(['ppt', 'pptx', 'key']);
+const SHEET_EXTS = new Set(['xls', 'xlsx', 'csv', 'tsv']);
+const TEXT_EXTS = new Set(['md', 'txt', 'log', 'yaml', 'yml', 'json', 'toml', 'ini']);
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, '/');
+}
+
+function getAttachmentName(attachment: AttachmentDescriptor): string {
+  if (attachment.originalName) return attachment.originalName;
+  const normalized = normalizePath(attachment.filePath);
+  return normalized.split('/').pop() || normalized;
+}
+
+function getFileExtension(name: string): string {
+  const match = name.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : '';
+}
+
+function formatFileSize(bytes?: number): string | null {
+  if (!bytes || Number.isNaN(bytes)) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(2)} GB`;
+}
+
+function classifyAttachment(attachment: AttachmentDescriptor): AttachmentHint {
+  const name = getAttachmentName(attachment);
+  const ext = getFileExtension(name);
+  const mime = attachment.mimeType?.toLowerCase() ?? '';
+
+  const isImage = mime.startsWith('image/') || IMAGE_EXTS.has(ext);
+  if (isImage) {
+    return {
+      label: '图片',
+      action: '使用可用的视觉/图像理解或 OCR 工具',
+    };
+  }
+
+  const isVideo = mime.startsWith('video/') || VIDEO_EXTS.has(ext);
+  if (isVideo) {
+    return {
+      label: '视频',
+      action: '使用可用的视频理解工具',
+    };
+  }
+
+  const isPdf = mime === 'application/pdf' || ext === 'pdf';
+  if (isPdf) {
+    return {
+      label: 'PDF',
+      action: '使用文档解析/转 Markdown 工具；若为扫描件再用 OCR 工具',
+    };
+  }
+
+  const isSlides = SLIDE_EXTS.has(ext)
+    || mime.includes('presentation')
+    || mime.includes('powerpoint');
+  if (isSlides) {
+    return {
+      label: 'PPT',
+      action: '使用幻灯片解析工具逐页提取/转 Markdown',
+    };
+  }
+
+  const isSheet = SHEET_EXTS.has(ext)
+    || mime.includes('spreadsheet')
+    || mime.includes('excel')
+    || mime === 'text/csv';
+  if (isSheet) {
+    return {
+      label: '表格',
+      action: '使用表格解析工具读取为表格/转 Markdown',
+    };
+  }
+
+  const isDoc = DOC_EXTS.has(ext) || mime.includes('word') || mime.includes('document');
+  if (isDoc) {
+    return {
+      label: '文档',
+      action: '使用文档解析/转 Markdown 工具',
+    };
+  }
+
+  const isText = mime.startsWith('text/') || TEXT_EXTS.has(ext);
+  if (isText) {
+    return {
+      label: '文本',
+      action: '直接读取或使用文本处理工具',
+    };
+  }
+
+  return {
+    label: '文件',
+    action: '尝试使用可用的文件解析工具',
+  };
+}
+
+function extractRunConfigAttachments(runConfig?: ChatModelRunOptions['runConfig']): AttachmentDescriptor[] {
+  const custom = runConfig?.custom;
+  if (!custom || typeof custom !== 'object') return [];
+  const raw = (custom as { attachments?: unknown }).attachments;
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const candidate = item as Partial<AttachmentDescriptor>;
+      if (typeof candidate.filePath !== 'string' || !candidate.filePath.trim()) return null;
+      return {
+        originalName: typeof candidate.originalName === 'string' ? candidate.originalName : undefined,
+        filePath: candidate.filePath,
+        mimeType: typeof candidate.mimeType === 'string' ? candidate.mimeType : undefined,
+        fileSize: typeof candidate.fileSize === 'number' ? candidate.fileSize : undefined,
+      };
+    })
+    .filter((item): item is AttachmentDescriptor => Boolean(item));
+}
+
+function buildAttachmentsBlock(attachments: AttachmentDescriptor[]): string {
+  if (attachments.length === 0) return '';
+
+  const lines: string[] = ['【附件信息】'];
+  attachments.forEach((attachment, index) => {
+    const name = getAttachmentName(attachment);
+    const hint = classifyAttachment(attachment);
+    const size = formatFileSize(attachment.fileSize);
+    lines.push(`${index + 1}) name: ${name}`);
+    lines.push(`   path: ${attachment.filePath} (workspace-relative)`);
+    if (attachment.mimeType) lines.push(`   mime: ${attachment.mimeType}`);
+    if (size) lines.push(`   size: ${size}`);
+    lines.push(`   type: ${hint.label}`);
+    lines.push(`   use: ${hint.action}`);
+  });
+  lines.push('说明：不要扫描 workspace；直接使用以上 path。若解析失败，说明缺少依赖或工具。');
+  return lines.join('\n');
+}
+
 // WebSocket connection state
 let ws: WebSocket | null = null;
 let currentSessionId: string | undefined;
@@ -513,6 +670,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         (part): part is { type: 'text'; text: string } => part.type === 'text'
       );
       const prompt = textParts.map((p) => p.text).join('\n');
+      const attachments = extractRunConfigAttachments(runConfig);
+      const attachmentsBlock = buildAttachmentsBlock(attachments);
+      const fullPrompt = attachmentsBlock ? `${prompt}\n\n${attachmentsBlock}` : prompt;
 
       if (!prompt.trim()) {
         throw new Error('Empty prompt');
@@ -549,11 +709,11 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
       // 4. Send chat message
       try {
-        console.log('[WS Adapter] Sending chat message:', { type: 'chat', content: prompt.substring(0, 50), sessionId: currentSessionId });
-        console.log('[WS Adapter] Full prompt length:', prompt.length);
+        console.log('[WS Adapter] Sending chat message:', { type: 'chat', content: fullPrompt.substring(0, 50), sessionId: currentSessionId });
+        console.log('[WS Adapter] Full prompt length:', fullPrompt.length);
         await send({
           type: 'chat',
-          content: prompt,
+          content: fullPrompt,
           sessionId: currentSessionId,
         });
         console.log('[WS Adapter] ✅ Message sent successfully');

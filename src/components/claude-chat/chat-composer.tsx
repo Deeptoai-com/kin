@@ -160,8 +160,8 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const api = useAssistantApi();
   const composerText = useAssistantState(({ composer }) => composer.text);
+  const composerRunConfig = useAssistantState(({ composer }) => composer.runConfig);
   const composerIsEditing = useAssistantState(({ composer }) => composer.isEditing);
-  const composerIsEmpty = useAssistantState(({ composer }) => composer.isEmpty);
   const isRunning = useThread((state) => state.isRunning);
   const threadMessages = useThread((state) => state.messages);
 
@@ -285,7 +285,11 @@ export function ChatComposer({
             status: 'uploaded',
           },
         ]));
-        await api.composer().addAttachment(file);
+        try {
+          await api.composer().addAttachment(file);
+        } catch (error) {
+          console.warn('[Composer] Attachments not supported by current adapter:', error);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : '上传失败';
         setUploadedFiles((prev) => ([
@@ -309,11 +313,16 @@ export function ChatComposer({
     }
   }, [api, currentSessionId]);
 
-  const canSend = composerIsEditing && !composerIsEmpty && !isRunning;
+  const composerHasText = composerText.trim().length > 0;
+  const canSend = composerIsEditing && composerHasText && !isRunning;
 
   const handleSend = useCallback((event?: FormEvent) => {
     if (event) {
       event.preventDefault();
+    }
+    if (!composerHasText) {
+      setUploadError('请先输入内容再发送。');
+      return;
     }
     if (!canSend || isRunning) return;
     const pendingAttachments = uploadedFiles
@@ -325,10 +334,29 @@ export function ChatComposer({
         fileSize: file.fileSize,
       }));
     pendingAttachmentsRef.current = pendingAttachments.length > 0 ? pendingAttachments : null;
+    const baseRunConfig = composerRunConfig ?? {};
+    const baseCustom = (baseRunConfig.custom ?? {}) as Record<string, unknown>;
+    const nextRunConfig = {
+      ...baseRunConfig,
+      custom: {
+        ...baseCustom,
+        attachments: pendingAttachments,
+      },
+    };
+    api.composer().setRunConfig(nextRunConfig);
     // Notify parent before sending (for auto-collapse A2ComposerPanel)
     onSend?.();
     api.composer().send();
-  }, [api, canSend, isRunning, uploadedFiles, onSend]);
+    if (Object.prototype.hasOwnProperty.call(baseCustom, 'attachments')) {
+      const { attachments: _ignored, ...restCustom } = baseCustom;
+      api.composer().setRunConfig({
+        ...baseRunConfig,
+        custom: restCustom,
+      });
+    } else {
+      api.composer().setRunConfig(baseRunConfig);
+    }
+  }, [api, canSend, composerHasText, isRunning, uploadedFiles, onSend, composerRunConfig]);
 
   return (
     <ComposerPrimitive.Root

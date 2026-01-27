@@ -9,6 +9,7 @@ import { type FC, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useServerFn } from '@tanstack/react-start';
 import { Link } from '@tanstack/react-router';
+import { ArrowUpRight } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -171,7 +172,17 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-80 p-2">
-            <DropdownMenuLabel className="px-2 text-xs">Skills</DropdownMenuLabel>
+            <DropdownMenuLabel className="flex items-center justify-between px-2 text-xs">
+              <span>当前会话可用 Skills</span>
+              <Link
+                to="/agents/skills"
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                aria-label="打开 Skills Store"
+              >
+                更多 Skills
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="max-h-64 overflow-y-auto">
               {isLoadingSchemas && (
@@ -210,12 +221,6 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
                 </div>
               ))}
             </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/agents/skills" className="w-full text-xs">
-                打开 Skills Store
-              </Link>
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}

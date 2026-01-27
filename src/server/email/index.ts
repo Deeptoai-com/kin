@@ -73,6 +73,14 @@ export async function sendEmail(params: {
   const provider = getEmailProvider();
   const from = params.from || process.env.EMAIL_FROM || 'noreply@localhost';
 
+  // Debug: log email sending attempt (without HTML for security)
+  console.log('[sendEmail] Attempting to send email:', {
+    to: params.to,
+    subject: params.subject,
+    from,
+    provider: process.env.EMAIL_PROVIDER || 'default',
+  });
+
   await provider.sendEmail({
     ...params,
     from,
