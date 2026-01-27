@@ -1022,14 +1022,11 @@ export async function generateSchemaFromContent(
     const stream = query({
       prompt,
       options: {
-        // SDK may require a valid cwd even for pure text generation
-        cwd: process.cwd(),
         model: resolvedModel,
         // Disable ALL tools by passing empty array
         // SDK type: tools?: string[] | { type: 'preset'; preset: 'claude_code' }
         tools: [],
         // No MCP servers
-        // No permission mode concerns (no file access)
         // P3 fix: Add system prompt for format enforcement
         systemPrompt: SCHEMA_GENERATION_SYSTEM_PROMPT,
         // Use Structured Outputs for reliable JSON format
@@ -1041,9 +1038,6 @@ export async function generateSchemaFromContent(
         pathToClaudeCodeExecutable: claudeCodeExecutable,
         // P2 fix: Pass abort controller for timeout
         abortController,
-        // Production fix: Set permission mode to bypass (no tools used anyway)
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
       },
     });
 
