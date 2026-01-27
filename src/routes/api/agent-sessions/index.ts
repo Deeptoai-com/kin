@@ -91,13 +91,30 @@ export const Route = createFileRoute('/api/agent-sessions/')({
 
         if (existing) {
           // Update existing session
+          const updateData: Partial<{
+            lastMessageAt: Date;
+            updatedAt: Date;
+            title: string;
+            realSdkSessionId: string;
+            claudeHomePath: string;
+          }> = {
+            lastMessageAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          if (title) {
+            updateData.title = title;
+          }
+          if (realSdkSessionId) {
+            updateData.realSdkSessionId = realSdkSessionId;
+          }
+          if (claudeHomePath) {
+            updateData.claudeHomePath = claudeHomePath;
+          }
+
           await db
             .update(agentSession)
-            .set({
-              lastMessageAt: new Date(),
-              updatedAt: new Date(),
-              ...(title && { title }),
-            })
+            .set(updateData)
             .where(eq(agentSession.id, existing.id));
 
           return Response.json({ id: existing.id, created: false });
