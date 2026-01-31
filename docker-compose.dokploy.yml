@@ -17,8 +17,9 @@
 
 version: '3.8'
 
-# Build configuration (use image from registry in production)
-x-app-image: &app_image ${APP_IMAGE:-oxygenie}:${APP_TAG:-latest}
+# Build configuration (use GHCR image from CI/CD)
+# GitHub Actions builds to: ghcr.io/foreveryh/constructa-starter/app:latest
+x-app-image: &app_image ${APP_IMAGE:-ghcr.io/foreveryh/constructa-starter/app}:${APP_TAG:-latest}
 
 x-app-build: &app_build
   build:
@@ -203,9 +204,10 @@ services:
       - private
 
   # Main application (Nitro + WebSocket server)
-  # Note: Dokploy uses pre-built images from registry, no build config needed
+  # Note: Dokploy pulls GHCR image first; if not found, falls back to local build
   app:
     image: *app_image
+    <<: *app_build  # Fallback: build if GHCR image unavailable
     container_name: ${APP_NAME:-OxyGenie}-app
     depends_on:
       db:
