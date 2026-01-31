@@ -2,7 +2,14 @@ import { type IntlayerConfig, Locales } from 'intlayer';
 
 const config: IntlayerConfig = {
   internationalization: {
-    locales: [Locales.ENGLISH, Locales.CHINESE],
+    locales: [
+      Locales.ENGLISH,
+      Locales.FRENCH,
+      Locales.JAPANESE,
+      Locales.KOREAN,
+      Locales.CHINESE_SIMPLIFIED,
+      Locales.CHINESE_TRADITIONAL,
+    ],
     defaultLocale: Locales.ENGLISH,
   },
   routing: {

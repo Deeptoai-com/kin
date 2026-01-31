@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * Intlayer content values may be exposed as non-strings at runtime (SSR/hydration),
- * or as locale objects like { en: '...', zh: '...' } before resolution.
+ * or as locale objects like { en: '...', 'zh-Hans': '...' } before resolution.
  * Use this before calling .replace() on any content.xxx to avoid "replace is not a function",
  * and to avoid rendering "[object Object]" when the value is an object.
  * @param value - Content value (string or locale object)
@@ -49,8 +49,10 @@ export function toLocalizedString(value: unknown, locale?: string): string {
             const base = lang.split("-")[0];
             if (typeof obj[base] === "string") return obj[base] as string;
         }
-        // 3) Fallback: en -> zh -> first string value (avoids "[object Object]")
+        // 3) Fallback: en -> zh-Hans -> zh-Hant -> zh -> first string value (avoids "[object Object]")
         if (typeof obj.en === "string") return obj.en;
+        if (typeof obj["zh-Hans"] === "string") return obj["zh-Hans"];
+        if (typeof obj["zh-Hant"] === "string") return obj["zh-Hant"];
         if (typeof obj.zh === "string") return obj.zh;
         const first = Object.values(obj).find((v) => typeof v === "string");
         if (typeof first === "string") return first;
