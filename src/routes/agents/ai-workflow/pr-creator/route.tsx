@@ -12,7 +12,9 @@
 
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
+import { useIntlayer } from 'react-intlayer';
 import { useState, useCallback } from 'react';
+import { toLocalizedString } from '~/lib/utils';
 import {
   ArrowLeft,
   ArrowRight,
@@ -633,6 +635,7 @@ function InputStep({
   setAdditionalNotes,
   onSubmit,
 }: InputStepProps) {
+  const content = useIntlayer('app');
   const isValid =
     brief.client.trim() &&
     brief.project.trim() &&
@@ -694,7 +697,7 @@ function InputStep({
                 id="client"
                 value={brief.client}
                 onChange={(e) => setBrief({ ...brief, client: e.target.value })}
-                placeholder="例如：TechCorp"
+                placeholder={toLocalizedString(content.placeholders.exampleCompany)}
               />
             </div>
             <div className="space-y-2">

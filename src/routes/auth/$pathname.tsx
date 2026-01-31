@@ -5,14 +5,16 @@ import {
   authLocalization,
 } from '@daveyplate/better-auth-ui';
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
+import { useIntlayer, useLocale } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
+import { toLocalizedString } from '~/lib/utils';
 import { ArrowLeftIcon, ArrowRightIcon } from 'lucide-react';
 import { z } from 'zod';
 import {
   authContainerClassName,
   authDescriptionClassName,
   authHeaderClassName,
-  authLocalizationOverrides,
+  createAuthLocalizationOverrides,
   authTitleClassName,
   authViewClassNames,
 } from '~/components/auth/auth-styles';
@@ -54,24 +56,28 @@ function RouteComponent() {
   const { redirect: redirectParam, message, token, method } = Route.useSearch();
   const redirectTo = redirectParam || '/agents/claude-chat';
 
+  // Get i18n content and locale (locale needed for SSR so toLocalizedString resolves correctly)
+  const content = useIntlayer('auth');
+  const { locale } = useLocale();
+
   const localizedCopy = React.useMemo(() => {
+    const overrides = createAuthLocalizationOverrides(content, locale ?? undefined);
+
     return {
       ...authLocalization,
-      ...authLocalizationOverrides,
+      ...overrides,
       ...(pathname === 'sign-in' && message === 'password-reset-sent'
         ? {
-            SIGN_IN_DESCRIPTION:
-              'Check your email for the password reset link.',
+            SIGN_IN_DESCRIPTION: toLocalizedString(content.success.passwordResetSent, locale ?? undefined),
           }
         : {}),
       ...(pathname === 'sign-in' && message === 'EMAIL_NOT_VERIFIED'
         ? {
-            SIGN_IN_DESCRIPTION:
-              'Your email is not verified yet. Use the form below to resend the verification email.',
+            SIGN_IN_DESCRIPTION: toLocalizedString(content.verification.subtitle, locale ?? undefined),
           }
         : {}),
     };
-  }, [message, pathname]);
+  }, [content, message, pathname, locale]);
 
   const showResendNotice =
     pathname === 'sign-in' && message === 'EMAIL_NOT_VERIFIED';
@@ -145,6 +151,9 @@ function SocialSignInPanel({
   pathname,
   redirectTo,
 }: SocialSignInPanelProps) {
+  const content = useIntlayer('auth');
+  const { locale } = useLocale();
+  const t = (v: unknown) => toLocalizedString(v, locale ?? undefined);
   const authUI = React.useContext(AuthUIContext);
   const providerDisplays = React.useMemo(
     () => resolveSocialProviderDisplays(authUI.social?.providers),
@@ -180,7 +189,7 @@ function SocialSignInPanel({
         setTimeout(() => setPendingProvider(null), 10_000);
       } catch (error) {
         const fallbackMessage =
-          localization.REQUEST_FAILED || 'Unable to complete request.';
+          localization.REQUEST_FAILED || t(content.errors.invalidCredentials);
 
         authUI.toast({
           variant: 'error',
@@ -193,13 +202,13 @@ function SocialSignInPanel({
         setPendingProvider(null);
       }
     },
-    [authUI, localization.REQUEST_FAILED, redirectTo]
+    [authUI, localization.REQUEST_FAILED, redirectTo, content, locale]
   );
 
   const title =
     pathname === 'sign-up'
-      ? localization.SIGN_UP ?? 'Create your account'
-      : localization.SIGN_IN ?? 'Welcome back';
+      ? localization.SIGN_UP ?? t(content.signUp.title)
+      : localization.SIGN_IN ?? t(content.signIn.title);
   const description =
     pathname === 'sign-up'
       ? localization.SIGN_UP_DESCRIPTION
@@ -243,19 +252,19 @@ function SocialSignInPanel({
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-          Social sign-in providers are not configured yet.
+          {t(content.signIn.orContinueWith)}
         </div>
       )}
 
       <div className="space-y-2 text-sm">
-        <p className="text-muted-foreground">Prefer to use email credentials?</p>
+        <p className="text-muted-foreground">{t(content.signIn.emailLabel)}?</p>
         <Button
           type="button"
           variant="ghost"
           className="group w-full justify-center font-medium"
           onClick={onContinueWithEmail}
         >
-          Continue with Email
+          {t(content.signIn.orContinueWith)} {t(content.signIn.emailLabel)}
           <ArrowRightIcon
             aria-hidden="true"
             className="size-4 transition-transform group-hover:translate-x-1"
@@ -281,6 +290,10 @@ function EmailAuthView({
   pathname,
   redirectTo,
 }: EmailAuthViewProps) {
+  const content = useIntlayer('auth');
+  const { locale } = useLocale();
+  const t = (v: unknown) => toLocalizedString(v, locale ?? undefined);
+
   const hideSocial =
     methodIsEmail && (pathname === 'sign-in' || pathname === 'sign-up');
 
@@ -312,7 +325,7 @@ function EmailAuthView({
           onClick={onBackToSocial}
         >
           <ArrowLeftIcon aria-hidden="true" className="size-4" />
-          Use GitHub or Google instead
+          {t(content.signIn.orContinueWith)} GitHub or Google
         </Button>
       ) : null}
 
@@ -334,6 +347,9 @@ interface ResendVerificationNoticeProps {
 function ResendVerificationNotice({
   redirectTo,
 }: ResendVerificationNoticeProps) {
+  const content = useIntlayer('auth');
+  const { locale } = useLocale();
+  const t = (v: unknown) => toLocalizedString(v, locale ?? undefined);
   const resendFn = useServerFn(resendVerificationEmail);
   const [email, setEmail] = React.useState('');
   const [status, setStatus] = React.useState<'idle' | 'pending' | 'success' | 'error'>(
@@ -345,7 +361,7 @@ function ResendVerificationNotice({
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!email) {
-        setError('Enter the email address you used to sign up.');
+        setError(t(content.errors.invalidVerificationCode));
         return;
       }
 
@@ -358,37 +374,36 @@ function ResendVerificationNotice({
       } catch (err) {
         console.error('[auth] resend verification failed', err);
         setError(
-          err instanceof Error ? err.message : 'Failed to send verification email'
+          err instanceof Error ? err.message : t(content.errors.expiredCode)
         );
         setStatus('error');
       }
     },
-    [email, redirectTo, resendFn]
+    [email, redirectTo, resendFn, content, locale]
   );
 
   return (
     <div className="w-full max-w-md rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
-      <p className="font-semibold">Email not verified</p>
+      <p className="font-semibold">{t(content.verification.title)}</p>
       <p className="mt-1 text-sm">
-        Resend the verification link to your email address. Once verified, sign in again to
-        continue.
+        {t(content.verification.subtitle)}
       </p>
       <form onSubmit={onSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <Input
           type="email"
-          placeholder="your@email.com"
+          placeholder={t(content.signIn.emailPlaceholder)}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           required
           className="sm:flex-1"
         />
         <Button type="submit" disabled={status === 'pending'}>
-          {status === 'pending' ? 'Sending…' : 'Resend email'}
+          {status === 'pending' ? t(content.verification.resendCode) : t(content.verification.submitButton)}
         </Button>
       </form>
       {status === 'success' ? (
         <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">
-          Verification email sent. Check your inbox for the latest link.
+          {t(content.success.emailVerified)}
         </p>
       ) : null}
       {error ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">{error}</p> : null}

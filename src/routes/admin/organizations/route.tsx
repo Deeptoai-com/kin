@@ -6,6 +6,8 @@
 
 import * as React from 'react';
 import { createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import {
   getAllOrganizations,
@@ -56,6 +58,7 @@ export const Route = createFileRoute('/admin/organizations')({
 });
 
 function AdminOrganizationsPage() {
+  const content = useIntlayer('admin');
   const { organizations } = Route.useLoaderData();
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = React.useState(false);
@@ -113,9 +116,9 @@ function AdminOrganizationsPage() {
     <div className="p-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Organization Management</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{content.organizations.pageTitle}</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Create and manage all organizations
+            {content.organizations.pageSubtitle}
           </p>
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -127,63 +130,63 @@ function AdminOrganizationsPage() {
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Create Organization</DialogTitle>
+              <DialogTitle>{content.organizations.createOrganization}</DialogTitle>
               <DialogDescription>
-                Create a new organization and assign an owner
+                {content.organizations.createOrgDescription}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Organization Name *</Label>
+                <Label htmlFor="name">{content.organizations.orgName}</Label>
                 <Input
                   id="name"
                   name="name"
                   required
-                  placeholder="My Organization"
+                  placeholder={toLocalizedString(content.organizations.placeholderMyOrg)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="slug">Slug *</Label>
+                <Label htmlFor="slug">{content.organizations.slug}</Label>
                 <Input
                   id="slug"
                   name="slug"
                   required
-                  placeholder="my-org"
+                  placeholder={toLocalizedString(content.organizations.placeholderSlug)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ownerId">Owner *</Label>
-                <OrgOwnerSelect name="ownerId" />
+                <Label htmlFor="ownerId">{content.organizations.owner}</Label>
+                <OrgOwnerSelect name="ownerId" content={content} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="permissionMode">Permission Mode</Label>
+                <Label htmlFor="permissionMode">{content.organizations.permissionMode}</Label>
                 <Select name="permissionMode" defaultValue="default">
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">Standard</SelectItem>
-                    <SelectItem value="bypassPermissions">Bypass</SelectItem>
+                    <SelectItem value="default">{content.organizations.standard}</SelectItem>
+                    <SelectItem value="bypassPermissions">{content.organizations.bypass}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="allowBash">Allow Bash Tool</Label>
+                <Label htmlFor="allowBash">{content.organizations.allowBashTool}</Label>
                 <Select name="allowBash" defaultValue="false">
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="true">Yes</SelectItem>
-                    <SelectItem value="false">No</SelectItem>
+                    <SelectItem value="true">{content.organizations.yes}</SelectItem>
+                    <SelectItem value="false">{content.organizations.no}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                  Cancel
+                  {content.actions.cancel}
                 </Button>
-                <Button type="submit">Create</Button>
+                <Button type="submit">{content.organizations.create}</Button>
               </div>
             </form>
           </DialogContent>
@@ -195,13 +198,13 @@ function AdminOrganizationsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Organization</TableHead>
-              <TableHead>Owner</TableHead>
-              <TableHead>Members</TableHead>
-              <TableHead>Permission Mode</TableHead>
-              <TableHead>Bash</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>{content.organizations.tableOrganization}</TableHead>
+              <TableHead>{content.organizations.tableOwner}</TableHead>
+              <TableHead>{content.organizations.tableMembers}</TableHead>
+              <TableHead>{content.organizations.tablePermissionMode}</TableHead>
+              <TableHead>{content.organizations.tableBash}</TableHead>
+              <TableHead>{content.organizations.tableCreated}</TableHead>
+              <TableHead>{content.organizations.tableActions}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -227,11 +230,11 @@ function AdminOrganizationsPage() {
                       <span>{org.owner.name}</span>
                     </div>
                   ) : (
-                    <span className="text-sm text-gray-500">No owner</span>
+                    <span className="text-sm text-gray-500">{content.organizations.noOwner}</span>
                   )}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline">{org.memberCount} members</Badge>
+                  <Badge variant="outline">{toLocalizedString(content.organizations.membersCount).replace('{count}', String(org.memberCount))}</Badge>
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -242,9 +245,9 @@ function AdminOrganizationsPage() {
                 </TableCell>
                 <TableCell>
                   {org.metadata?.allowBash ? (
-                    <Badge className="bg-green-500">Enabled</Badge>
+                    <Badge className="bg-green-500">{content.organizations.enabled}</Badge>
                   ) : (
-                    <Badge variant="secondary">Disabled</Badge>
+                    <Badge variant="secondary">{content.organizations.disabled}</Badge>
                   )}
                 </TableCell>
                 <TableCell>
@@ -279,7 +282,7 @@ function AdminOrganizationsPage() {
       <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Organization Details</DialogTitle>
+            <DialogTitle>{content.organizations.organizationDetails}</DialogTitle>
             <DialogDescription>
               {selectedOrg?.name}
             </DialogDescription>
@@ -314,11 +317,11 @@ function AdminOrganizationsPage() {
       {/* Stats */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Total Organizations</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{content.organizations.totalOrganizations}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{organizations.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Total Members</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{content.organizations.totalMembers}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
             {organizations.reduce((sum, org) => sum + org.memberCount, 0)}
           </p>
@@ -329,7 +332,7 @@ function AdminOrganizationsPage() {
 }
 
 // Helper component for owner selection
-function OrgOwnerSelect({ name }: { name: string }) {
+function OrgOwnerSelect({ name, content }: { name: string; content: ReturnType<typeof useIntlayer<'admin'>> }) {
   const [users, setUsers] = React.useState<Array<{ id: string; name: string; email: string }>>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -341,13 +344,13 @@ function OrgOwnerSelect({ name }: { name: string }) {
   }, []);
 
   if (loading) {
-    return <Select disabled><SelectTrigger><SelectValue placeholder="Loading users..." /></SelectTrigger></Select>;
+    return <Select disabled><SelectTrigger><SelectValue placeholder={toLocalizedString(content.organizations.loadingUsers)} /></SelectTrigger></Select>;
   }
 
   return (
     <Select name={name} required>
       <SelectTrigger>
-        <SelectValue placeholder="Select owner" />
+        <SelectValue placeholder={toLocalizedString(content.organizations.selectOwner)} />
       </SelectTrigger>
       <SelectContent>
         {users.map(user => (

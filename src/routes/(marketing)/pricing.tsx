@@ -1,4 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Badge } from '~/components/ui/badge';
@@ -23,63 +24,65 @@ export const Route = createFileRoute('/(marketing)/pricing')({
 });
 
 function PricingComponent() {
+  const content = useIntlayer('marketing');
+
   const plans = [
     {
-      name: 'Free',
-      price: '$0',
-      period: '',
-      description: 'Perfect for getting started with AI development',
+      name: content.pricing.plans.free.name,
+      price: content.pricing.plans.free.price,
+      period: content.pricing.plans.free.period,
+      description: content.pricing.plans.free.description,
       badge: null,
       icon: Star,
       features: [
-        'Basic access to AI tools',
-        'Limited API usage',
-        'Community support',
-        'Core starter templates',
-        'Basic documentation',
+        content.pricing.plans.free.feature1,
+        content.pricing.plans.free.feature2,
+        content.pricing.plans.free.feature3,
+        content.pricing.plans.free.feature4,
+        content.pricing.plans.free.feature5,
       ],
-      buttonText: 'Start Free',
+      buttonText: content.pricing.plans.free.buttonText,
       buttonVariant: 'outline' as const,
       popular: false,
     },
     {
-      name: 'Tier 1',
-      price: '$350',
-      period: '/year',
-      description: 'For developers ready to build production apps',
-      badge: 'Most Popular',
+      name: content.pricing.plans.tier1.name,
+      price: content.pricing.plans.tier1.price,
+      period: content.pricing.plans.tier1.period,
+      description: content.pricing.plans.tier1.description,
+      badge: content.pricing.plans.tier1.badge,
       icon: Zap,
       features: [
-        'All Free tier features',
-        'Priority support',
-        'Extended usage caps',
-        'Advanced templates',
-        'Premium documentation',
-        'Community Discord access',
-        'Monthly office hours',
+        content.pricing.plans.tier1.feature1,
+        content.pricing.plans.tier1.feature2,
+        content.pricing.plans.tier1.feature3,
+        content.pricing.plans.tier1.feature4,
+        content.pricing.plans.tier1.feature5,
+        content.pricing.plans.tier1.feature6,
+        content.pricing.plans.tier1.feature7,
       ],
-      buttonText: 'Start Building',
+      buttonText: content.pricing.plans.tier1.buttonText,
       buttonVariant: 'default' as const,
       popular: true,
     },
     {
-      name: 'Tier 2',
-      price: '$8,500',
-      period: '/year + setup fee',
-      description: 'Enterprise-grade solution with dedicated support',
-      badge: 'Enterprise',
+      name: content.pricing.plans.tier2.name,
+      price: content.pricing.plans.tier2.price,
+      period: content.pricing.plans.tier2.period,
+      description: content.pricing.plans.tier2.description,
+      badge: content.pricing.plans.tier2.badge,
       icon: Crown,
       features: [
-        'All Tier 1 features',
-        'Custom integrations',
-        'Dedicated support team',
-        'Onboarding & setup assistance',
-        'Custom feature development',
-        'Priority bug fixes',
-        'Direct Slack channel',
-        'Monthly strategy calls',
+        content.pricing.plans.tier2.feature1,
+        content.pricing.plans.tier2.feature2,
+        content.pricing.plans.tier2.feature3,
+        content.pricing.plans.tier2.feature4,
+        content.pricing.plans.tier2.feature5,
+        content.pricing.plans.tier2.feature6,
+        content.pricing.plans.tier2.feature7,
+        content.pricing.plans.tier2.feature8,
       ],
-      buttonText: 'Contact Sales',
+      buttonText: content.pricing.plans.tier2.buttonText,
       buttonVariant: 'outline' as const,
       popular: false,
     },
@@ -93,16 +96,16 @@ function PricingComponent() {
 
         <Badge variant="secondary" className="mb-4 px-4 py-1">
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          Simple & Transparent
+          {content.pricing.hero.badge}
         </Badge>
 
         <h1 className="max-w-4xl font-bold text-4xl text-foreground md:text-6xl lg:text-7xl">
-          AI Starter SaaS Kit
-          <span className="block text-primary">Pricing Plans</span>
+          {content.pricing.hero.title}
+          <span className="block text-primary">{content.pricing.hero.titleHighlight}</span>
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-          Choose the perfect plan for your AI development journey. From free exploration to enterprise-grade solutions.
+          {content.pricing.hero.subtitle}
         </p>
       </section>
 
@@ -112,11 +115,11 @@ function PricingComponent() {
           {plans.map((plan, index) => {
             const IconComponent = plan.icon;
             return (
-              <Card 
-                key={plan.name} 
+              <Card
+                key={plan.name}
                 className={`relative transition-all duration-300 hover:shadow-lg ${
-                  plan.popular 
-                    ? 'border-2 border-primary bg-primary/5 scale-105' 
+                  plan.popular
+                    ? 'border-2 border-primary bg-primary/5 scale-105'
                     : 'border hover:border-primary/50'
                 }`}
               >
@@ -127,7 +130,7 @@ function PricingComponent() {
                     </Badge>
                   </div>
                 )}
-                
+
                 <CardHeader className="text-center pb-4">
                   <div className="flex justify-center mb-4">
                     <div className={`p-3 rounded-full ${
@@ -138,24 +141,24 @@ function PricingComponent() {
                       }`} />
                     </div>
                   </div>
-                  
+
                   <CardTitle className="text-2xl font-bold">{plan.name}</CardTitle>
-                  
+
                   <div className="mt-4">
                     <span className="text-4xl font-bold">{plan.price}</span>
                     {plan.period && (
                       <span className="text-muted-foreground text-lg">{plan.period}</span>
                     )}
                   </div>
-                  
+
                   <CardDescription className="mt-2 text-base">
                     {plan.description}
                   </CardDescription>
                 </CardHeader>
 
                 <CardContent className="pt-0">
-                  <Button 
-                    className="w-full mb-6 rounded-full" 
+                  <Button
+                    className="w-full mb-6 rounded-full"
                     variant={plan.buttonVariant}
                     size="lg"
                   >
@@ -185,10 +188,10 @@ function PricingComponent() {
         <div className="mx-auto max-w-4xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold tracking-tight md:text-4xl mb-4">
-              Compare Features
+              {content.pricing.comparison.title}
             </h2>
             <p className="text-lg text-muted-foreground">
-              See what's included in each plan to make the best choice for your needs
+              {content.pricing.comparison.subtitle}
             </p>
           </div>
 
@@ -196,23 +199,23 @@ function PricingComponent() {
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
                 <Users className="mb-2 h-8 w-8 text-primary" />
-                <CardTitle>Community Support</CardTitle>
+                <CardTitle>{content.pricing.comparison.communitySupport.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground mb-4">
-                  Get help from our growing community of AI developers
+                  {content.pricing.comparison.communitySupport.description}
                 </p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span>Free</span>
+                    <span>{content.pricing.plans.free.name}</span>
                     <Check className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex justify-between">
-                    <span>Tier 1</span>
+                    <span>{content.pricing.plans.tier1.name}</span>
                     <Check className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex justify-between">
-                    <span>Tier 2</span>
+                    <span>{content.pricing.plans.tier2.name}</span>
                     <Check className="h-4 w-4 text-primary" />
                   </div>
                 </div>
@@ -222,23 +225,23 @@ function PricingComponent() {
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
                 <Headphones className="mb-2 h-8 w-8 text-primary" />
-                <CardTitle>Priority Support</CardTitle>
+                <CardTitle>{content.pricing.comparison.prioritySupport.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground mb-4">
-                  Get faster responses and dedicated help when you need it
+                  {content.pricing.comparison.prioritySupport.description}
                 </p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span>Free</span>
+                    <span>{content.pricing.plans.free.name}</span>
                     <span className="text-muted-foreground">—</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Tier 1</span>
+                    <span>{content.pricing.plans.tier1.name}</span>
                     <Check className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex justify-between">
-                    <span>Tier 2</span>
+                    <span>{content.pricing.plans.tier2.name}</span>
                     <Check className="h-4 w-4 text-primary" />
                   </div>
                 </div>
@@ -248,23 +251,23 @@ function PricingComponent() {
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
                 <Cog className="mb-2 h-8 w-8 text-primary" />
-                <CardTitle>Custom Integrations</CardTitle>
+                <CardTitle>{content.pricing.comparison.customIntegrations.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground mb-4">
-                  Tailored solutions and custom feature development
+                  {content.pricing.comparison.customIntegrations.description}
                 </p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span>Free</span>
+                    <span>{content.pricing.plans.free.name}</span>
                     <span className="text-muted-foreground">—</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Tier 1</span>
+                    <span>{content.pricing.plans.tier1.name}</span>
                     <span className="text-muted-foreground">—</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Tier 2</span>
+                    <span>{content.pricing.plans.tier2.name}</span>
                     <Check className="h-4 w-4 text-primary" />
                   </div>
                 </div>
@@ -278,52 +281,52 @@ function PricingComponent() {
       <section className="container mx-auto px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl">
           <h2 className="mb-12 text-center text-3xl font-bold tracking-tight md:text-4xl">
-            Pricing FAQ
+            {content.pricing.faq.title}
           </h2>
 
           <div className="space-y-8">
             <div>
               <h3 className="mb-2 text-xl font-semibold">
-                Can I upgrade or downgrade my plan anytime?
+                {content.pricing.faq.q1.question}
               </h3>
               <p className="text-muted-foreground">
-                Yes! You can upgrade your plan at any time. When you upgrade, you'll be charged the prorated amount for the remaining billing period. Downgrades take effect at the end of your current billing cycle.
+                {content.pricing.faq.q1.answer}
               </p>
             </div>
 
             <div>
               <h3 className="mb-2 text-xl font-semibold">
-                What's included in the setup fee for Tier 2?
+                {content.pricing.faq.q2.question}
               </h3>
               <p className="text-muted-foreground">
-                The setup fee covers dedicated onboarding, custom configuration, team training, and initial custom integrations. Our team will work with you to ensure the platform is perfectly tailored to your needs.
+                {content.pricing.faq.q2.answer}
               </p>
             </div>
 
             <div>
               <h3 className="mb-2 text-xl font-semibold">
-                Do you offer refunds?
+                {content.pricing.faq.q3.question}
               </h3>
               <p className="text-muted-foreground">
-                We offer a 30-day money-back guarantee for all paid plans. If you're not satisfied with your purchase, contact us within 30 days for a full refund.
+                {content.pricing.faq.q3.answer}
               </p>
             </div>
 
             <div>
               <h3 className="mb-2 text-xl font-semibold">
-                What payment methods do you accept?
+                {content.pricing.faq.q4.question}
               </h3>
               <p className="text-muted-foreground">
-                We accept all major credit cards (Visa, MasterCard, American Express) and PayPal. For enterprise accounts, we can also arrange bank transfers and custom billing cycles.
+                {content.pricing.faq.q4.answer}
               </p>
             </div>
 
             <div>
               <h3 className="mb-2 text-xl font-semibold">
-                Is there a discount for annual payments?
+                {content.pricing.faq.q5.question}
               </h3>
               <p className="text-muted-foreground">
-                Our listed prices are already for annual payments, providing significant savings compared to monthly billing. Contact us for custom enterprise pricing and multi-year discounts.
+                {content.pricing.faq.q5.answer}
               </p>
             </div>
           </div>
@@ -336,18 +339,18 @@ function PricingComponent() {
           <CardContent className="flex flex-col items-center p-8 text-center md:p-12">
             <Rocket className="mb-4 h-12 w-12 text-primary" />
             <h2 className="mb-4 text-2xl font-bold md:text-3xl">
-              Ready to Start Building?
+              {content.pricing.cta.title}
             </h2>
             <p className="mb-8 text-muted-foreground">
-              Join thousands of developers building the future with AI-powered development
+              {content.pricing.cta.subtitle}
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
               <Button size="lg" className="rounded-full px-8">
-                Start Your Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                {content.pricing.cta.primaryButton} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Button size="lg" variant="outline" className="rounded-full px-8">
                 <MessageSquare className="mr-2 h-4 w-4" />
-                Talk to Sales
+                {content.pricing.cta.secondaryButton}
               </Button>
             </div>
           </CardContent>
@@ -359,15 +362,15 @@ function PricingComponent() {
         <div className="flex flex-col items-center justify-center gap-6 md:flex-row">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Shield className="h-4 w-4" />
-            <span>Enterprise Security</span>
+            <span>{content.pricing.trust.security}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Headphones className="h-4 w-4" />
-            <span>24/7 Support</span>
+            <span>{content.pricing.trust.support}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Users className="h-4 w-4" />
-            <span>10,000+ Developers</span>
+            <span>{content.pricing.trust.developers}</span>
           </div>
         </div>
       </section>

@@ -1,5 +1,7 @@
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { redirect, createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 
 export const Route = createFileRoute('/agents/')({
   beforeLoad: () => {
@@ -11,6 +13,7 @@ export const Route = createFileRoute('/agents/')({
 });
 
 function RouteComponent() {
+  const content = useIntlayer('app');
   return (
     <>
       {/* Show loading skeleton while checking authentication */}
@@ -29,8 +32,8 @@ function RouteComponent() {
       {/* Only show content to authenticated users */}
       <SignedIn>
         <div className="container mx-auto py-8">
-          <h1 className="text-3xl font-bold mb-4">Welcome to DeeptoAI</h1>
-          <p>Redirecting to Agent Chat...</p>
+          <h1 className="text-3xl font-bold mb-4">{toLocalizedString(content.common.welcomeTo).replace('{name}', toLocalizedString(content.common.appName))}</h1>
+          <p>{content.common.redirectingToAgentChat}</p>
         </div>
       </SignedIn>
     </>

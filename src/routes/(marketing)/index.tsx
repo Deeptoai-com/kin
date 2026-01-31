@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Badge } from '~/components/ui/badge';
@@ -23,6 +24,8 @@ export const Route = createFileRoute('/(marketing)/')({
 });
 
 function RouteComponent() {
+  const content = useIntlayer('marketing');
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
       {/* Hero Section */}
@@ -31,22 +34,21 @@ function RouteComponent() {
 
         <Badge variant="secondary" className="mb-4 px-4 py-1">
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          Claude Agent SDK + Zhipu AI GLM-4.7
+          {content.hero.badge}
         </Badge>
 
         <h1 className="max-w-4xl font-bold text-4xl text-foreground md:text-6xl lg:text-7xl">
-          Claude Desktop-Style Agent Chat
+          {content.hero.title}
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-          A full-featured AI agent interface powered by Zhipu AI GLM-4.7. Features Skills Store,
-          Artifacts, Knowledge Base, and Session Management via WebSocket.
+          {content.hero.subtitle}
         </p>
 
         <div className="mt-10 flex flex-col gap-4 sm:flex-row">
           <Button size="lg" asChild className="rounded-full px-8">
             <Link to="/agents/claude-chat">
-              Try DeeptoAI <ArrowRight className="ml-2 h-4 w-4" />
+              {content.hero.primaryButton} <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <Button size="lg" variant="outline" className="rounded-full px-8" asChild>
@@ -55,20 +57,20 @@ function RouteComponent() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              View on GitHub
+              {content.hero.secondaryButton}
             </a>
           </Button>
         </div>
 
         <p className="mt-8 text-muted-foreground text-sm">
-          Powered by{' '}
+          {content.hero.poweredBy}{' '}
           <a
             href="https://open.bigmodel.cn/"
             target="_blank"
             rel="noopener noreferrer"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            Zhipu AI GLM-4.7
+            {content.techStack.zhipuAi}
           </a>
         </p>
       </section>
@@ -77,10 +79,10 @@ function RouteComponent() {
       <section className="container mx-auto px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-            Full-Featured Claude Agent Experience
+            {content.features.title}
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Everything you need from Claude Desktop, plus Skills Store and more
+            {content.features.subtitle}
           </p>
         </div>
 
@@ -89,9 +91,9 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <MessageSquare className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>DeeptoAI Agent Chat</CardTitle>
+              <CardTitle>{content.features.deeptoaiChat.title}</CardTitle>
               <CardDescription>
-                Full Claude Desktop replica with Claude Agent SDK integration
+                {content.features.deeptoaiChat.description}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -100,9 +102,9 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <Box className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>Skills Store</CardTitle>
+              <CardTitle>{content.features.skillsStore.title}</CardTitle>
               <CardDescription>
-                Enable/disable custom skills to extend agent capabilities dynamically
+                {content.features.skillsStore.description}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -111,9 +113,9 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <GitBranch className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>Artifacts System</CardTitle>
+              <CardTitle>{content.features.artifacts.title}</CardTitle>
               <CardDescription>
-                Support for HTML, Markdown, React, and SVG artifacts with live preview
+                {content.features.artifacts.description}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -122,9 +124,9 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <Database className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>Knowledge Base</CardTitle>
+              <CardTitle>{content.features.knowledgeBase.title}</CardTitle>
               <CardDescription>
-                Upload and manage documents for context-aware conversations
+                {content.features.knowledgeBase.description}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -133,9 +135,9 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <GitBranch className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>Session Management</CardTitle>
+              <CardTitle>{content.features.sessionManagement.title}</CardTitle>
               <CardDescription>
-                Create, resume, and switch between multiple chat sessions with full history
+                {content.features.sessionManagement.description}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -144,9 +146,9 @@ function RouteComponent() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <Cpu className="mb-2 h-8 w-8 text-primary" />
-              <CardTitle>Tool Visualization</CardTitle>
+              <CardTitle>{content.features.toolVisualization.title}</CardTitle>
               <CardDescription>
-                See tool calls, arguments, and results in real-time with detailed feedback
+                {content.features.toolVisualization.description}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -157,10 +159,10 @@ function RouteComponent() {
       <section className="container mx-auto px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-            Production-Ready Tech Stack
+            {content.techStack.title}
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Built on proven technologies for reliability and scalability
+            {content.techStack.subtitle}
           </p>
         </div>
 
@@ -169,26 +171,26 @@ function RouteComponent() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Code2 className="h-5 w-5 text-primary" />
-                Claude Chat (Main Feature)
+                {content.techStack.claudeChat.title}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Claude Agent SDK
+                  {content.techStack.claudeChat.claudeAgentSDK}
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Zhipu AI GLM-4.7
+                  {content.techStack.claudeChat.zhipuAi}
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  WebSocket (real-time)
+                  {content.techStack.claudeChat.websocket}
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Assistant UI components
+                  {content.techStack.claudeChat.assistantUi}
                 </li>
               </ul>
             </CardContent>
@@ -198,26 +200,26 @@ function RouteComponent() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5 text-primary" />
-                Additional Features
+                {content.techStack.additionalFeatures.title}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Mastra AI Chat (SSE-based)
+                  {content.techStack.additionalFeatures.mastraAiChat}
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Better Auth (OAuth + password)
+                  {content.techStack.additionalFeatures.betterAuth}
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  PostgreSQL + Drizzle ORM
+                  {content.techStack.additionalFeatures.postgresql}
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  shadcn/ui + Tailwind CSS v4
+                  {content.techStack.additionalFeatures.shadcn}
                 </li>
               </ul>
             </CardContent>
@@ -229,50 +231,50 @@ function RouteComponent() {
       <section className="container mx-auto px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-            Two Independent Chat Systems
+            {content.architecture.title}
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Built for different use cases with optimal architectures
+            {content.architecture.subtitle}
           </p>
         </div>
 
         <div className="mt-12 grid gap-8 md:grid-cols-2">
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
-              <Badge className="mb-2 w-fit">Main Feature</Badge>
-              <CardTitle className="text-xl">DeeptoAI Agent Chat</CardTitle>
+              <Badge className="mb-2 w-fit">{content.architecture.deeptoai.badge}</Badge>
+              <CardTitle className="text-xl">{content.architecture.deeptoai.title}</CardTitle>
               <CardDescription className="text-base">
-                Full-featured agent with WebSocket-based real-time communication
+                {content.architecture.deeptoai.description}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• Skills Store for dynamic capabilities</li>
-                <li>• Artifacts panel with multiple formats</li>
-                <li>• Session management and history</li>
-                <li>• Tool call visualization</li>
-                <li>• Knowledge Base integration</li>
-                <li>• Usage statistics tracking</li>
+                <li>• {content.architecture.deeptoai.feature1}</li>
+                <li>• {content.architecture.deeptoai.feature2}</li>
+                <li>• {content.architecture.deeptoai.feature3}</li>
+                <li>• {content.architecture.deeptoai.feature4}</li>
+                <li>• {content.architecture.deeptoai.feature5}</li>
+                <li>• {content.architecture.deeptoai.feature6}</li>
               </ul>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <Badge variant="secondary" className="mb-2 w-fit">Secondary</Badge>
-              <CardTitle className="text-xl">Mastra AI Chat</CardTitle>
+              <Badge variant="secondary" className="mb-2 w-fit">{content.architecture.mastra.badge}</Badge>
+              <CardTitle className="text-xl">{content.architecture.mastra.title}</CardTitle>
               <CardDescription className="text-base">
-                Simple chat interface using Mastra + SSE streaming
+                {content.architecture.mastra.description}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• Mastra Agent Framework</li>
-                <li>• Zhipu AI GLM-4.7 model</li>
-                <li>• Vercel AI SDK integration</li>
-                <li>• SSE-based streaming</li>
-                <li>• Modern AI Elements UI</li>
-                <li>• File reading capability</li>
+                <li>• {content.architecture.mastra.feature1}</li>
+                <li>• {content.architecture.mastra.feature2}</li>
+                <li>• {content.architecture.mastra.feature3}</li>
+                <li>• {content.architecture.mastra.feature4}</li>
+                <li>• {content.architecture.mastra.feature5}</li>
+                <li>• {content.architecture.mastra.feature6}</li>
               </ul>
             </CardContent>
           </Card>
@@ -285,21 +287,21 @@ function RouteComponent() {
           <CardContent className="flex flex-col items-center p-8 text-center md:p-12">
             <MessageSquare className="mb-4 h-12 w-12 text-primary" />
             <h2 className="mb-4 text-2xl font-bold md:text-3xl">
-              Ready to Try DeeptoAI?
+              {content.cta.title}
             </h2>
             <p className="mb-8 text-muted-foreground">
-              Start chatting with the AI agent powered by Claude Agent SDK and Skills Store
+              {content.cta.subtitle}
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
               <Button size="lg" className="rounded-full px-8" asChild>
                 <Link to="/agents/claude-chat">
-                  Start Claude Chat <ArrowRight className="ml-2 h-4 w-4" />
+                  {content.cta.primaryButton} <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="rounded-full px-8" asChild>
                 <Link to="/agents/skills">
                   <Box className="mr-2 h-4 w-4" />
-                  Browse Skills
+                  {content.cta.secondaryButton}
                 </Link>
               </Button>
             </div>
@@ -311,7 +313,7 @@ function RouteComponent() {
       <footer className="container mx-auto border-t px-4 py-8">
         <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
           <p className="text-center text-sm text-muted-foreground">
-            © 2024 Constructa Starter. MIT License.
+            {content.footer.copyright}
           </p>
           <p className="text-center text-sm text-muted-foreground">
             <a
@@ -320,7 +322,7 @@ function RouteComponent() {
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              GitHub
+              {content.footer.github}
             </a>
             {' '}&bull;{' '}
             <a
@@ -329,7 +331,7 @@ function RouteComponent() {
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              Claude Agent SDK
+              {content.footer.claudeAgentSDK}
             </a>
             {' '}&bull;{' '}
             <a
@@ -338,7 +340,7 @@ function RouteComponent() {
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              Zhipu AI
+              {content.footer.zhipuAi}
             </a>
             {' '}&bull;{' '}
             <a
@@ -347,7 +349,7 @@ function RouteComponent() {
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              Assistant UI
+              {content.footer.assistantUi}
             </a>
           </p>
         </div>

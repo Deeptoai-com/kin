@@ -5,6 +5,7 @@
  */
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { ArrowRight, FileText, FileCheck, Sparkles } from 'lucide-react';
 import { Button } from '~/components/ui/button';
@@ -26,7 +27,7 @@ function IndexComponent() {
     <div className="container mx-auto h-full px-4 py-6">
       <AuthLoading>
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          正在检查登录状态…
+          <AiWorkflowCheckingAuth />
         </div>
       </AuthLoading>
 
@@ -72,7 +73,13 @@ const workflows: WorkflowDefinition[] = [
   },
 ];
 
+function AiWorkflowCheckingAuth() {
+  const content = useIntlayer('app');
+  return <>{content.aiWorkflow.checkingAuth}</>;
+}
+
 function WorkflowHub() {
+  const content = useIntlayer('app');
   const navigate = useNavigate();
 
   const handleSelectWorkflow = (workflowId: string) => {
@@ -84,9 +91,9 @@ function WorkflowHub() {
   return (
     <div className="flex h-full flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Workflow</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{content.titles.aiWorkflow}</h1>
         <p className="text-muted-foreground">
-          选择一个工作流开始创作。每个工作流都是一个多步骤的智能流程。
+          {content.aiWorkflow.hubSubtitle}
         </p>
       </div>
 

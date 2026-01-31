@@ -6,6 +6,8 @@
 
 import * as React from 'react';
 import { createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import { getAllUsers, addUserCredits, updateUserSystemRole } from '~/server/admin.server';
 import {
@@ -49,6 +51,7 @@ export const Route = createFileRoute('/admin/users')({
 });
 
 function AdminUsersPage() {
+  const content = useIntlayer('admin');
   const { users } = Route.useLoaderData();
   const [selectedUser, setSelectedUser] = React.useState<typeof users[0] | null>(null);
   const [creditsDialogOpen, setCreditsDialogOpen] = React.useState(false);
@@ -98,9 +101,9 @@ function AdminUsersPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">User Management</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{content.users.page.title}</h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Manage all users and their credits
+          {content.users.page.subtitle}
         </p>
       </div>
 
@@ -109,12 +112,12 @@ function AdminUsersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>System Role</TableHead>
-              <TableHead>Credits Balance</TableHead>
-              <TableHead>Subscription</TableHead>
-              <TableHead>Joined</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>{content.users.table.user}</TableHead>
+              <TableHead>{content.users.table.systemRole}</TableHead>
+              <TableHead>{content.users.table.creditsBalance}</TableHead>
+              <TableHead>{content.users.table.subscription}</TableHead>
+              <TableHead>{content.users.table.joined}</TableHead>
+              <TableHead>{content.users.table.actions}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -135,10 +138,10 @@ function AdminUsersPage() {
                   {user.systemRole === 'admin' ? (
                     <Badge className="bg-yellow-500 hover:bg-yellow-600">
                       <RiShieldLine className="h-3 w-3 mr-1" />
-                      Admin
+                      {content.users.roles.admin}
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">User</Badge>
+                    <Badge variant="secondary">{content.users.roles.user}</Badge>
                   )}
                 </TableCell>
                 <TableCell>
@@ -151,7 +154,7 @@ function AdminUsersPage() {
                   {user.subscriptions[0] ? (
                     <Badge variant="outline">{user.subscriptions[0].plan.name}</Badge>
                   ) : (
-                    <span className="text-sm text-gray-500">No subscription</span>
+                    <span className="text-sm text-gray-500">{content.users.noSubscription}</span>
                   )}
                 </TableCell>
                 <TableCell>
@@ -166,19 +169,19 @@ function AdminUsersPage() {
                       <DialogTrigger asChild>
                         <Button size="sm" variant="outline">
                           <RiAddLine className="h-4 w-4 mr-1" />
-                          Add Credits
+                          {content.users.addCredits}
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Add Credits</DialogTitle>
+                          <DialogTitle>{content.users.addCredits}</DialogTitle>
                           <DialogDescription>
-                            Add credits to {user.name}'s account
+                            {toLocalizedString(content.users.addCreditsToUser).replace('{name}', user.name ?? '')}
                           </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleAddCredits} className="space-y-4">
                           <div className="space-y-2">
-                            <Label htmlFor="amount">Amount</Label>
+                            <Label htmlFor="amount">{content.users.amount}</Label>
                             <Input
                               id="amount"
                               name="amount"
@@ -189,32 +192,32 @@ function AdminUsersPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="kind">Type</Label>
+                            <Label htmlFor="kind">{content.users.type}</Label>
                             <Select name="kind" defaultValue="gift">
                               <SelectTrigger>
-                                <SelectValue placeholder="Select type" />
+                                <SelectValue placeholder={toLocalizedString(content.users.selectType)} />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="purchase">Purchase</SelectItem>
-                                <SelectItem value="gift">Gift</SelectItem>
-                                <SelectItem value="compensation">Compensation</SelectItem>
+                                <SelectItem value="purchase">{content.users.purchase}</SelectItem>
+                                <SelectItem value="gift">{content.users.gift}</SelectItem>
+                                <SelectItem value="compensation">{content.users.compensation}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="note">Note</Label>
+                            <Label htmlFor="note">{content.users.note}</Label>
                             <Input
                               id="note"
                               name="note"
                               required
-                              placeholder="Reason for adding credits"
+                              placeholder={toLocalizedString(content.users.reasonForCredits)}
                             />
                           </div>
                           <div className="flex justify-end gap-2">
                             <Button type="button" variant="outline" onClick={() => setCreditsDialogOpen(false)}>
-                              Cancel
+                              {content.actions.cancel}
                             </Button>
-                            <Button type="submit">Add Credits</Button>
+                            <Button type="submit">{content.users.addCredits}</Button>
                           </div>
                         </form>
                       </DialogContent>
@@ -231,14 +234,14 @@ function AdminUsersPage() {
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Update System Role</DialogTitle>
+                          <DialogTitle>{content.users.updateSystemRole}</DialogTitle>
                           <DialogDescription>
-                            Change {user.name}'s system role
+                            {toLocalizedString(content.users.changeUserRole).replace('{name}', user.name ?? '')}
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
                           <div className="space-y-2">
-                            <Label>Role</Label>
+                            <Label>{content.users.role}</Label>
                             <Select
                               defaultValue={user.systemRole}
                               onValueChange={(value) => handleUpdateRole(value)}
@@ -247,13 +250,13 @@ function AdminUsersPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="user">User</SelectItem>
+                                <SelectItem value="admin">{content.users.roles.admin}</SelectItem>
+                                <SelectItem value="user">{content.users.roles.user}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                           <p className="text-sm text-gray-500">
-                            ⚠️ Admins have full access to the system admin panel.
+                            {content.users.adminsWarning}
                           </p>
                         </div>
                       </DialogContent>
@@ -269,17 +272,17 @@ function AdminUsersPage() {
       {/* Stats */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Total Users</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{content.users.totalUsers}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{users.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Admins</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{content.users.admins}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
             {users.filter(u => u.systemRole === 'admin').length}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Total Credits</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{content.users.totalCredits}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
             {users.reduce((sum, user) => sum + getTotalCredits(user), 0)}
           </p>

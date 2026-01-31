@@ -25,6 +25,7 @@ import {
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery } from '@tanstack/react-query';
 import { ThumbsDown, ThumbsUp, Layers, Paperclip, FolderOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
@@ -43,6 +44,7 @@ import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/
 import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
+import { toLocalizedString } from '~/lib/utils';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore } from '~/lib/stores/artifacts-store';
@@ -99,6 +101,9 @@ export const Route = createFileRoute('/agents/claude-chat')({
 function RouteComponent() {
   // Get permission info from loader
   const { permissionInfo } = Route.useLoaderData();
+
+  // Get i18n content - must be at top level before any returns
+  const content = useIntlayer('claude-chat');
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   // Key to force re-mount of chat surface when session changes
@@ -318,10 +323,10 @@ function RouteComponent() {
           </div>
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold text-foreground">
-              Claude Agent
+              {content.emptyState.title}
             </h1>
             <p className="text-muted-foreground max-w-md">
-              Start a conversation to begin. I can read files, execute code, and help with various tasks.
+              {content.emptyState.subtitle}
             </p>
           </div>
           <button
@@ -333,12 +338,12 @@ function RouteComponent() {
             {isCreatingSession ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                <span>Creating...</span>
+                <span>{content.buttons.loading}</span>
               </>
             ) : (
               <>
                 <Plus className="h-5 w-5" />
-                <span>Start New Session</span>
+                <span>{content.emptyState.startChat}</span>
               </>
             )}
           </button>
@@ -373,8 +378,8 @@ function RouteComponent() {
                     type="button"
                     onClick={() => setSessionListExpanded(!sessionListExpanded)}
                     className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-                    aria-label={sessionListExpanded ? '收起侧边栏' : '展开侧边栏'}
-                    title={sessionListExpanded ? '收起侧边栏' : '展开侧边栏'}
+                    aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+                    title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
                   >
                     <FolderOpen className="h-4 w-4" />
                   </button>
@@ -384,8 +389,8 @@ function RouteComponent() {
                     type="button"
                     onClick={handleNewSession}
                     className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                    aria-label="新建对话"
-                    title="新建对话"
+                    aria-label={toLocalizedString(content.header.newChat)}
+                    title={toLocalizedString(content.header.newChat)}
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -417,10 +422,10 @@ function RouteComponent() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div className="mx-4 max-w-md rounded-xl bg-card p-6 shadow-xl">
               <h3 className="mb-3 text-lg font-semibold text-foreground">
-                请稍候
+                {content.sessionSwitch.title}
               </h3>
               <p className="mb-6 text-muted-foreground">
-                当前会话正在接收回复，请等待回复完成后再切换会话。
+                {content.sessionSwitch.message}
               </p>
               <div className="flex justify-end">
                 <button
@@ -428,7 +433,7 @@ function RouteComponent() {
                   onClick={handleCancelSwitch}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  知道了
+                  {content.sessionSwitch.confirm}
                 </button>
               </div>
             </div>
@@ -443,7 +448,7 @@ function RouteComponent() {
     <div className="h-full">
       <AuthLoading>
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          Checking your session...
+          {content.auth.checkingSession}
         </div>
       </AuthLoading>
 
@@ -452,130 +457,201 @@ function RouteComponent() {
       <SignedIn>
         {/* Empty state: no sessions at all, show big "Start New Session" button */}
         {isSessionsEmpty && !currentSessionId ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="flex flex-col items-center gap-6 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <MessageSquare className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <div className="space-y-2">
-                <h1 className="text-2xl font-semibold text-foreground">
-                  Claude Agent
-                </h1>
-                <p className="text-muted-foreground max-w-md">
-                  Start a conversation to begin. I can read files, execute code, and help with various tasks.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleNewSession}
-                disabled={isCreatingSession}
-                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-primary-foreground font-medium transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingSession ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Creating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-5 w-5" />
-                    <span>Start New Session</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          <EmptyStateContent
+            isCreatingSession={isCreatingSession}
+            onNewSession={handleNewSession}
+          />
         ) : (
           <>
-            <div className="flex h-full">
-              {/* Session List - only show when no artifact AND user has sessions */}
-              {!activeArtifactId && hasAnySessions && (
-                <SessionList
-                  currentSessionId={currentSessionId}
-                  onSelectSession={handleSelectSession}
-                  onNewSession={handleNewSession}
-                  isExpanded={sessionListExpanded}
-                  onToggleExpanded={() => setSessionListExpanded(!sessionListExpanded)}
-                />
-              )}
-
-          {/* Chat Surface - always mounted, width changes based on artifact state */}
-          <div className={activeArtifactId ? "w-1/3 h-full shrink-0" : "flex-1 h-full relative"}>
-            {/* Floating action buttons - only show when no artifact */}
-            {!activeArtifactId && (
-              <div className="absolute top-4 left-4 z-10 flex gap-2">
-                {hasAnySessions && (
-                  <button
-                    type="button"
-                    onClick={() => setSessionListExpanded(!sessionListExpanded)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-                    aria-label={sessionListExpanded ? '收起侧边栏' : '展开侧边栏'}
-                    title={sessionListExpanded ? '收起侧边栏' : '展开侧边栏'}
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                  </button>
-                )}
-                {!sessionListExpanded && (
-                  <button
-                    type="button"
-                    onClick={handleNewSession}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                    aria-label="新建对话"
-                    title="新建对话"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            )}
-            <ClaudeChatSurface
-              key={chatKey}
+            <MainContent
+              activeArtifactId={activeArtifactId}
+              hasAnySessions={hasAnySessions}
+              sessionListExpanded={sessionListExpanded}
+              currentSessionId={currentSessionId}
+              setSessionListExpanded={setSessionListExpanded}
+              handleNewSession={handleNewSession}
+              chatKey={chatKey}
               permissionInfo={permissionInfo}
-              hasSession={!!currentSessionId}
               isInitializingSession={isInitializingSession}
-              onStartSession={handleNewSession}
               isCreatingSession={isCreatingSession}
+              pendingSessionSwitch={pendingSessionSwitch}
+              handleCancelSwitch={handleCancelSwitch}
             />
-          </div>
-
-              {/* Artifacts Panel - only show when artifact exists */}
-              {activeArtifactId && (
-                <div className="w-2/3 h-full shrink-0 border-l">
-                  <ArtifactsPanel
-                    artifactId={activeArtifactId}
-                    onClose={() => setActiveArtifact(null)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {pendingSessionSwitch && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                <div className="mx-4 max-w-md rounded-xl bg-card p-6 shadow-xl">
-                  <h3 className="mb-3 text-lg font-semibold text-foreground">
-                    请稍候
-                  </h3>
-                  <p className="mb-6 text-muted-foreground">
-                    当前会话正在接收回复，请等待回复完成后再切换会话。
-                  </p>
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handleCancelSwitch}
-                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
-                      知道了
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         )}
       </SignedIn>
     </div>
   );
 }
+
+/**
+ * Empty State Content Component
+ * Reusable empty state for when no sessions exist
+ */
+const EmptyStateContent: FC<{
+  isCreatingSession: boolean;
+  onNewSession: () => void;
+}> = ({ isCreatingSession, onNewSession }) => {
+  const content = useIntlayer('claude-chat');
+  return (
+    <div className="h-full flex items-center justify-center">
+      <div className="flex flex-col items-center gap-6 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <MessageSquare className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold text-foreground">
+            {content.emptyState.title}
+          </h1>
+          <p className="text-muted-foreground max-w-md">
+            {content.emptyState.subtitle}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onNewSession}
+          disabled={isCreatingSession}
+          className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-primary-foreground font-medium transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isCreatingSession ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>{content.buttons.loading}</span>
+            </>
+          ) : (
+            <>
+              <Plus className="h-5 w-5" />
+              <span>{content.emptyState.startChat}</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Main Content Component
+ * Reusable main content area with session list, chat surface, and artifacts panel
+ */
+const MainContent: FC<{
+  activeArtifactId: string | null;
+  hasAnySessions: boolean;
+  sessionListExpanded: boolean;
+  setSessionListExpanded: (value: boolean) => void;
+  handleNewSession: () => void;
+  chatKey: number;
+  permissionInfo: PermissionInfo;
+  isInitializingSession: boolean;
+  isCreatingSession: boolean;
+  pendingSessionSwitch: {
+    targetSessionId: string | null;
+    isNewSession: boolean;
+  } | null;
+  handleCancelSwitch: () => void;
+}> = ({
+  activeArtifactId,
+  hasAnySessions,
+  sessionListExpanded,
+  setSessionListExpanded,
+  handleNewSession,
+  chatKey,
+  permissionInfo,
+  isInitializingSession,
+  isCreatingSession,
+  pendingSessionSwitch,
+  handleCancelSwitch,
+}) => {
+  const content = useIntlayer('claude-chat');
+
+  return (
+    <>
+      <div className="flex h-full">
+        {/* Session List - only show when no artifact AND user has sessions */}
+        {!activeArtifactId && hasAnySessions && (
+          <SessionList
+            currentSessionId={undefined}
+            onSelectSession={undefined}
+            onNewSession={handleNewSession}
+            isExpanded={sessionListExpanded}
+            onToggleExpanded={() => setSessionListExpanded(!sessionListExpanded)}
+          />
+        )}
+
+        {/* Chat Surface - always mounted, width changes based on artifact state */}
+        <div className={activeArtifactId ? "w-1/3 h-full shrink-0" : "flex-1 h-full relative"}>
+          {/* Floating action buttons - only show when no artifact */}
+          {!activeArtifactId && (
+            <div className="absolute top-4 left-4 z-10 flex gap-2">
+              {hasAnySessions && (
+                <button
+                  type="button"
+                  onClick={() => setSessionListExpanded(!sessionListExpanded)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
+                  aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+                  title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+              )}
+              {!sessionListExpanded && (
+                <button
+                  type="button"
+                  onClick={handleNewSession}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                  aria-label={toLocalizedString(content.header.newChat)}
+                  title={toLocalizedString(content.header.newChat)}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
+          <ClaudeChatSurface
+            key={chatKey}
+            permissionInfo={permissionInfo}
+            hasSession={true}
+            isInitializingSession={isInitializingSession}
+            onStartSession={handleNewSession}
+            isCreatingSession={isCreatingSession}
+          />
+        </div>
+
+        {/* Artifacts Panel - only show when artifact exists */}
+        {activeArtifactId && (
+          <div className="w-2/3 h-full shrink-0 border-l">
+            <ArtifactsPanel
+              artifactId={activeArtifactId}
+              onClose={() => {}}
+            />
+          </div>
+        )}
+      </div>
+
+      {pendingSessionSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <h3 className="mb-3 text-lg font-semibold text-foreground">
+              {content.sessionSwitch.title}
+            </h3>
+            <p className="mb-6 text-muted-foreground">
+              {content.sessionSwitch.message}
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleCancelSwitch}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                {content.sessionSwitch.confirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 async function hydrateArtifactsFromRegistry(sessionId: string) {
   const registry = await fetchArtifactRegistry(sessionId);
@@ -659,6 +735,7 @@ function ClaudeChatSurface({
   onStartSession?: () => void;
   isCreatingSession?: boolean;
 }) {
+  const content = useIntlayer('claude-chat');
   const runtime = useLocalRuntime(ClaudeAgentWSAdapter);
   const historicalMessages = useChatSessionStore((state) => state.messages);
   const hasHistoricalMessages = historicalMessages.length > 0;
@@ -712,7 +789,7 @@ function ClaudeChatSurface({
         isOpen: true,
         content: '',
         filePath: path,
-        error: '请先创建会话后再查看文件',
+        error: content.errors.noSession,
         isLoading: false,
       });
       return;
@@ -728,19 +805,19 @@ function ClaudeChatSurface({
 
     try {
       console.log('[Route] Reading workspace file:', path);
-      const content = await readWorkspaceFile(currentSessionId, path);
-      if (content === null) {
+      const fileContent = await readWorkspaceFile(currentSessionId, path);
+      if (fileContent === null) {
         setFilePreview({
           isOpen: true,
           content: '',
           filePath: path,
-          error: `文件不存在或无法读取: ${path}`,
+          error: toLocalizedString(content.errors.fileNotFound).replace('{path}', path),
           isLoading: false,
         });
       } else {
         setFilePreview({
           isOpen: true,
-          content,
+          content: fileContent,
           filePath: path,
           isLoading: false,
         });
@@ -751,11 +828,11 @@ function ClaudeChatSurface({
         isOpen: true,
         content: '',
         filePath: path,
-        error: error instanceof Error ? error.message : '读取文件失败',
+        error: error instanceof Error ? error.message : content.errors.readFailed,
         isLoading: false,
       });
     }
-  }, [currentSessionId]);
+  }, [currentSessionId, content]);
 
   // Handler for session file clicks - uses session API (for files in session root, not just workspace/)
   // P12 fix: Session files panel uses this for browsing entire session directory
@@ -766,7 +843,7 @@ function ClaudeChatSurface({
         isOpen: true,
         content: '',
         filePath: path,
-        error: '请先创建会话后再查看文件',
+        error: content.errors.noSession,
         isLoading: false,
       });
       return;
@@ -801,11 +878,11 @@ function ClaudeChatSurface({
         isOpen: true,
         content: '',
         filePath: path,
-        error: error instanceof Error ? error.message : '读取文件失败',
+        error: error instanceof Error ? error.message : content.errors.readFailed,
         isLoading: false,
       });
     }
-  }, [currentSessionId]);
+  }, [currentSessionId, content]);
 
   // Handler for URL clicks
   const handleUrlClick = useCallback((url: string) => {
@@ -870,11 +947,10 @@ function ClaudeChatSurface({
                 <ThreadPrimitive.Empty>
                   <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
                     <div className="text-4xl font-semibold text-foreground">
-                      Claude Agent
+                      {content.emptyState.title}
                     </div>
                     <p className="max-w-md text-muted-foreground">
-                      Powered by Claude Agent SDK. I can read files, execute code, and help with various
-                      tasks.
+                      {content.emptyState.subtitle}
                     </p>
                     {!hasSession && onStartSession && (
                       <button
@@ -886,12 +962,12 @@ function ClaudeChatSurface({
                         {isCreatingSession ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            <span>Creating...</span>
+                            <span>{content.buttons.loading}</span>
                           </>
                         ) : (
                           <>
                             <Plus className="h-4 w-4" />
-                            <span>Start New Session</span>
+                            <span>{content.emptyState.startChat}</span>
                           </>
                         )}
                       </button>
@@ -906,8 +982,8 @@ function ClaudeChatSurface({
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
                   <div className="space-y-1">
-                    <div className="text-base font-medium text-foreground">正在初始化新会话</div>
-                    <div className="text-xs text-muted-foreground">请稍候，完成后即可开始对话</div>
+                    <div className="text-base font-medium text-foreground">{content.status.initializing}</div>
+                    <div className="text-xs text-muted-foreground">{content.status.pleaseWait}</div>
                   </div>
                 </div>
               )}
@@ -968,7 +1044,7 @@ function ClaudeChatSurface({
         <CodePreviewOverlay
           isOpen={filePreview.isOpen}
           onClose={() => setFilePreview(prev => ({ ...prev, isOpen: false }))}
-          content={filePreview.isLoading ? 'Loading...' : filePreview.content}
+          content={filePreview.isLoading ? content.buttons.loading : filePreview.content}
           filePath={filePreview.filePath}
           error={filePreview.error}
         />
@@ -977,7 +1053,7 @@ function ClaudeChatSurface({
         {escPressedOnce && (
           <div className="fixed inset-x-0 top-4 z-50 flex justify-center pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="rounded-lg bg-[#1a1a18] px-4 py-2 text-sm text-white shadow-lg">
-              再按一次 <kbd className="mx-1 rounded bg-white/20 px-1.5 py-0.5 font-mono text-xs">Esc</kbd> 停止
+              {content.status.escInterrupt}
             </div>
           </div>
         )}
@@ -1239,6 +1315,9 @@ const HistoricalAttachmentStrip: FC<{
  * Manually renders all content parts to support custom tool-call type
  */
 const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
+  // Get i18n content
+  const content = useIntlayer('claude-chat');
+
   // Get message using the hook to access runtime context
   const message = useMessage();
   const messageStatus = message.status;
@@ -1362,7 +1441,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                   className="mt-3 flex items-center gap-1.5 rounded-md border border-[#e5e4df] bg-[#f8f8f6] px-2.5 py-1.5 text-xs text-[#6b6a68] transition-colors hover:bg-[#f0f0eb] dark:border-[#3a3938] dark:bg-[#1f1e1b] dark:text-[#9a9893] dark:hover:bg-[#2a2928]"
                 >
                   <Layers className="h-3.5 w-3.5" />
-                  <span>View all {successfulChanges.length} file changes</span>
+                  <span>{toLocalizedString(content.actions.viewFileChanges).replace('{count}', String(successfulChanges.length))}</span>
                 </button>
               )}
 
@@ -1380,14 +1459,14 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                 type="button"
                 onClick={() => navigator.clipboard.writeText(copyText)}
                 className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                aria-label="复制"
+                aria-label={toLocalizedString(content.message.copy)}
               >
                 <ClipboardIcon width={20} height={20} />
               </button>
-              <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
+              <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.helpful)}>
                 <ThumbsUp width={16} height={16} />
               </ActionBarPrimitive.FeedbackPositive>
-              <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
+              <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.notHelpful)}>
                 <ThumbsDown width={16} height={16} />
               </ActionBarPrimitive.FeedbackNegative>
               <ActionBarPrimitive.Reload className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
@@ -1399,7 +1478,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                   type="button"
                   onClick={() => setShowUsageCard(!showUsageCard)}
                   className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label="查看统计信息"
+                  aria-label={toLocalizedString(content.actions.viewStats)}
                 >
                   <BarChartIcon width={20} height={20} />
                 </button>
@@ -1411,7 +1490,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
             </div>
             {isLast && (
               <p className="mt-2 w-full text-right text-muted-foreground text-[0.65rem] leading-[0.85rem] opacity-90 sm:text-[0.75rem]">
-                Claude can make mistakes. Please double-check responses.
+                {content.disclaimer}
               </p>
             )}
           </ActionBarPrimitive.Root>
@@ -1515,6 +1594,9 @@ const HistoricalMessage: FC<{
   attachments?: MessageAttachment[];
   sessionId: string | null;
 }> = ({ message, attachments, sessionId }) => {
+  // Get i18n content
+  const content = useIntlayer('claude-chat');
+
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const messageAttachments = attachments ?? [];
@@ -1586,7 +1668,7 @@ const HistoricalMessage: FC<{
                   type="button"
                   onClick={() => navigator.clipboard.writeText(textContent)}
                   className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-accent active:scale-95"
-                  aria-label="复制"
+                  aria-label={toLocalizedString(content.message.copy)}
                 >
                   <ClipboardIcon width={20} height={20} />
                 </button>
@@ -1668,7 +1750,7 @@ const HistoricalMessage: FC<{
                     className="mt-3 flex items-center gap-1.5 rounded-md border border-[#e5e4df] bg-[#f8f8f6] px-2.5 py-1.5 text-xs text-[#6b6a68] transition-colors hover:bg-[#f0f0eb] dark:border-[#3a3938] dark:bg-[#1f1e1b] dark:text-[#9a9893] dark:hover:bg-[#2a2928]"
                   >
                     <Layers className="h-3.5 w-3.5" />
-                    <span>View all {successfulChanges.length} file changes</span>
+                    <span>{toLocalizedString(content.actions.viewFileChanges).replace('{count}', String(successfulChanges.length))}</span>
                   </button>
                 )}
               </div>
@@ -1688,21 +1770,21 @@ const HistoricalMessage: FC<{
                     navigator.clipboard.writeText(allText);
                   }}
                   className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label="复制"
+                  aria-label={toLocalizedString(content.message.copy)}
                 >
                   <ClipboardIcon width={20} height={20} />
                 </button>
                 <button
                   type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label="有帮助"
+                  aria-label={toLocalizedString(content.actions.helpful)}
                 >
                   <ThumbsUp width={16} height={16} />
                 </button>
                 <button
                   type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label="没帮助"
+                  aria-label={toLocalizedString(content.actions.notHelpful)}
                 >
                   <ThumbsDown width={16} height={16} />
                 </button>

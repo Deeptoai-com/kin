@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { listAllMcpsFn } from '~/server/function/mcp.server';
 import { McpPageComponent } from '~/components/mcp/mcp-page';
 import type { ExtendedMcpInfo } from '~/claude/mcp';
@@ -24,6 +26,7 @@ export const Route = createFileRoute('/agents/mcp')({
     };
   },
   component: () => {
+    const content = useIntlayer('mcp');
     const { officialMcps, systemMcps, userMcps, allMcps } = Route.useLoaderData();
     const enabledMcps = allMcps.filter((mcp) => mcp.enabled).map((mcp) => mcp.slug);
     const customCount = systemMcps.length + userMcps.length;
@@ -32,9 +35,9 @@ export const Route = createFileRoute('/agents/mcp')({
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold">MCP Store</h1>
+            <h1 className="text-3xl font-bold">{content.header.title}</h1>
             <p className="text-sm text-muted-foreground">
-              Manage MCP servers ({allMcps.length} total, {customCount} custom)
+              {toLocalizedString(content.header.description).replace('{total}', String(allMcps.length)).replace('{custom}', String(customCount))}
             </p>
           </div>
         </div>

@@ -5,6 +5,8 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { requireSystemAdmin, getAllUsers, getAllOrganizations } from '~/server/admin.server';
 import RiUserLine from '~icons/ri/user-line';
 import RiBuilding4Line from '~icons/ri/building-4-line';
@@ -27,16 +29,17 @@ export const Route = createFileRoute('/admin/')({
 });
 
 function AdminDashboard() {
+  const content = useIntlayer('admin');
   const { admin, users, orgs } = Route.useLoaderData();
 
   return (
     <div className="p-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-          Welcome, {admin.name}!
+          {toLocalizedString(content.dashboard.welcome).replace('{name}', admin.name ?? '')}
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          System Administrator Dashboard
+          {content.dashboard.systemAdminDashboard}
         </p>
       </div>
 
@@ -45,7 +48,7 @@ function AdminDashboard() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Users</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{content.dashboard.overview.totalUsers}</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{users.length}</p>
             </div>
             <RiUserLine className="h-8 w-8 text-blue-500" />
@@ -55,7 +58,7 @@ function AdminDashboard() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Organizations</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{content.dashboard.overview.organizations}</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{orgs.length}</p>
             </div>
             <RiBuilding4Line className="h-8 w-8 text-green-500" />
@@ -65,8 +68,8 @@ function AdminDashboard() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">System Role</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">Admin</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{content.dashboard.systemRole}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{content.users.roles.admin}</p>
             </div>
             <RiShieldCheckLine className="h-8 w-8 text-yellow-500" />
           </div>
@@ -76,7 +79,7 @@ function AdminDashboard() {
       {/* Quick Actions */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-          Quick Actions
+          {content.dashboard.quickActions}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <a
@@ -84,10 +87,10 @@ function AdminDashboard() {
             className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
           >
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Manage Users
+              {content.dashboard.manageUsers}
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              View all users, add credits, and manage roles
+              {content.dashboard.manageUsersDesc}
             </p>
           </a>
 
@@ -96,10 +99,10 @@ function AdminDashboard() {
             className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
           >
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Manage Organizations
+              {content.dashboard.manageOrganizations}
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Create organizations and manage members
+              {content.dashboard.manageOrgsDesc}
             </p>
           </a>
         </div>

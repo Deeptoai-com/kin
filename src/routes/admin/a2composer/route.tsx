@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { createFileRoute } from '@tanstack/react-router';
+import { toLocalizedString } from '~/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useServerFn } from '@tanstack/react-start';
 import { Check } from 'lucide-react';
@@ -53,6 +55,7 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '');
 
 function A2ComposerAdminPage() {
+  const content = useIntlayer('admin');
   const queryClient = useQueryClient();
   const getStore = useServerFn(getA2ComposerStoreFn);
   const updateStore = useServerFn(updateA2ComposerStoreFn);
@@ -747,7 +750,7 @@ function A2ComposerAdminPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
                       value={activeTemplate.skillId ?? ''}
-                      placeholder="输入 skill slug 或点击选择"
+                      placeholder={toLocalizedString(content.a2composer.skillSlugPlaceholder)}
                       onChange={(event) => updateTemplate(activeTemplate.id, {
                         skillId: event.target.value || undefined,
                       })}
@@ -919,7 +922,7 @@ function A2ComposerAdminPage() {
           title="选择技能"
           description="搜索并选择一个技能作为绑定"
         >
-          <CommandInput placeholder="搜索技能 slug / 名称 / 描述..." />
+          <CommandInput placeholder={toLocalizedString(content.a2composer.skillSearchPlaceholder)} />
           <CommandList>
             {isLoadingSkills && (
               <CommandEmpty>加载中...</CommandEmpty>

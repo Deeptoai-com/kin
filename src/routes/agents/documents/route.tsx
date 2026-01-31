@@ -1,6 +1,8 @@
 import type { CheckedState } from '@radix-ui/react-checkbox';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import { AudioLines, Book, FileText, Image as ImageIcon, Video, Plus, Edit2, Trash2, Loader2, X } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
@@ -53,6 +55,7 @@ type SelectableFile = { id: ListedFile['id']; key?: ListedFile['key'] };
 type DeleteDocumentsPayload = NonNullable<DeleteDocumentsInput['items']>;
 
 function DocumentsPage() {
+  const content = useIntlayer('documents');
   const router = useRouter();
   const queryClient = useQueryClient();
   const { files } = Route.useLoaderData() as {
@@ -183,7 +186,7 @@ function DocumentsPage() {
       await router.invalidate();
     },
     onError: (err: unknown) => {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete files');
+      setDeleteError(err instanceof Error ? err.message : content.selectedBar.delete);
     },
   });
 
@@ -369,7 +372,7 @@ function DocumentsPage() {
       setShowKB(false);
     } catch (err) {
       console.error('Upload failed', err);
-      setErrorMessage(err instanceof Error ? err.message : 'Upload failed');
+      setErrorMessage(err instanceof Error ? err.message : content.upload.upload);
     }
   };
 
@@ -379,51 +382,51 @@ function DocumentsPage() {
       <div className="flex h-[calc(100vh-theme(spacing.16))]">
         {/* left nav */}
         <aside className="w-64 space-y-4 border-r px-4 py-6">
-          <h2 className="font-semibold text-lg">Files</h2>
+          <h2 className="font-semibold text-lg">{content.sidebar.title}</h2>
           <nav className="space-y-2 text-sm">
             <NavItem
-              label="All Files"
+              label={toLocalizedString(content.sidebar.allFiles)}
               active={activeFilter === 'all'}
               onClick={() => setActiveFilter('all')}
             />
             <NavItem
-              label="Documents"
+              label={toLocalizedString(content.sidebar.documents)}
               icon={FileText}
               active={activeFilter === 'documents'}
               onClick={() => setActiveFilter('documents')}
             />
             <NavItem
-              label="Images"
+              label={toLocalizedString(content.sidebar.images)}
               icon={ImageIcon}
               active={activeFilter === 'images'}
               onClick={() => setActiveFilter('images')}
             />
             <NavItem
-              label="Audio"
+              label={toLocalizedString(content.sidebar.audio)}
               icon={AudioLines}
               active={activeFilter === 'audio'}
               onClick={() => setActiveFilter('audio')}
             />
             <NavItem
-              label="Videos"
+              label={toLocalizedString(content.sidebar.videos)}
               icon={Video}
               active={activeFilter === 'videos'}
               onClick={() => setActiveFilter('videos')}
             />
             <div className="pt-4 pb-2 flex items-center justify-between">
               <span className="font-medium text-muted-foreground text-xs uppercase">
-                Knowledge Base
+                {content.sidebar.knowledgeBase}
               </span>
               <button
                 onClick={() => setShowCreateKB(true)}
                 className="flex h-5 w-5 items-center justify-center rounded hover:bg-accent"
-                title="Create new knowledge base"
+                title={toLocalizedString(content.sidebar.createKb)}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </div>
             <NavItem
-              label="All KB Files"
+              label={toLocalizedString(content.sidebar.allKbFiles)}
               icon={Book}
               indent={true}
               active={activeFilter === 'knowledge-base'}
@@ -465,20 +468,20 @@ function DocumentsPage() {
                     }}
                   >
                     <Edit2 className="h-4 w-4 mr-1" />
-                    Edit
+                    {content.toolbar.editButton}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      if (confirm(`Delete "${selectedKb.name}"? This will not delete the documents themselves.`)) {
+                      if (confirm(toLocalizedString(content.deleteConfirm.kb).replace('{name}', selectedKb.name))) {
                         deleteKBMutation.mutate(selectedKb.id);
                       }
                     }}
                     disabled={deleteKBMutation.isPending}
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
-                    {deleteKBMutation.isPending ? 'Deleting…' : 'Delete'}
+                    {deleteKBMutation.isPending ? content.toolbar.deleting : content.toolbar.deleteButton}
                   </Button>
                 </div>
               </>
@@ -487,10 +490,10 @@ function DocumentsPage() {
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search files"
+                  placeholder={toLocalizedString(content.toolbar.searchPlaceholder)}
                   className="max-w-xs"
                 />
-                <Button onClick={() => setShowUpload(true)}>Upload</Button>
+                <Button onClick={() => setShowUpload(true)}>{content.toolbar.uploadButton}</Button>
               </>
             )}
           </div>
@@ -500,8 +503,8 @@ function DocumentsPage() {
             {selectedKb ? (
               <>
                 <h3 className="font-medium text-sm">
-                  Documents in this KB
-                  <span className="ml-2 text-muted-foreground">• Total {kbDocuments.length}</span>
+                  {content.header.kbDocuments}
+                  <span className="ml-2 text-muted-foreground">• {toLocalizedString(content.header.total).replace('{count}', String(kbDocuments.length))}</span>
                 </h3>
                 <Button
                   size="sm"
@@ -509,20 +512,20 @@ function DocumentsPage() {
                   disabled={addDocsMutation.isPending}
                 >
                   <Plus className="h-4 w-4 mr-1" />
-                  Add Documents
+                  {content.header.addDocuments}
                 </Button>
               </>
             ) : (
               <>
                 <h3 className="font-medium text-sm">
-                  All Files
+                  {content.header.allFiles}
                   {filtered && (
-                    <span className="ml-2 text-muted-foreground">• Total {filtered.length}</span>
+                    <span className="ml-2 text-muted-foreground">• {toLocalizedString(content.header.total).replace('{count}', String(filtered.length))}</span>
                   )}
                 </h3>
                 <div className="flex items-center gap-2">
                   <Switch checked={showKB} onCheckedChange={setShowKB} />
-                  <span className="text-muted-foreground text-xs">Show content in Knowledge Base</span>
+                  <span className="text-muted-foreground text-xs">{content.header.showInKb}</span>
                 </div>
               </>
             )}
@@ -539,8 +542,8 @@ function DocumentsPage() {
               ) : kbDocuments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <Book className="h-12 w-12 text-muted-foreground/50 mb-3" />
-                  <p className="text-sm text-muted-foreground">No documents in this knowledge base</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">Click "Add Documents" to get started</p>
+                  <p className="text-sm text-muted-foreground">{content.kbList.noDocuments}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">{content.kbList.getStarted}</p>
                 </div>
               ) : (
                 <div className="space-y-2 p-4">
@@ -560,7 +563,7 @@ function DocumentsPage() {
                       </div>
                       <button
                         onClick={() => {
-                          if (confirm(`Remove "${doc.name}" from this knowledge base?`)) {
+                          if (confirm(toLocalizedString(content.deleteConfirm.removeDoc).replace('{name}', doc.name))) {
                             removeDocMutation.mutate({
                               kbId: selectedKb.id,
                               documentId: doc.id,
@@ -569,7 +572,7 @@ function DocumentsPage() {
                         }}
                         disabled={removeDocMutation.isPending}
                         className="ml-2 rounded p-1.5 transition-colors hover:bg-destructive/20 disabled:opacity-50"
-                        title="Remove from KB"
+                        title={toLocalizedString(content.kbList.removeFromKb)}
                       >
                         <X className="h-4 w-4 text-destructive" />
                       </button>
@@ -584,15 +587,15 @@ function DocumentsPage() {
                   <tr className="border-b text-muted-foreground">
                     <th className="w-10 px-2 py-2 text-left font-normal">
                       <Checkbox
-                        aria-label="Select all"
+                        aria-label={toLocalizedString(content.table.selectAll)}
                         checked={selectAllState}
                         onCheckedChange={handleToggleAll}
                         disabled={filtered.length === 0 || deleting}
                       />
                     </th>
-                    <th className="py-2 text-left font-normal">File</th>
-                    <th className="py-2 text-left font-normal">Created At</th>
-                    <th className="py-2 text-left font-normal">Size</th>
+                    <th className="py-2 text-left font-normal">{content.table.file}</th>
+                    <th className="py-2 text-left font-normal">{content.table.createdAt}</th>
+                    <th className="py-2 text-left font-normal">{content.table.size}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -604,7 +607,7 @@ function DocumentsPage() {
                       >
                         <td className="w-10 px-2">
                           <Checkbox
-                            aria-label={`Select ${d.name}`}
+                            aria-label={toLocalizedString(content.table.selectFile).replace('{name}', d.name)}
                             checked={selectedFiles.has(d.id)}
                             onCheckedChange={(value) => handleToggleFile(d, value)}
                             disabled={deleting}
@@ -625,7 +628,7 @@ function DocumentsPage() {
                   ) : (
                     <tr>
                       <td colSpan={4} className="py-4 text-center">
-                        No documents found.
+                        {content.table.noDocuments}
                       </td>
                     </tr>
                   )}
@@ -638,7 +641,7 @@ function DocumentsPage() {
             <div className="pointer-events-auto absolute bottom-6 right-6 z-20 w-full max-w-md rounded-md border bg-background/95 px-4 py-3 shadow-lg backdrop-blur">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium text-sm">{selectedCount} selected</p>
+                  <p className="font-medium text-sm">{toLocalizedString(content.selectedBar.selected).replace('{count}', String(selectedCount))}</p>
                   {deleteError && (
                     <p className="mt-1 text-xs text-destructive">{deleteError}</p>
                   )}
@@ -650,7 +653,7 @@ function DocumentsPage() {
                     onClick={clearSelection}
                     disabled={deleting}
                   >
-                    Clear
+                    {content.selectedBar.clear}
                   </Button>
                   <Button
                     variant="destructive"
@@ -658,7 +661,7 @@ function DocumentsPage() {
                     onClick={handleDeleteSelected}
                     disabled={deleting}
                   >
-                    {deleting ? 'Deleting…' : 'Delete'}
+                    {deleting ? content.toolbar.deleting : content.selectedBar.delete}
                   </Button>
                 </div>
               </div>
@@ -680,31 +683,31 @@ function DocumentsPage() {
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Upload document</DialogTitle>
+            <DialogTitle>{content.upload.title}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div>
-              <Label htmlFor="title-input">Title</Label>
+              <Label htmlFor="title-input">{content.upload.titleLabel}</Label>
               <Input
                 id="title-input"
-                placeholder="Title"
+                placeholder={toLocalizedString(content.upload.titlePlaceholder)}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </div>
             <div>
-              <Label htmlFor="text-input">Document Text</Label>
+              <Label htmlFor="text-input">{content.upload.textLabel}</Label>
               <textarea
                 id="text-input"
                 className="h-40 w-full rounded-md border p-2 text-sm"
-                placeholder="Paste text here…"
+                placeholder={toLocalizedString(content.upload.textPlaceholder)}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
               />
             </div>
             <div>
-              <Label>Attach files</Label>
+              <Label>{content.upload.attachFiles}</Label>
               <FileUpload.Root
                 value={filesToUpload}
                 onValueChange={(updatedFiles: File[] | null) => {
@@ -713,7 +716,7 @@ function DocumentsPage() {
               >
                 <FileUpload.Dropzone className="mt-1" />
                 <FileUpload.Trigger className="mt-2 inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
-                  Select Files
+                  {content.upload.selectFiles}
                 </FileUpload.Trigger>
                 {filesToUpload.length > 0 && (
                   <FileUpload.List className="mt-2">
@@ -728,7 +731,7 @@ function DocumentsPage() {
                 )}
                 {filesToUpload.length > 0 && (
                   <FileUpload.Clear className="mt-2 inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50">
-                    Clear All
+                    {content.upload.clearAll}
                   </FileUpload.Clear>
                 )}
               </FileUpload.Root>
@@ -744,13 +747,13 @@ function DocumentsPage() {
                 initUpload.error?.message ||
                 completeUpload.error?.message ||
                 directUpload.error?.message ||
-                'An unknown error occurred during upload.'}
+                content.upload.unknownError}
             </p>
           )}
 
           <DialogFooter>
             <Button onClick={handleUploadDoc} disabled={uploading || filesToUpload.length === 0}>
-              {uploading ? 'Uploading…' : 'Upload'}
+              {uploading ? content.upload.uploading : content.upload.upload}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -769,25 +772,25 @@ function DocumentsPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="pb-2">
-            <DialogTitle>Create Knowledge Base</DialogTitle>
+            <DialogTitle>{content.createKb.title}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label htmlFor="kb-name-input">Name *</Label>
+              <Label htmlFor="kb-name-input">{content.createKb.nameLabel} *</Label>
               <Input
                 id="kb-name-input"
-                placeholder="e.g., Python Programming"
+                placeholder={toLocalizedString(content.createKb.namePlaceholder)}
                 value={kbName}
                 onChange={(e) => setKbName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="kb-description-input">Description</Label>
+              <Label htmlFor="kb-description-input">{content.createKb.descriptionLabel}</Label>
               <textarea
                 id="kb-description-input"
                 className="h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Optional description..."
+                placeholder={toLocalizedString(content.createKb.descriptionPlaceholder)}
                 value={kbDescription}
                 onChange={(e) => setKbDescription(e.target.value)}
               />
@@ -796,7 +799,7 @@ function DocumentsPage() {
 
           {createKBMutation.error && (
             <p className="text-red-600 text-sm">
-              {createKBMutation.error.message || 'Failed to create knowledge base'}
+              {createKBMutation.error.message || content.createKb.error}
             </p>
           )}
 
@@ -812,7 +815,7 @@ function DocumentsPage() {
               }}
               disabled={!kbName.trim() || createKBMutation.isPending}
             >
-              {createKBMutation.isPending ? 'Creating…' : 'Create'}
+              {createKBMutation.isPending ? content.createKb.creating : content.createKb.create}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -832,25 +835,25 @@ function DocumentsPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="pb-2">
-            <DialogTitle>Edit Knowledge Base</DialogTitle>
+            <DialogTitle>{content.editKb.title}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label htmlFor="edit-kb-name-input">Name *</Label>
+              <Label htmlFor="edit-kb-name-input">{content.editKb.nameLabel} *</Label>
               <Input
                 id="edit-kb-name-input"
-                placeholder="e.g., Python Programming"
+                placeholder={toLocalizedString(content.editKb.namePlaceholder)}
                 value={editKbName}
                 onChange={(e) => setEditKbName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-kb-description-input">Description</Label>
+              <Label htmlFor="edit-kb-description-input">{content.editKb.descriptionLabel}</Label>
               <textarea
                 id="edit-kb-description-input"
                 className="h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Optional description..."
+                placeholder={toLocalizedString(content.editKb.descriptionPlaceholder)}
                 value={editKbDescription}
                 onChange={(e) => setEditKbDescription(e.target.value)}
               />
@@ -859,7 +862,7 @@ function DocumentsPage() {
 
           {updateKBMutation.error && (
             <p className="text-red-600 text-sm">
-              {updateKBMutation.error.message || 'Failed to update knowledge base'}
+              {updateKBMutation.error.message || content.editKb.error}
             </p>
           )}
 
@@ -876,7 +879,7 @@ function DocumentsPage() {
               }}
               disabled={!editKbName.trim() || updateKBMutation.isPending}
             >
-              {updateKBMutation.isPending ? 'Saving…' : 'Save'}
+              {updateKBMutation.isPending ? content.editKb.saving : content.editKb.save}
             </Button>
           </DialogFooter>
         </DialogContent>
