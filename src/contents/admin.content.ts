@@ -10,754 +10,300 @@ const adminContent = {
     page: {
       title: t({
         en: 'Admin Panel',
-        zh: '管理面板',
+        'zh-Hans': '管理面板',
+        fr: 'Panneau d\'administration',
+        ja: '管理パネル',
+        ko: '관리 패널',
+        'zh-Hant': '管理面板',
       }),
       subtitle: t({
         en: 'Manage users, settings, and system configuration',
-        zh: '管理用户、设置和系统配置',
+        'zh-Hans': '管理用户、设置和系统配置',
+        fr: 'Gérer les utilisateurs, paramètres et la configuration système',
+        ja: 'ユーザー、設定、システム構成を管理',
+        ko: '사용자, 설정, 시스템 구성을 관리',
+        'zh-Hant': '管理使用者、設定與系統配置',
       }),
     },
     navigation: {
       dashboard: t({
         en: 'Dashboard',
-        zh: '仪表板',
+        'zh-Hans': '仪表板',
+        fr: 'Tableau de bord',
+        ja: 'ダッシュボード',
+        ko: '대시보드',
+        'zh-Hant': '儀表板',
       }),
       users: t({
         en: 'Users',
-        zh: '用户',
+        'zh-Hans': '用户',
+        fr: 'Utilisateurs',
+        ja: 'ユーザー',
+        ko: '사용자',
+        'zh-Hant': '使用者',
       }),
       roles: t({
         en: 'Roles & Permissions',
-        zh: '角色和权限',
+        'zh-Hans': '角色和权限',
+        fr: 'Rôles et permissions',
+        ja: 'ロールと権限',
+        ko: '역할 및 권한',
+        'zh-Hant': '角色與權限',
       }),
       system: t({
         en: 'System Settings',
-        zh: '系统设置',
+        'zh-Hans': '系统设置',
+        fr: 'Paramètres système',
+        ja: 'システム設定',
+        ko: '시스템 설정',
+        'zh-Hant': '系統設定',
       }),
       logs: t({
         en: 'Logs',
-        zh: '日志',
+        'zh-Hans': '日志',
+        fr: 'Journaux',
+        ja: 'ログ',
+        ko: '로그',
+        'zh-Hant': '日誌',
       }),
       analytics: t({
         en: 'Analytics',
-        zh: '分析',
+        'zh-Hans': '分析',
+        fr: 'Analytiques',
+        ja: '分析',
+        ko: '분석',
+        'zh-Hant': '分析',
       }),
     },
     dashboard: {
-      title: t({
-        en: 'Dashboard',
-        zh: '仪表板',
-      }),
-      welcome: t({
-        en: 'Welcome, {name}!',
-        zh: '欢迎，{name}！',
-      }),
-      systemAdminDashboard: t({
-        en: 'System Administrator Dashboard',
-        zh: '系统管理员仪表板',
-      }),
-      quickActions: t({
-        en: 'Quick Actions',
-        zh: '快捷操作',
-      }),
-      manageUsers: t({
-        en: 'Manage Users',
-        zh: '用户管理',
-      }),
-      manageUsersDesc: t({
-        en: 'View all users, add credits, and manage roles',
-        zh: '查看用户、添加额度、管理角色',
-      }),
-      manageOrganizations: t({
-        en: 'Manage Organizations',
-        zh: '组织管理',
-      }),
-      manageOrgsDesc: t({
-        en: 'Create organizations and manage members',
-        zh: '创建组织并管理成员',
-      }),
-      systemRole: t({
-        en: 'System Role',
-        zh: '系统角色',
-      }),
+      title: t({ en: 'Dashboard', 'zh-Hans': '仪表板', fr: 'Tableau de bord', ja: 'ダッシュボード', ko: '대시보드', 'zh-Hant': '儀表板' }),
+      welcome: t({ en: 'Welcome, {name}!', 'zh-Hans': '欢迎，{name}！', fr: 'Bienvenue, {name} !', ja: 'ようこそ、{name} さん！', ko: '환영합니다, {name}님!', 'zh-Hant': '歡迎，{name}！' }),
+      systemAdminDashboard: t({ en: 'System Administrator Dashboard', 'zh-Hans': '系统管理员仪表板', fr: 'Tableau de bord administrateur', ja: 'システム管理者ダッシュボード', ko: '시스템 관리자 대시보드', 'zh-Hant': '系統管理員儀表板' }),
+      quickActions: t({ en: 'Quick Actions', 'zh-Hans': '快捷操作', fr: 'Actions rapides', ja: 'クイックアクション', ko: '빠른 작업', 'zh-Hant': '快捷操作' }),
+      manageUsers: t({ en: 'Manage Users', 'zh-Hans': '用户管理', fr: 'Gérer les utilisateurs', ja: 'ユーザー管理', ko: '사용자 관리', 'zh-Hant': '使用者管理' }),
+      manageUsersDesc: t({ en: 'View all users, add credits, and manage roles', 'zh-Hans': '查看用户、添加额度、管理角色', fr: 'Voir les utilisateurs, ajouter des crédits, gérer les rôles', ja: 'ユーザー一覧、クレジット追加、ロール管理', ko: '사용자 조회, 크레딧 추가, 역할 관리', 'zh-Hant': '查看使用者、新增額度、管理角色' }),
+      manageOrganizations: t({ en: 'Manage Organizations', 'zh-Hans': '组织管理', fr: 'Gérer les organisations', ja: '組織管理', ko: '조직 관리', 'zh-Hant': '組織管理' }),
+      manageOrgsDesc: t({ en: 'Create organizations and manage members', 'zh-Hans': '创建组织并管理成员', fr: 'Créer des organisations et gérer les membres', ja: '組織の作成とメンバー管理', ko: '조직 생성 및 멤버 관리', 'zh-Hant': '建立組織並管理成員' }),
+      systemRole: t({ en: 'System Role', 'zh-Hans': '系统角色', fr: 'Rôle système', ja: 'システムロール', ko: '시스템 역할', 'zh-Hant': '系統角色' }),
       overview: {
-        totalUsers: t({
-          en: 'Total Users',
-          zh: '总用户数',
-        }),
-        organizations: t({
-          en: 'Organizations',
-          zh: '组织数',
-        }),
-        activeUsers: t({
-          en: 'Active Users',
-          zh: '活跃用户',
-        }),
-        totalMessages: t({
-          en: 'Total Messages',
-          zh: '总消息数',
-        }),
-        revenue: t({
-          en: 'Revenue',
-          zh: '收入',
-        }),
-        thisMonth: t({
-          en: 'This Month',
-          zh: '本月',
-        }),
-        lastMonth: t({
-          en: 'Last Month',
-          zh: '上月',
-        }),
-        growth: t({
-          en: 'Growth',
-          zh: '增长',
-        }),
+        totalUsers: t({ en: 'Total Users', 'zh-Hans': '总用户数', fr: 'Total utilisateurs', ja: '総ユーザー数', ko: '총 사용자 수', 'zh-Hant': '總使用者數' }),
+        organizations: t({ en: 'Organizations', 'zh-Hans': '组织数', fr: 'Organisations', ja: '組織数', ko: '조직 수', 'zh-Hant': '組織數' }),
+        activeUsers: t({ en: 'Active Users', 'zh-Hans': '活跃用户', fr: 'Utilisateurs actifs', ja: 'アクティブユーザー', ko: '활성 사용자', 'zh-Hant': '活躍使用者' }),
+        totalMessages: t({ en: 'Total Messages', 'zh-Hans': '总消息数', fr: 'Total messages', ja: '総メッセージ数', ko: '총 메시지 수', 'zh-Hant': '總訊息數' }),
+        revenue: t({ en: 'Revenue', 'zh-Hans': '收入', fr: 'Revenus', ja: '収益', ko: '수익', 'zh-Hant': '收入' }),
+        thisMonth: t({ en: 'This Month', 'zh-Hans': '本月', fr: 'Ce mois', ja: '今月', ko: '이번 달', 'zh-Hant': '本月' }),
+        lastMonth: t({ en: 'Last Month', 'zh-Hans': '上月', fr: 'Mois dernier', ja: '先月', ko: '지난달', 'zh-Hant': '上月' }),
+        growth: t({ en: 'Growth', 'zh-Hans': '增长', fr: 'Croissance', ja: '成長', ko: '성장', 'zh-Hant': '增長' }),
       },
       recentActivity: {
-        title: t({
-          en: 'Recent Activity',
-          zh: '最近活动',
-        }),
-        userRegistered: t({
-          en: 'User registered',
-          zh: '用户注册',
-        }),
-        subscriptionUpgraded: t({
-          en: 'Subscription upgraded',
-          zh: '订阅升级',
-        }),
-        paymentReceived: t({
-          en: 'Payment received',
-          zh: '收到付款',
-        }),
-        supportTicket: t({
-          en: 'Support ticket created',
-          zh: '创建支持工单',
-        }),
+        title: t({ en: 'Recent Activity', 'zh-Hans': '最近活动', fr: 'Activité récente', ja: '最近のアクティビティ', ko: '최근 활동', 'zh-Hant': '最近活動' }),
+        userRegistered: t({ en: 'User registered', 'zh-Hans': '用户注册', fr: 'Utilisateur inscrit', ja: 'ユーザー登録', ko: '사용자 등록', 'zh-Hant': '使用者註冊' }),
+        subscriptionUpgraded: t({ en: 'Subscription upgraded', 'zh-Hans': '订阅升级', fr: 'Abonnement mis à niveau', ja: 'サブスクリプションアップグレード', ko: '구독 업그레이드', 'zh-Hant': '訂閱升級' }),
+        paymentReceived: t({ en: 'Payment received', 'zh-Hans': '收到付款', fr: 'Paiement reçu', ja: '支払い受領', ko: '결제 완료', 'zh-Hant': '收到付款' }),
+        supportTicket: t({ en: 'Support ticket created', 'zh-Hans': '创建支持工单', fr: 'Ticket support créé', ja: 'サポートチケット作成', ko: '지원 티켓 생성', 'zh-Hant': '建立支援工單' }),
       },
     },
     users: {
       page: {
-        title: t({
-          en: 'User Management',
-          zh: '用户管理',
-        }),
-        subtitle: t({
-          en: 'Manage all users and their credits',
-          zh: '管理所有用户及其额度',
-        }),
-        manageUserAccounts: t({
-          en: 'Manage user accounts and permissions',
-          zh: '管理用户账户和权限',
-        }),
+        title: t({ en: 'User Management', 'zh-Hans': '用户管理', fr: 'Gestion des utilisateurs', ja: 'ユーザー管理', ko: '사용자 관리', 'zh-Hant': '使用者管理' }),
+        subtitle: t({ en: 'Manage all users and their credits', 'zh-Hans': '管理所有用户及其额度', fr: 'Gérer tous les utilisateurs et leurs crédits', ja: '全ユーザーとクレジットを管理', ko: '모든 사용자 및 크레딧 관리', 'zh-Hant': '管理所有使用者及其額度' }),
+        manageUserAccounts: t({ en: 'Manage user accounts and permissions', 'zh-Hans': '管理用户账户和权限', fr: 'Gérer les comptes et permissions', ja: 'アカウントと権限を管理', ko: '계정 및 권한 관리', 'zh-Hant': '管理使用者帳戶與權限' }),
       },
       table: {
-        name: t({
-          en: 'Name',
-          zh: '姓名',
-        }),
-        user: t({
-          en: 'User',
-          zh: '用户',
-        }),
-        email: t({
-          en: 'Email',
-          zh: '邮箱',
-        }),
-        role: t({
-          en: 'Role',
-          zh: '角色',
-        }),
-        systemRole: t({
-          en: 'System Role',
-          zh: '系统角色',
-        }),
-        creditsBalance: t({
-          en: 'Credits Balance',
-          zh: '额度余额',
-        }),
-        subscription: t({
-          en: 'Subscription',
-          zh: '订阅',
-        }),
-        status: t({
-          en: 'Status',
-          zh: '状态',
-        }),
-        createdAt: t({
-          en: 'Joined',
-          zh: '加入时间',
-        }),
-        joined: t({
-          en: 'Joined',
-          zh: '加入时间',
-        }),
-        lastActive: t({
-          en: 'Last Active',
-          zh: '最后活跃',
-        }),
-        actions: t({
-          en: 'Actions',
-          zh: '操作',
-        }),
+        name: t({ en: 'Name', 'zh-Hans': '姓名', fr: 'Nom', ja: '名前', ko: '이름', 'zh-Hant': '姓名' }),
+        user: t({ en: 'User', 'zh-Hans': '用户', fr: 'Utilisateur', ja: 'ユーザー', ko: '사용자', 'zh-Hant': '使用者' }),
+        email: t({ en: 'Email', 'zh-Hans': '邮箱', fr: 'E-mail', ja: 'メール', ko: '이메일', 'zh-Hant': '電子郵件' }),
+        role: t({ en: 'Role', 'zh-Hans': '角色', fr: 'Rôle', ja: 'ロール', ko: '역할', 'zh-Hant': '角色' }),
+        systemRole: t({ en: 'System Role', 'zh-Hans': '系统角色', fr: 'Rôle système', ja: 'システムロール', ko: '시스템 역할', 'zh-Hant': '系統角色' }),
+        creditsBalance: t({ en: 'Credits Balance', 'zh-Hans': '额度余额', fr: 'Solde de crédits', ja: 'クレジット残高', ko: '크레딧 잔액', 'zh-Hant': '額度餘額' }),
+        subscription: t({ en: 'Subscription', 'zh-Hans': '订阅', fr: 'Abonnement', ja: 'サブスクリプション', ko: '구독', 'zh-Hant': '訂閱' }),
+        status: t({ en: 'Status', 'zh-Hans': '状态', fr: 'Statut', ja: 'ステータス', ko: '상태', 'zh-Hant': '狀態' }),
+        createdAt: t({ en: 'Joined', 'zh-Hans': '加入时间', fr: 'Inscrit le', ja: '参加日時', ko: '가입일', 'zh-Hant': '加入時間' }),
+        joined: t({ en: 'Joined', 'zh-Hans': '加入时间', fr: 'Inscrit le', ja: '参加日時', ko: '가입일', 'zh-Hant': '加入時間' }),
+        lastActive: t({ en: 'Last Active', 'zh-Hans': '最后活跃', fr: 'Dernière activité', ja: '最終アクティブ', ko: '마지막 활동', 'zh-Hant': '最後活躍' }),
+        actions: t({ en: 'Actions', 'zh-Hans': '操作', fr: 'Actions', ja: '操作', ko: '작업', 'zh-Hant': '操作' }),
       },
-      noSubscription: t({
-        en: 'No subscription',
-        zh: '无订阅',
-      }),
-      addCredits: t({
-        en: 'Add Credits',
-        zh: '添加额度',
-      }),
-      addCreditsToUser: t({
-        en: "Add credits to {name}'s account",
-        zh: '为 {name} 的账户添加额度',
-      }),
-      amount: t({
-        en: 'Amount',
-        zh: '数量',
-      }),
-      type: t({
-        en: 'Type',
-        zh: '类型',
-      }),
-      note: t({
-        en: 'Note',
-        zh: '备注',
-      }),
-      selectType: t({
-        en: 'Select type',
-        zh: '选择类型',
-      }),
-      reasonForCredits: t({
-        en: 'Reason for adding credits',
-        zh: '添加额度的原因',
-      }),
-      purchase: t({
-        en: 'Purchase',
-        zh: '购买',
-      }),
-      gift: t({
-        en: 'Gift',
-        zh: '赠送',
-      }),
-      compensation: t({
-        en: 'Compensation',
-        zh: '补偿',
-      }),
-      updateSystemRole: t({
-        en: 'Update System Role',
-        zh: '更新系统角色',
-      }),
-      changeUserRole: t({
-        en: "Change {name}'s system role",
-        zh: '修改 {name} 的系统角色',
-      }),
-      adminsWarning: t({
-        en: '⚠️ Admins have full access to the system admin panel.',
-        zh: '⚠️ 管理员拥有系统管理面板的完整访问权限。',
-      }),
-      totalUsers: t({
-        en: 'Total Users',
-        zh: '用户总数',
-      }),
-      admins: t({
-        en: 'Admins',
-        zh: '管理员数',
-      }),
-      totalCredits: t({
-        en: 'Total Credits',
-        zh: '额度总和',
-      }),
+      noSubscription: t({ en: 'No subscription', 'zh-Hans': '无订阅', fr: 'Sans abonnement', ja: 'サブスクリプションなし', ko: '구독 없음', 'zh-Hant': '無訂閱' }),
+      addCredits: t({ en: 'Add Credits', 'zh-Hans': '添加额度', fr: 'Ajouter des crédits', ja: 'クレジットを追加', ko: '크레딧 추가', 'zh-Hant': '新增額度' }),
+      addCreditsToUser: t({ en: "Add credits to {name}'s account", 'zh-Hans': '为 {name} 的账户添加额度', fr: 'Ajouter des crédits au compte de {name}', ja: '{name} のアカウントにクレジットを追加', ko: '{name} 계정에 크레딧 추가', 'zh-Hant': '為 {name} 的帳戶新增額度' }),
+      amount: t({ en: 'Amount', 'zh-Hans': '数量', fr: 'Montant', ja: '数量', ko: '수량', 'zh-Hant': '數量' }),
+      type: t({ en: 'Type', 'zh-Hans': '类型', fr: 'Type', ja: 'タイプ', ko: '유형', 'zh-Hant': '類型' }),
+      note: t({ en: 'Note', 'zh-Hans': '备注', fr: 'Note', ja: '備考', ko: '메모', 'zh-Hant': '備註' }),
+      selectType: t({ en: 'Select type', 'zh-Hans': '选择类型', fr: 'Sélectionner le type', ja: 'タイプを選択', ko: '유형 선택', 'zh-Hant': '選擇類型' }),
+      reasonForCredits: t({ en: 'Reason for adding credits', 'zh-Hans': '添加额度的原因', fr: 'Raison de l\'ajout de crédits', ja: 'クレジット追加の理由', ko: '크레딧 추가 사유', 'zh-Hant': '新增額度的原因' }),
+      purchase: t({ en: 'Purchase', 'zh-Hans': '购买', fr: 'Achat', ja: '購入', ko: '구매', 'zh-Hant': '購買' }),
+      gift: t({ en: 'Gift', 'zh-Hans': '赠送', fr: 'Cadeau', ja: 'プレゼント', ko: '선물', 'zh-Hant': '贈送' }),
+      compensation: t({ en: 'Compensation', 'zh-Hans': '补偿', fr: 'Compensation', ja: '補償', ko: '보상', 'zh-Hant': '補償' }),
+      updateSystemRole: t({ en: 'Update System Role', 'zh-Hans': '更新系统角色', fr: 'Mettre à jour le rôle système', ja: 'システムロールを更新', ko: '시스템 역할 업데이트', 'zh-Hant': '更新系統角色' }),
+      changeUserRole: t({ en: "Change {name}'s system role", 'zh-Hans': '修改 {name} 的系统角色', fr: 'Changer le rôle système de {name}', ja: '{name} のシステムロールを変更', ko: '{name}의 시스템 역할 변경', 'zh-Hant': '修改 {name} 的系統角色' }),
+      adminsWarning: t({ en: '⚠️ Admins have full access to the system admin panel.', 'zh-Hans': '⚠️ 管理员拥有系统管理面板的完整访问权限。', fr: '⚠️ Les admins ont un accès total au panneau d\'administration.', ja: '⚠️ 管理者はシステム管理パネルにフルアクセスできます。', ko: '⚠️ 관리자는 시스템 관리 패널에 전체 액세스할 수 있습니다.', 'zh-Hant': '⚠️ 管理員擁有系統管理面板的完整存取權限。' }),
+      totalUsers: t({ en: 'Total Users', 'zh-Hans': '用户总数', fr: 'Total utilisateurs', ja: '総ユーザー数', ko: '총 사용자 수', 'zh-Hant': '使用者總數' }),
+      admins: t({ en: 'Admins', 'zh-Hans': '管理员数', fr: 'Admins', ja: '管理者数', ko: '관리자 수', 'zh-Hant': '管理員數' }),
+      totalCredits: t({ en: 'Total Credits', 'zh-Hans': '额度总和', fr: 'Total crédits', ja: 'クレジット合計', ko: '총 크레딧', 'zh-Hant': '額度總和' }),
       actions: {
-        view: t({
-          en: 'View',
-          zh: '查看',
-        }),
-        edit: t({
-          en: 'Edit',
-          zh: '编辑',
-        }),
-        delete: t({
-          en: 'Delete',
-          zh: '删除',
-        }),
-        ban: t({
-          en: 'Ban',
-          zh: '封禁',
-        }),
-        unban: t({
-          en: 'Unban',
-          zh: '解禁',
-        }),
-        resetPassword: t({
-          en: 'Reset Password',
-          zh: '重置密码',
-        }),
+        view: t({ en: 'View', 'zh-Hans': '查看', fr: 'Voir', ja: '表示', ko: '보기', 'zh-Hant': '查看' }),
+        edit: t({ en: 'Edit', 'zh-Hans': '编辑', fr: 'Modifier', ja: '編集', ko: '편집', 'zh-Hant': '編輯' }),
+        delete: t({ en: 'Delete', 'zh-Hans': '删除', fr: 'Supprimer', ja: '削除', ko: '삭제', 'zh-Hant': '刪除' }),
+        ban: t({ en: 'Ban', 'zh-Hans': '封禁', fr: 'Bannir', ja: '禁止', ko: '차단', 'zh-Hant': '封禁' }),
+        unban: t({ en: 'Unban', 'zh-Hans': '解禁', fr: 'Débannir', ja: '禁止解除', ko: '차단 해제', 'zh-Hant': '解禁' }),
+        resetPassword: t({ en: 'Reset Password', 'zh-Hans': '重置密码', fr: 'Réinitialiser le mot de passe', ja: 'パスワードをリセット', ko: '비밀번호 재설정', 'zh-Hant': '重設密碼' }),
       },
       status: {
-        active: t({
-          en: 'Active',
-          zh: '活跃',
-        }),
-        inactive: t({
-          en: 'Inactive',
-          zh: '非活跃',
-        }),
-        banned: t({
-          en: 'Banned',
-          zh: '已封禁',
-        }),
-        pending: t({
-          en: 'Pending',
-          zh: '待定',
-        }),
+        active: t({ en: 'Active', 'zh-Hans': '活跃', fr: 'Actif', ja: 'アクティブ', ko: '활성', 'zh-Hant': '活躍' }),
+        inactive: t({ en: 'Inactive', 'zh-Hans': '非活跃', fr: 'Inactif', ja: '非アクティブ', ko: '비활성', 'zh-Hant': '非活躍' }),
+        banned: t({ en: 'Banned', 'zh-Hans': '已封禁', fr: 'Banni', ja: '禁止済み', ko: '차단됨', 'zh-Hant': '已封禁' }),
+        pending: t({ en: 'Pending', 'zh-Hans': '待定', fr: 'En attente', ja: '保留中', ko: '대기 중', 'zh-Hant': '待定' }),
       },
       roles: {
-        admin: t({
-          en: 'Admin',
-          zh: '管理员',
-        }),
-        user: t({
-          en: 'User',
-          zh: '用户',
-        }),
-        moderator: t({
-          en: 'Moderator',
-          zh: '版主',
-        }),
+        admin: t({ en: 'Admin', 'zh-Hans': '管理员', fr: 'Admin', ja: '管理者', ko: '관리자', 'zh-Hant': '管理員' }),
+        user: t({ en: 'User', 'zh-Hans': '用户', fr: 'Utilisateur', ja: 'ユーザー', ko: '사용자', 'zh-Hant': '使用者' }),
+        moderator: t({ en: 'Moderator', 'zh-Hans': '版主', fr: 'Modérateur', ja: 'モデレーター', ko: 'Moderator', 'zh-Hant': '版主' }),
       },
       search: {
-        placeholder: t({
-          en: 'Search users...',
-          zh: '搜索用户...',
-        }),
-        filter: t({
-          en: 'Filter',
-          zh: '筛选',
-        }),
+        placeholder: t({ en: 'Search users...', 'zh-Hans': '搜索用户...', fr: 'Rechercher des utilisateurs...', ja: 'ユーザーを検索...', ko: '사용자 검색...', 'zh-Hant': '搜尋使用者...' }),
+        filter: t({ en: 'Filter', 'zh-Hans': '筛选', fr: 'Filtrer', ja: 'フィルター', ko: '필터', 'zh-Hant': '篩選' }),
       },
     },
     system: {
       page: {
-        title: t({
-          en: 'System Settings',
-          zh: '系统设置',
-        }),
-        subtitle: t({
-          en: 'Configure system-wide settings',
-          zh: '配置系统范围的设置',
-        }),
+        title: t({ en: 'System Settings', 'zh-Hans': '系统设置', fr: 'Paramètres système', ja: 'システム設定', ko: '시스템 설정', 'zh-Hant': '系統設定' }),
+        subtitle: t({ en: 'Configure system-wide settings', 'zh-Hans': '配置系统范围的设置', fr: 'Configurer les paramètres système', ja: 'システム全体の設定を構成', ko: '시스템 전역 설정 구성', 'zh-Hant': '設定系統範圍的設定' }),
       },
       sections: {
         general: {
-          title: t({
-            en: 'General',
-            zh: '常规',
-          }),
-          siteName: t({
-            en: 'Site Name',
-            zh: '站点名称',
-          }),
-          siteUrl: t({
-            en: 'Site URL',
-            zh: '站点 URL',
-          }),
-          supportEmail: t({
-            en: 'Support Email',
-            zh: '支持邮箱',
-          }),
+          title: t({ en: 'General', 'zh-Hans': '常规', fr: 'Général', ja: '一般', ko: '일반', 'zh-Hant': '常規' }),
+          siteName: t({ en: 'Site Name', 'zh-Hans': '站点名称', fr: 'Nom du site', ja: 'サイト名', ko: '사이트 이름', 'zh-Hant': '站點名稱' }),
+          siteUrl: t({ en: 'Site URL', 'zh-Hans': '站点 URL', fr: 'URL du site', ja: 'サイト URL', ko: '사이트 URL', 'zh-Hant': '站點 URL' }),
+          supportEmail: t({ en: 'Support Email', 'zh-Hans': '支持邮箱', fr: 'E-mail support', ja: 'サポートメール', ko: '지원 이메일', 'zh-Hant': '支援電子郵件' }),
         },
         features: {
-          title: t({
-            en: 'Feature Flags',
-            zh: '功能开关',
-          }),
-          description: t({
-            en: 'Enable or disable features',
-            zh: '启用或禁用功能',
-          }),
+          title: t({ en: 'Feature Flags', 'zh-Hans': '功能开关', fr: 'Fonctionnalités', ja: '機能フラグ', ko: '기능 플래그', 'zh-Hant': '功能開關' }),
+          description: t({ en: 'Enable or disable features', 'zh-Hans': '启用或禁用功能', fr: 'Activer ou désactiver des fonctionnalités', ja: '機能の有効/無効', ko: '기능 활성화/비활성화', 'zh-Hant': '啟用或停用功能' }),
         },
         limits: {
-          title: t({
-            en: 'Usage Limits',
-            zh: '使用限制',
-          }),
-          description: t({
-            en: 'Configure default usage limits for plans',
-            zh: '配置计划的默认使用限制',
-          }),
+          title: t({ en: 'Usage Limits', 'zh-Hans': '使用限制', fr: 'Limites d\'usage', ja: '利用制限', ko: '사용 제한', 'zh-Hant': '使用限制' }),
+          description: t({ en: 'Configure default usage limits for plans', 'zh-Hans': '配置计划的默认使用限制', fr: 'Configurer les limites par défaut des plans', ja: 'プランのデフォルト利用制限を設定', ko: '플랜 기본 사용 제한 구성', 'zh-Hant': '設定方案的預設使用限制' }),
         },
         integrations: {
-          title: t({
-            en: 'Integrations',
-            zh: '集成',
-          }),
-          description: t({
-            en: 'Configure third-party integrations',
-            zh: '配置第三方集成',
-          }),
+          title: t({ en: 'Integrations', 'zh-Hans': '集成', fr: 'Intégrations', ja: '連携', ko: '연동', 'zh-Hant': '整合' }),
+          description: t({ en: 'Configure third-party integrations', 'zh-Hans': '配置第三方集成', fr: 'Configurer les intégrations tierces', ja: 'サードパーティ連携を設定', ko: '서드파티 연동 구성', 'zh-Hant': '設定第三方整合' }),
         },
       },
     },
     logs: {
       page: {
-        title: t({
-          en: 'System Logs',
-          zh: '系统日志',
-        }),
-        subtitle: t({
-          en: 'View system activity and errors',
-          zh: '查看系统活动和错误',
-        }),
+        title: t({ en: 'System Logs', 'zh-Hans': '系统日志', fr: 'Journaux système', ja: 'システムログ', ko: '시스템 로그', 'zh-Hant': '系統日誌' }),
+        subtitle: t({ en: 'View system activity and errors', 'zh-Hans': '查看系统活动和错误', fr: 'Voir l\'activité et les erreurs système', ja: 'システムアクティビティとエラーを表示', ko: '시스템 활동 및 오류 보기', 'zh-Hant': '查看系統活動與錯誤' }),
       },
       filters: {
-        level: t({
-          en: 'Log Level',
-          zh: '日志级别',
-        }),
-        dateRange: t({
-          en: 'Date Range',
-          zh: '日期范围',
-        }),
-        user: t({
-          en: 'User',
-          zh: '用户',
-        }),
-        search: t({
-          en: 'Search logs...',
-          zh: '搜索日志...',
-        }),
+        level: t({ en: 'Log Level', 'zh-Hans': '日志级别', fr: 'Niveau de log', ja: 'ログレベル', ko: '로그 수준', 'zh-Hant': '日誌級別' }),
+        dateRange: t({ en: 'Date Range', 'zh-Hans': '日期范围', fr: 'Plage de dates', ja: '日付範囲', ko: '날짜 범위', 'zh-Hant': '日期範圍' }),
+        user: t({ en: 'User', 'zh-Hans': '用户', fr: 'Utilisateur', ja: 'ユーザー', ko: '사용자', 'zh-Hant': '使用者' }),
+        search: t({ en: 'Search logs...', 'zh-Hans': '搜索日志...', fr: 'Rechercher dans les logs...', ja: 'ログを検索...', ko: '로그 검색...', 'zh-Hant': '搜尋日誌...' }),
       },
       levels: {
-        all: t({
-          en: 'All',
-          zh: '全部',
-        }),
-        error: t({
-          en: 'Error',
-          zh: '错误',
-        }),
-        warning: t({
-          en: 'Warning',
-          zh: '警告',
-        }),
-        info: t({
-          en: 'Info',
-          zh: '信息',
-        }),
-        debug: t({
-          en: 'Debug',
-          zh: '调试',
-        }),
+        all: t({ en: 'All', 'zh-Hans': '全部', fr: 'Tous', ja: 'すべて', ko: '전체', 'zh-Hant': '全部' }),
+        error: t({ en: 'Error', 'zh-Hans': '错误', fr: 'Erreur', ja: 'エラー', ko: '오류', 'zh-Hant': '錯誤' }),
+        warning: t({ en: 'Warning', 'zh-Hans': '警告', fr: 'Avertissement', ja: '警告', ko: '경고', 'zh-Hant': '警告' }),
+        info: t({ en: 'Info', 'zh-Hans': '信息', fr: 'Info', ja: '情報', ko: '정보', 'zh-Hant': '資訊' }),
+        debug: t({ en: 'Debug', 'zh-Hans': '调试', fr: 'Debug', ja: 'デバッグ', ko: '디버그', 'zh-Hant': '除錯' }),
       },
       export: {
-        button: t({
-          en: 'Export Logs',
-          zh: '导出日志',
-        }),
-        title: t({
-          en: 'Export Logs',
-          zh: '导出日志',
-        }),
-        format: t({
-          en: 'Format',
-          zh: '格式',
-        }),
-        json: t({
-          en: 'JSON',
-          zh: 'JSON',
-        }),
-        csv: t({
-          en: 'CSV',
-          zh: 'CSV',
-        }),
+        button: t({ en: 'Export Logs', 'zh-Hans': '导出日志', fr: 'Exporter les logs', ja: 'ログをエクスポート', ko: '로그 내보내기', 'zh-Hant': '匯出日誌' }),
+        title: t({ en: 'Export Logs', 'zh-Hans': '导出日志', fr: 'Exporter les logs', ja: 'ログをエクスポート', ko: '로그 내보내기', 'zh-Hant': '匯出日誌' }),
+        format: t({ en: 'Format', 'zh-Hans': '格式', fr: 'Format', ja: '形式', ko: '형식', 'zh-Hant': '格式' }),
+        json: t({ en: 'JSON', 'zh-Hans': 'JSON', fr: 'JSON', ja: 'JSON', ko: 'JSON', 'zh-Hant': 'JSON' }),
+        csv: t({ en: 'CSV', 'zh-Hans': 'CSV', fr: 'CSV', ja: 'CSV', ko: 'CSV', 'zh-Hant': 'CSV' }),
       },
     },
     organizations: {
-      pageTitle: t({
-        en: 'Organization Management',
-        zh: '组织管理',
-      }),
-      pageSubtitle: t({
-        en: 'Create and manage all organizations',
-        zh: '创建并管理所有组织',
-      }),
-      createOrganization: t({
-        en: 'Create Organization',
-        zh: '创建组织',
-      }),
-      createOrgDescription: t({
-        en: 'Create a new organization and assign an owner',
-        zh: '创建新组织并指定负责人',
-      }),
-      orgName: t({
-        en: 'Organization Name *',
-        zh: '组织名称 *',
-      }),
-      slug: t({
-        en: 'Slug *',
-        zh: '标识 *',
-      }),
-      owner: t({
-        en: 'Owner *',
-        zh: '负责人 *',
-      }),
-      permissionMode: t({
-        en: 'Permission Mode',
-        zh: '权限模式',
-      }),
-      standard: t({
-        en: 'Standard',
-        zh: '标准',
-      }),
-      bypass: t({
-        en: 'Bypass',
-        zh: '绕过',
-      }),
-      allowBashTool: t({
-        en: 'Allow Bash Tool',
-        zh: '允许 Bash 工具',
-      }),
-      yes: t({
-        en: 'Yes',
-        zh: '是',
-      }),
-      no: t({
-        en: 'No',
-        zh: '否',
-      }),
-      create: t({
-        en: 'Create',
-        zh: '创建',
-      }),
-      tableOrganization: t({
-        en: 'Organization',
-        zh: '组织',
-      }),
-      tableOwner: t({
-        en: 'Owner',
-        zh: '负责人',
-      }),
-      tableMembers: t({
-        en: 'Members',
-        zh: '成员',
-      }),
-      tablePermissionMode: t({
-        en: 'Permission Mode',
-        zh: '权限模式',
-      }),
-      tableBash: t({
-        en: 'Bash',
-        zh: 'Bash',
-      }),
-      tableCreated: t({
-        en: 'Created',
-        zh: '创建时间',
-      }),
-      tableActions: t({
-        en: 'Actions',
-        zh: '操作',
-      }),
-      noOwner: t({
-        en: 'No owner',
-        zh: '无负责人',
-      }),
-      membersCount: t({
-        en: '{count} members',
-        zh: '{count} 名成员',
-      }),
-      enabled: t({
-        en: 'Enabled',
-        zh: '已启用',
-      }),
-      disabled: t({
-        en: 'Disabled',
-        zh: '已禁用',
-      }),
-      organizationDetails: t({
-        en: 'Organization Details',
-        zh: '组织详情',
-      }),
-      totalOrganizations: t({
-        en: 'Total Organizations',
-        zh: '组织总数',
-      }),
-      totalMembers: t({
-        en: 'Total Members',
-        zh: '成员总数',
-      }),
-      placeholderMyOrg: t({
-        en: 'My Organization',
-        zh: '我的组织',
-      }),
-      placeholderSlug: t({
-        en: 'my-org',
-        zh: 'my-org',
-      }),
-      loadingUsers: t({
-        en: 'Loading users...',
-        zh: '加载用户中...',
-      }),
-      selectOwner: t({
-        en: 'Select owner',
-        zh: '选择负责人',
-      }),
+      pageTitle: t({ en: 'Organization Management', 'zh-Hans': '组织管理', fr: 'Gestion des organisations', ja: '組織管理', ko: '조직 관리', 'zh-Hant': '組織管理' }),
+      pageSubtitle: t({ en: 'Create and manage all organizations', 'zh-Hans': '创建并管理所有组织', fr: 'Créer et gérer toutes les organisations', ja: '組織の作成と管理', ko: '모든 조직 생성 및 관리', 'zh-Hant': '建立並管理所有組織' }),
+      createOrganization: t({ en: 'Create Organization', 'zh-Hans': '创建组织', fr: 'Créer une organisation', ja: '組織を作成', ko: '조직 만들기', 'zh-Hant': '建立組織' }),
+      createOrgDescription: t({ en: 'Create a new organization and assign an owner', 'zh-Hans': '创建新组织并指定负责人', fr: 'Créer une organisation et assigner un propriétaire', ja: '新規組織を作成してオーナーを指定', ko: '새 조직을 만들고 소유자 지정', 'zh-Hant': '建立新組織並指定負責人' }),
+      orgName: t({ en: 'Organization Name *', 'zh-Hans': '组织名称 *', fr: 'Nom de l\'organisation *', ja: '組織名 *', ko: '조직 이름 *', 'zh-Hant': '組織名稱 *' }),
+      slug: t({ en: 'Slug *', 'zh-Hans': '标识 *', fr: 'Slug *', ja: '識別子 *', ko: '슬러그 *', 'zh-Hant': '識別碼 *' }),
+      owner: t({ en: 'Owner *', 'zh-Hans': '负责人 *', fr: 'Propriétaire *', ja: 'オーナー *', ko: '소유자 *', 'zh-Hant': '負責人 *' }),
+      permissionMode: t({ en: 'Permission Mode', 'zh-Hans': '权限模式', fr: 'Mode de permission', ja: '権限モード', ko: '권한 모드', 'zh-Hant': '權限模式' }),
+      standard: t({ en: 'Standard', 'zh-Hans': '标准', fr: 'Standard', ja: '標準', ko: '표준', 'zh-Hant': '標準' }),
+      bypass: t({ en: 'Bypass', 'zh-Hans': '绕过', fr: 'Contourner', ja: 'バイパス', ko: '우회', 'zh-Hant': '繞過' }),
+      allowBashTool: t({ en: 'Allow Bash Tool', 'zh-Hans': '允许 Bash 工具', fr: 'Autoriser l\'outil Bash', ja: 'Bash ツールを許可', ko: 'Bash 도구 허용', 'zh-Hant': '允許 Bash 工具' }),
+      yes: t({ en: 'Yes', 'zh-Hans': '是', fr: 'Oui', ja: 'はい', ko: '예', 'zh-Hant': '是' }),
+      no: t({ en: 'No', 'zh-Hans': '否', fr: 'Non', ja: 'いいえ', ko: '아니오', 'zh-Hant': '否' }),
+      create: t({ en: 'Create', 'zh-Hans': '创建', fr: 'Créer', ja: '作成', ko: '만들기', 'zh-Hant': '建立' }),
+      tableOrganization: t({ en: 'Organization', 'zh-Hans': '组织', fr: 'Organisation', ja: '組織', ko: '조직', 'zh-Hant': '組織' }),
+      tableOwner: t({ en: 'Owner', 'zh-Hans': '负责人', fr: 'Propriétaire', ja: 'オーナー', ko: '소유자', 'zh-Hant': '負責人' }),
+      tableMembers: t({ en: 'Members', 'zh-Hans': '成员', fr: 'Membres', ja: 'メンバー', ko: '멤버', 'zh-Hant': '成員' }),
+      tablePermissionMode: t({ en: 'Permission Mode', 'zh-Hans': '权限模式', fr: 'Mode de permission', ja: '権限モード', ko: '권한 모드', 'zh-Hant': '權限模式' }),
+      tableBash: t({ en: 'Bash', 'zh-Hans': 'Bash', fr: 'Bash', ja: 'Bash', ko: 'Bash', 'zh-Hant': 'Bash' }),
+      tableCreated: t({ en: 'Created', 'zh-Hans': '创建时间', fr: 'Créé le', ja: '作成日時', ko: '생성일', 'zh-Hant': '建立時間' }),
+      tableActions: t({ en: 'Actions', 'zh-Hans': '操作', fr: 'Actions', ja: '操作', ko: '작업', 'zh-Hant': '操作' }),
+      noOwner: t({ en: 'No owner', 'zh-Hans': '无负责人', fr: 'Aucun propriétaire', ja: 'オーナーなし', ko: '소유자 없음', 'zh-Hant': '無負責人' }),
+      membersCount: t({ en: '{count} members', 'zh-Hans': '{count} 名成员', fr: '{count} membre(s)', ja: '{count} 名のメンバー', ko: '멤버 {count}명', 'zh-Hant': '{count} 名成員' }),
+      enabled: t({ en: 'Enabled', 'zh-Hans': '已启用', fr: 'Activé', ja: '有効', ko: '활성화됨', 'zh-Hant': '已啟用' }),
+      disabled: t({ en: 'Disabled', 'zh-Hans': '已禁用', fr: 'Désactivé', ja: '無効', ko: '비활성화됨', 'zh-Hant': '已停用' }),
+      organizationDetails: t({ en: 'Organization Details', 'zh-Hans': '组织详情', fr: 'Détails de l\'organisation', ja: '組織の詳細', ko: '조직 세부정보', 'zh-Hant': '組織詳情' }),
+      totalOrganizations: t({ en: 'Total Organizations', 'zh-Hans': '组织总数', fr: 'Total organisations', ja: '組織総数', ko: '총 조직 수', 'zh-Hant': '組織總數' }),
+      totalMembers: t({ en: 'Total Members', 'zh-Hans': '成员总数', fr: 'Total membres', ja: 'メンバー総数', ko: '총 멤버 수', 'zh-Hant': '成員總數' }),
+      placeholderMyOrg: t({ en: 'My Organization', 'zh-Hans': '我的组织', fr: 'Mon organisation', ja: 'マイ組織', ko: '내 조직', 'zh-Hant': '我的組織' }),
+      placeholderSlug: t({ en: 'my-org', 'zh-Hans': 'my-org', fr: 'my-org', ja: 'my-org', ko: 'my-org', 'zh-Hant': 'my-org' }),
+      loadingUsers: t({ en: 'Loading users...', 'zh-Hans': '加载用户中...', fr: 'Chargement des utilisateurs...', ja: 'ユーザーを読み込み中...', ko: '사용자 로딩 중...', 'zh-Hant': '載入使用者中...' }),
+      selectOwner: t({ en: 'Select owner', 'zh-Hans': '选择负责人', fr: 'Sélectionner le propriétaire', ja: 'オーナーを選択', ko: '소유자 선택', 'zh-Hant': '選擇負責人' }),
     },
     analytics: {
       page: {
-        title: t({
-          en: 'Analytics',
-          zh: '分析',
-        }),
-        subtitle: t({
-          en: 'View usage and performance metrics',
-          zh: '查看使用情况和性能指标',
-        }),
+        title: t({ en: 'Analytics', 'zh-Hans': '分析', fr: 'Analytiques', ja: '分析', ko: '분석', 'zh-Hant': '分析' }),
+        subtitle: t({ en: 'View usage and performance metrics', 'zh-Hans': '查看使用情况和性能指标', fr: 'Voir les métriques d\'usage et de performance', ja: '利用状況とパフォーマンス指標を表示', ko: '사용량 및 성능 지표 보기', 'zh-Hant': '查看使用情況與效能指標' }),
       },
       metrics: {
-        totalUsers: t({
-          en: 'Total Users',
-          zh: '总用户数',
-        }),
-        newUsers: t({
-          en: 'New Users',
-          zh: '新用户',
-        }),
-        activeUsers: t({
-          en: 'Active Users',
-          zh: '活跃用户',
-        }),
-        totalMessages: t({
-          en: 'Total Messages',
-          zh: '总消息数',
-        }),
-        averageResponseTime: t({
-          en: 'Avg Response Time',
-          zh: '平均响应时间',
-        }),
-        errorRate: t({
-          en: 'Error Rate',
-          zh: '错误率',
-        }),
-        revenue: t({
-          en: 'Revenue',
-          zh: '收入',
-        }),
+        totalUsers: t({ en: 'Total Users', 'zh-Hans': '总用户数', fr: 'Total utilisateurs', ja: '総ユーザー数', ko: '총 사용자 수', 'zh-Hant': '總使用者數' }),
+        newUsers: t({ en: 'New Users', 'zh-Hans': '新用户', fr: 'Nouveaux utilisateurs', ja: '新規ユーザー', ko: '신규 사용자', 'zh-Hant': '新使用者' }),
+        activeUsers: t({ en: 'Active Users', 'zh-Hans': '活跃用户', fr: 'Utilisateurs actifs', ja: 'アクティブユーザー', ko: '활성 사용자', 'zh-Hant': '活躍使用者' }),
+        totalMessages: t({ en: 'Total Messages', 'zh-Hans': '总消息数', fr: 'Total messages', ja: '総メッセージ数', ko: '총 메시지 수', 'zh-Hant': '總訊息數' }),
+        averageResponseTime: t({ en: 'Avg Response Time', 'zh-Hans': '平均响应时间', fr: 'Temps de réponse moyen', ja: '平均応答時間', ko: '평균 응답 시간', 'zh-Hant': '平均回應時間' }),
+        errorRate: t({ en: 'Error Rate', 'zh-Hans': '错误率', fr: 'Taux d\'erreur', ja: 'エラー率', ko: '오류율', 'zh-Hant': '錯誤率' }),
+        revenue: t({ en: 'Revenue', 'zh-Hans': '收入', fr: 'Revenus', ja: '収益', ko: '수익', 'zh-Hant': '收入' }),
       },
       charts: {
-        userGrowth: t({
-          en: 'User Growth',
-          zh: '用户增长',
-        }),
-        messageVolume: t({
-          en: 'Message Volume',
-          zh: '消息量',
-        }),
-        revenueTrend: t({
-          en: 'Revenue Trend',
-          zh: '收入趋势',
-        }),
+        userGrowth: t({ en: 'User Growth', 'zh-Hans': '用户增长', fr: 'Croissance des utilisateurs', ja: 'ユーザー成長', ko: '사용자 성장', 'zh-Hant': '使用者增長' }),
+        messageVolume: t({ en: 'Message Volume', 'zh-Hans': '消息量', fr: 'Volume de messages', ja: 'メッセージ量', ko: '메시지량', 'zh-Hant': '訊息量' }),
+        revenueTrend: t({ en: 'Revenue Trend', 'zh-Hans': '收入趋势', fr: 'Tendance des revenus', ja: '収益トレンド', ko: '수익 추세', 'zh-Hant': '收入趨勢' }),
       },
     },
     actions: {
-      save: t({
-        en: 'Save Changes',
-        zh: '保存更改',
-      }),
-      cancel: t({
-        en: 'Cancel',
-        zh: '取消',
-      }),
-      delete: t({
-        en: 'Delete',
-        zh: '删除',
-      }),
-      confirm: t({
-        en: 'Confirm',
-        zh: '确认',
-      }),
+      save: t({ en: 'Save Changes', 'zh-Hans': '保存更改', fr: 'Enregistrer les modifications', ja: '変更を保存', ko: '변경 저장', 'zh-Hant': '儲存變更' }),
+      cancel: t({ en: 'Cancel', 'zh-Hans': '取消', fr: 'Annuler', ja: 'キャンセル', ko: '취소', 'zh-Hant': '取消' }),
+      delete: t({ en: 'Delete', 'zh-Hans': '删除', fr: 'Supprimer', ja: '削除', ko: '삭제', 'zh-Hant': '刪除' }),
+      confirm: t({ en: 'Confirm', 'zh-Hans': '确认', fr: 'Confirmer', ja: '確認', ko: '확인', 'zh-Hant': '確認' }),
     },
     success: {
-      settingsSaved: t({
-        en: 'Settings saved successfully',
-        zh: '设置保存成功',
-      }),
-      userDeleted: t({
-        en: 'User deleted successfully',
-        zh: '用户删除成功',
-      }),
-      userUpdated: t({
-        en: 'User updated successfully',
-        zh: '用户更新成功',
-      }),
+      settingsSaved: t({ en: 'Settings saved successfully', 'zh-Hans': '设置保存成功', fr: 'Paramètres enregistrés avec succès', ja: '設定を保存しました', ko: '설정이 저장되었습니다', 'zh-Hant': '設定儲存成功' }),
+      userDeleted: t({ en: 'User deleted successfully', 'zh-Hans': '用户删除成功', fr: 'Utilisateur supprimé avec succès', ja: 'ユーザーを削除しました', ko: '사용자가 삭제되었습니다', 'zh-Hant': '使用者刪除成功' }),
+      userUpdated: t({ en: 'User updated successfully', 'zh-Hans': '用户更新成功', fr: 'Utilisateur mis à jour avec succès', ja: 'ユーザーを更新しました', ko: '사용자가 업데이트되었습니다', 'zh-Hant': '使用者更新成功' }),
     },
     errors: {
-      saveFailed: t({
-        en: 'Failed to save settings',
-        zh: '设置保存失败',
-      }),
-      deleteFailed: t({
-        en: 'Failed to delete user',
-        zh: '用户删除失败',
-      }),
-      updateFailed: t({
-        en: 'Failed to update user',
-        zh: '用户更新失败',
-      }),
+      saveFailed: t({ en: 'Failed to save settings', 'zh-Hans': '设置保存失败', fr: 'Échec de l\'enregistrement des paramètres', ja: '設定の保存に失敗しました', ko: '설정 저장 실패', 'zh-Hant': '設定儲存失敗' }),
+      deleteFailed: t({ en: 'Failed to delete user', 'zh-Hans': '用户删除失败', fr: 'Échec de la suppression de l\'utilisateur', ja: 'ユーザーの削除に失敗しました', ko: '사용자 삭제 실패', 'zh-Hant': '使用者刪除失敗' }),
+      updateFailed: t({ en: 'Failed to update user', 'zh-Hans': '用户更新失败', fr: 'Échec de la mise à jour de l\'utilisateur', ja: 'ユーザーの更新に失敗しました', ko: '사용자 업데이트 실패', 'zh-Hant': '使用者更新失敗' }),
     },
     modals: {
       deleteUser: {
-        title: t({
-          en: 'Delete User',
-          zh: '删除用户',
-        }),
-        message: t({
-          en: 'Are you sure you want to delete this user? This action cannot be undone.',
-          zh: '您确定要删除此用户吗？此操作无法撤销。',
-        }),
-        confirmButton: t({
-          en: 'Delete',
-          zh: '删除',
-        }),
-        cancelButton: t({
-          en: 'Cancel',
-          zh: '取消',
-        }),
+        title: t({ en: 'Delete User', 'zh-Hans': '删除用户', fr: 'Supprimer l\'utilisateur', ja: 'ユーザーを削除', ko: '사용자 삭제', 'zh-Hant': '刪除使用者' }),
+        message: t({ en: 'Are you sure you want to delete this user? This action cannot be undone.', 'zh-Hans': '您确定要删除此用户吗？此操作无法撤销。', fr: 'Supprimer cet utilisateur ? Cette action est irréversible.', ja: 'このユーザーを削除しますか？元に戻せません。', ko: '이 사용자를 삭제할까요? 되돌릴 수 없습니다.', 'zh-Hant': '您確定要刪除此使用者嗎？此操作無法復原。' }),
+        confirmButton: t({ en: 'Delete', 'zh-Hans': '删除', fr: 'Supprimer', ja: '削除', ko: '삭제', 'zh-Hant': '刪除' }),
+        cancelButton: t({ en: 'Cancel', 'zh-Hans': '取消', fr: 'Annuler', ja: 'キャンセル', ko: '취소', 'zh-Hant': '取消' }),
       },
       banUser: {
-        title: t({
-          en: 'Ban User',
-          zh: '封禁用户',
-        }),
-        message: t({
-          en: 'Are you sure you want to ban this user?',
-          zh: '您确定要封禁此用户吗？',
-        }),
-        reason: t({
-          en: 'Reason',
-          zh: '原因',
-        }),
-        confirmButton: t({
-          en: 'Ban',
-          zh: '封禁',
-        }),
-        cancelButton: t({
-          en: 'Cancel',
-          zh: '取消',
-        }),
+        title: t({ en: 'Ban User', 'zh-Hans': '封禁用户', fr: 'Bannir l\'utilisateur', ja: 'ユーザーを禁止', ko: '사용자 차단', 'zh-Hant': '封禁使用者' }),
+        message: t({ en: 'Are you sure you want to ban this user?', 'zh-Hans': '您确定要封禁此用户吗？', fr: 'Bannir cet utilisateur ?', ja: 'このユーザーを禁止しますか？', ko: '이 사용자를 차단할까요?', 'zh-Hant': '您確定要封禁此使用者嗎？' }),
+        reason: t({ en: 'Reason', 'zh-Hans': '原因', fr: 'Raison', ja: '理由', ko: '사유', 'zh-Hant': '原因' }),
+        confirmButton: t({ en: 'Ban', 'zh-Hans': '封禁', fr: 'Bannir', ja: '禁止', ko: '차단', 'zh-Hant': '封禁' }),
+        cancelButton: t({ en: 'Cancel', 'zh-Hans': '取消', fr: 'Annuler', ja: 'キャンセル', ko: '취소', 'zh-Hant': '取消' }),
       },
     },
     a2composer: {
-      skillSlugPlaceholder: t({
-        en: 'Enter skill slug or click to select',
-        zh: '输入 skill slug 或点击选择',
-      }),
-      skillSearchPlaceholder: t({
-        en: 'Search by skill slug, name, or description...',
-        zh: '搜索技能 slug / 名称 / 描述...',
-      }),
+      skillSlugPlaceholder: t({ en: 'Enter skill slug or click to select', 'zh-Hans': '输入 skill slug 或点击选择', fr: 'Entrez le slug du skill ou cliquez pour sélectionner', ja: 'スキル slug を入力するかクリックして選択', ko: '스킬 slug 입력 또는 클릭하여 선택', 'zh-Hant': '輸入 skill slug 或點擊選擇' }),
+      skillSearchPlaceholder: t({ en: 'Search by skill slug, name, or description...', 'zh-Hans': '搜索技能 slug / 名称 / 描述...', fr: 'Rechercher par slug, nom ou description du skill...', ja: 'スキル slug / 名前 / 説明で検索...', ko: '스킬 slug, 이름 또는 설명으로 검색...', 'zh-Hant': '搜尋技能 slug / 名稱 / 描述...' }),
     },
   },
   key: 'admin',
