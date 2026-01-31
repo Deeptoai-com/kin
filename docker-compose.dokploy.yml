@@ -203,9 +203,9 @@ services:
       - private
 
   # Main application (Nitro + WebSocket server)
+  # Note: Dokploy uses pre-built images from registry, no build config needed
   app:
     image: *app_image
-    <<: *app_build
     container_name: ${APP_NAME:-OxyGenie}-app
     depends_on:
       db:
