@@ -1,35 +1,19 @@
 import { SignedIn, SignedOut } from '@daveyplate/better-auth-ui';
 import { Link } from '@tanstack/react-router';
-import * as Sentry from '@sentry/react';
-import { useCallback } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { ClientOnly } from './client-only';
+import { LocaleSwitcher } from './locale-switcher';
 import { ModeToggle } from './mode-toggle';
 import { Button } from './ui/button';
 
-function DevSentryButton() {
-  const handleClick = useCallback(() => {
-    const err = new Error(`Manual Sentry test (client) ${new Date().toISOString()}`);
-    console.info('[sentry] dispatching manual client error for verification');
-    Sentry.captureException(err);
-  }, []);
-
-  // if (!import.meta.env.DEV) return null
-
-  return (
-    <ClientOnly fallback={null}>
-      <Button variant="outline" size="sm" onClick={handleClick} className="text-xs">
-        Test Sentry
-      </Button>
-    </ClientOnly>
-  );
-}
-
 export function Header() {
+  const content = useIntlayer('app');
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/60 px-4 py-3 backdrop-blur">
       <div className="container mx-auto flex items-center justify-between">
         <Link to="/" className="font-bold text-2xl text-foreground">
-          DeeptoAI
+          {content.common.appName}
         </Link>
 
         <nav className="flex items-center gap-6">
@@ -37,25 +21,25 @@ export function Header() {
             to="/agents/claude-chat"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Agent Chat
+            {content.nav.claudeChat}
           </Link>
           <Link
             to="/agents/skills"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Skill Store
+            {content.nav.skillsStore}
           </Link>
           <Link
             to="/agents/ai-chat"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Fast Chat
+            {content.nav.aiChat}
           </Link>
           <Link
             to="/agents/ai-workflow"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Workflow
+            {content.nav.aiWorkflow}
           </Link>
           <a
             href="https://x.com/Stephen4171127"
@@ -86,21 +70,23 @@ export function Header() {
             <ModeToggle />
           </ClientOnly>
 
-          <DevSentryButton />
+          <ClientOnly fallback={<div className="h-9 w-9 shrink-0 rounded-md border bg-muted" title="Language" />}>
+            <LocaleSwitcher />
+          </ClientOnly>
 
           {/* Client-only auth components to avoid SSR hydration errors */}
           <ClientOnly fallback={null}>
             <SignedOut>
               <Link to="/auth/$pathname" params={{ pathname: 'sign-in' }}>
                 <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
-                  Sign In <span className="ml-1">↗</span>
+                  {content.buttons.signIn} <span className="ml-1">↗</span>
                 </Button>
               </Link>
             </SignedOut>
             <SignedIn>
               <Link to="/agents/claude-chat">
                 <Button className="rounded-full bg-primary px-6 font-medium text-primary-foreground text-sm hover:bg-primary/90">
-                  Agent Chat <span className="ml-1">↗</span>
+                  {content.buttons.agentChat} <span className="ml-1">↗</span>
                 </Button>
               </Link>
             </SignedIn>

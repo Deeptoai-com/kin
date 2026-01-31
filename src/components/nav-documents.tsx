@@ -1,5 +1,6 @@
 "use client";
 
+import { useIntlayer } from 'react-intlayer';
 import { Ellipsis, Folder, type LucideIcon, Share, Trash } from "lucide-react";
 
 import {
@@ -29,10 +30,11 @@ export function NavDocuments({
 	}[];
 }) {
 	const { isMobile } = useSidebar();
+	const content = useIntlayer('documents');
 
 	return (
 		<SidebarGroup className="group-data-[collapsible=icon]:hidden">
-			<SidebarGroupLabel>Documents</SidebarGroupLabel>
+			<SidebarGroupLabel>{content.navDocuments.title}</SidebarGroupLabel>
 			<SidebarMenu>
 				{items.map((item) => (
 					<SidebarMenuItem key={item.name}>
@@ -49,7 +51,7 @@ export function NavDocuments({
 									className="data-[state=open]:bg-accent rounded-sm"
 								>
 									<Ellipsis />
-									<span className="sr-only">More</span>
+									<span className="sr-only">{content.navDocuments.more}</span>
 								</SidebarMenuAction>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent
@@ -59,16 +61,16 @@ export function NavDocuments({
 							>
 								<DropdownMenuItem>
 									<Folder />
-									<span>Open</span>
+									<span>{content.navDocuments.open}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem>
 									<Share />
-									<span>Share</span>
+									<span>{content.navDocuments.share}</span>
 								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 								<DropdownMenuItem variant="destructive">
 									<Trash />
-									<span>Delete</span>
+									<span>{content.navDocuments.delete}</span>
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
@@ -77,7 +79,7 @@ export function NavDocuments({
 				<SidebarMenuItem>
 					<SidebarMenuButton className="text-sidebar-foreground/70">
 						<Ellipsis className="text-sidebar-foreground/70" />
-						<span>More</span>
+						<span>{content.navDocuments.more}</span>
 					</SidebarMenuButton>
 				</SidebarMenuItem>
 			</SidebarMenu>

@@ -11,8 +11,9 @@
  */
 
 import * as React from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { codeToHtml, bundledLanguages, type BundledLanguage } from 'shiki';
-import { cn } from '~/lib/utils';
+import { cn, toLocalizedString } from '~/lib/utils';
 
 export interface CodeBlockProps {
   code: string;
@@ -63,6 +64,7 @@ function isDarkMode(): boolean {
 }
 
 export function CodeBlock({ code, language = 'text', className, mode = 'full' }: CodeBlockProps) {
+  const content = useIntlayer('claude-chat');
   const [highlighted, setHighlighted] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
@@ -172,7 +174,7 @@ export function CodeBlock({ code, language = 'text', className, mode = 'full' }:
         <button
           onClick={handleCopy}
           className="opacity-0 group-hover:opacity-100 transition-opacity text-[#6b6a68] dark:text-[#9a9893] hover:text-[#333] dark:hover:text-[#e5e4df]"
-          aria-label="Copy code"
+          aria-label={toLocalizedString(content.message.copyCode)}
         >
           {copied ? (
             <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

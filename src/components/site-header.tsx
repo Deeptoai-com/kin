@@ -1,29 +1,37 @@
 import { Button } from "~/components/ui/button"
+import { LocaleSwitcher } from "~/components/locale-switcher"
 import { Separator } from "~/components/ui/separator"
 import { SidebarTrigger } from "~/components/ui/sidebar"
 import { useMatches } from "@tanstack/react-router"
-
-// Map route IDs to page titles
-const routeTitles: Record<string, string> = {
-  '/agents/documents': 'Documents / KB',
-  '/agents/claude-chat': 'Claude Chat',
-  '/agents/chat': 'Chat',
-  '/agents/image-chat': 'Image Chat',
-  '/agents/workflow': 'Workflow',
-  '/agents/charts': 'Dashboard',
-  '/agents/skills': 'Skills',
-  '/agents/billing': 'Billing',
-  '/agents/settings/billing': 'Billing Settings',
-}
+import { useIntlayer } from "react-intlayer"
 
 export function SiteHeader() {
   const matches = useMatches()
+  const content = useIntlayer("app")
 
   // Get the current route's title from the last matching route
   const currentRoute = matches[matches.length - 1]
-  const title = currentRoute?.pathname
-    ? routeTitles[currentRoute.pathname] || 'Agent'
-    : 'Agent'
+  const pathname = currentRoute?.pathname || ""
+
+  // Map route paths to i18n content keys
+  const getTitleKey = (path: string): keyof typeof content.titles => {
+    const titleMap: Record<string, keyof typeof content.titles> = {
+      "/agents/documents": "documents",
+      "/agents/claude-chat": "claudeChat",
+      "/agents/chat": "chat",
+      "/agents/image-chat": "imageChat",
+      "/agents/workflow": "workflow",
+      "/agents/charts": "dashboard",
+      "/agents/skills": "skills",
+      "/agents/billing": "billing",
+      "/agents/settings/billing": "billingSettings",
+      "/agents/ai-chat": "aiChat",
+      "/agents/ai-workflow": "aiWorkflow",
+    }
+    return titleMap[path] || "agent"
+  }
+
+  const title = content.titles[getTitleKey(pathname)]
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
@@ -35,6 +43,7 @@ export function SiteHeader() {
         />
         <h1 className="text-base font-medium">{title}</h1>
         <div className="ml-auto flex items-center gap-2">
+          <LocaleSwitcher />
           <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
             <a
               href="https://x.com/Stephen4171127"

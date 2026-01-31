@@ -8,6 +8,8 @@
  */
 
 import { useChat } from '@ai-sdk/react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import {
   Conversation,
   ConversationContent,
@@ -21,6 +23,7 @@ import { Button } from '~/components/ui/button';
 import { useState, Fragment, useEffect } from 'react';
 
 export function AIChatSurface() {
+  const content = useIntlayer('ai-elements');
   const [input, setInput] = useState('');
   const [mounted, setMounted] = useState(false);
 
@@ -56,8 +59,8 @@ export function AIChatSurface() {
             <div className="flex flex-1 items-center justify-center text-center text-muted-foreground">
               <div className="space-y-2">
                 <Bot className="mx-auto h-12 w-12" />
-                <p className="text-sm">Start a conversation</p>
-                <p className="text-xs">Ask me anything about your codebase.</p>
+                <p className="text-sm">{toLocalizedString(content.chatSurface.startConversation)}</p>
+                <p className="text-xs">{toLocalizedString(content.chatSurface.askAnything)}</p>
               </div>
             </div>
           ) : (
@@ -92,7 +95,7 @@ export function AIChatSurface() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
+              placeholder={toLocalizedString(content.chatSurface.typeYourMessage)}
               className="w-full rounded-md border-0 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-0"
               disabled={status !== 'ready'}
             />
@@ -102,7 +105,7 @@ export function AIChatSurface() {
             size="sm"
             disabled={status !== 'ready' || !input?.trim()}
           >
-            Send
+            {toLocalizedString(content.chatSurface.send)}
           </Button>
         </form>
       </div>

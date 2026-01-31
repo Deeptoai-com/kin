@@ -1,14 +1,18 @@
 import { useCallback } from 'react';
 import { useTheme } from '~/components/theme-provider';
+import { useIntlayer } from 'react-intlayer';
 import { logger } from '~/lib/logger';
+import { toLocalizedString } from '~/lib/utils';
 import { SettingsCard } from '../shared/SettingsCard';
-import { Palette, Sun, Moon, Monitor } from 'lucide-react';
+import { LocaleSwitcher } from '~/components/locale-switcher';
+import { Globe, Palette, Sun, Moon, Monitor } from 'lucide-react';
 
 interface PreferencesSettingsProps {
   readonly projectId?: string | null;
 }
 
 export function PreferencesSettings({ projectId }: PreferencesSettingsProps) {
+  const content = useIntlayer('settings');
   const { theme, setTheme } = useTheme();
 
   const handleThemeChange = useCallback(
@@ -33,11 +37,22 @@ export function PreferencesSettings({ projectId }: PreferencesSettingsProps) {
   const getThemeDescription = (themeOption: 'light' | 'dark' | 'system') => {
     switch (themeOption) {
       case 'light':
-        return 'Bright and clean interface';
+        return content.ui.lightDescription;
       case 'dark':
-        return 'Easy on the eyes in low light';
+        return content.ui.darkDescription;
       case 'system':
-        return 'Follow your system preference';
+        return content.ui.systemDescription;
+    }
+  };
+
+  const getThemeLabel = (themeOption: 'light' | 'dark' | 'system') => {
+    switch (themeOption) {
+      case 'light':
+        return content.ui.light;
+      case 'dark':
+        return content.ui.dark;
+      case 'system':
+        return content.ui.system;
     }
   };
 
@@ -45,12 +60,12 @@ export function PreferencesSettings({ projectId }: PreferencesSettingsProps) {
     <div className="space-y-6">
       <SettingsCard
         icon={<Palette className="h-5 w-5" />}
-        title="Interface & Theme"
-        description="Customize the appearance of your Codefetch interface"
+        title={toLocalizedString(content.ui.interfaceTheme)}
+        description={toLocalizedString(content.ui.customizeAppearance)}
       >
         <div className="space-y-4">
           <div className="space-y-3">
-            <div className="text-sm font-medium">Theme</div>
+            <div className="text-sm font-medium">{content.ui.theme}</div>
             <div className="grid gap-2">
               {(['light', 'dark', 'system'] as const).map((themeOption) => (
                 <label
@@ -68,7 +83,7 @@ export function PreferencesSettings({ projectId }: PreferencesSettingsProps) {
                     {getThemeIcon(themeOption)}
                   </div>
                   <div className="flex-1">
-                    <div className="font-medium capitalize">{themeOption}</div>
+                    <div className="font-medium capitalize">{getThemeLabel(themeOption)}</div>
                     <div className="text-sm text-muted-foreground">
                       {getThemeDescription(themeOption)}
                     </div>
@@ -87,13 +102,24 @@ export function PreferencesSettings({ projectId }: PreferencesSettingsProps) {
                 {getThemeIcon(theme)}
               </div>
               <div>
-                <div className="font-medium">Current Theme</div>
+                <div className="font-medium">{content.ui.currentTheme}</div>
                 <div className="text-sm text-muted-foreground">
-                  {theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark'} mode
+                  {toLocalizedString(content.ui.mode).replace('{theme}', theme === 'system' ? toLocalizedString(content.ui.system) : theme === 'light' ? toLocalizedString(content.ui.light) : toLocalizedString(content.ui.dark))}
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        icon={<Globe className="h-5 w-5" />}
+        title={toLocalizedString(content.ui.languageTitle)}
+        description={toLocalizedString(content.ui.languageDescription)}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-sm text-muted-foreground">{content.ui.currentLanguage}</div>
+          <LocaleSwitcher />
         </div>
       </SettingsCard>
     </div>

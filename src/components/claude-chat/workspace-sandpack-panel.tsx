@@ -7,6 +7,8 @@
 
 import type { FC } from 'react'
 import { useState, useEffect, useMemo } from 'react'
+import { useIntlayer } from 'react-intlayer'
+import { toLocalizedString } from '~/lib/utils'
 import { Download, Package, Upload, X } from 'lucide-react'
 import { Sandpack } from '@codesandbox/sandpack-react'
 import { Button } from '~/components/ui/button'
@@ -81,6 +83,7 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
   sessionId,
   onClose,
 }) => {
+  const content = useIntlayer('claude-chat')
   const [workspaceFiles, setWorkspaceFiles] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -204,7 +207,7 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
     try {
       const files = collectSkillFiles(skill.root)
       if (files.length === 0) {
-        toast.error('未找到可打包的技能文件')
+        toast.error(toLocalizedString(content.artifactsPanel.toast.noSkillFiles))
         return
       }
       const zip = new JSZip()
@@ -220,10 +223,10 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      toast.success(`已导出 ${skill.skillName}.skill`)
+      toast.success(toLocalizedString(content.artifactsPanel.toast.exportSuccess).replace('{name}', skill.skillName))
     } catch (error) {
       console.error('Failed to package skill:', error)
-      toast.error('技能打包失败')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.exportFailed))
     } finally {
       setIsSkillBusy(false)
     }
@@ -235,16 +238,16 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
     try {
       const files = collectSkillFiles(skill.root)
       if (files.length === 0) {
-        toast.error('未找到可导入的技能文件')
+        toast.error(toLocalizedString(content.artifactsPanel.toast.noSkillFiles))
         return
       }
       const totalSize = files.reduce((sum, file) => sum + file.content.length, 0)
       if (files.length > 100) {
-        toast.error('文件数量超过限制（最多 100 个文件）')
+        toast.error(toLocalizedString(content.artifactsPanel.toast.tooManyFiles))
         return
       }
       if (totalSize > 10 * 1024 * 1024) {
-        toast.error('技能包大小超过 10 MB 限制')
+        toast.error(toLocalizedString(content.artifactsPanel.toast.sizeLimitExceeded))
         return
       }
       await uploadSkill({
@@ -253,10 +256,10 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
           files,
         },
       })
-      toast.success(`已导入技能：${skill.skillName}`)
+      toast.success(toLocalizedString(content.artifactsPanel.toast.importSuccess).replace('{name}', skill.skillName))
     } catch (error) {
       console.error('Failed to import skill:', error)
-      toast.error('技能导入失败')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.importFailed))
     } finally {
       setIsSkillBusy(false)
     }
@@ -271,9 +274,9 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
       {/* Header */}
       <div className="workspace-header flex items-center justify-between px-4 py-3 border-b bg-muted/30">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Workspace</span>
+          <span className="text-sm font-medium text-muted-foreground">{content.workspacePanel.title}</span>
           <span className="text-muted-foreground">·</span>
-          <span className="text-sm text-muted-foreground">{fileCount} files</span>
+          <span className="text-sm text-muted-foreground">{toLocalizedString(content.workspacePanel.filesCount).replace('{count}', String(fileCount))}</span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -282,7 +285,7 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
               <Button
                 variant="ghost"
                 size="icon"
-                title="Skill actions"
+                title={toLocalizedString(content.artifactsPanel.skillActions)}
                 className="h-8 w-8"
                 disabled={isLoading}
               >
@@ -290,10 +293,10 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Workspace Skills</DropdownMenuLabel>
+              <DropdownMenuLabel>{content.workspacePanel.workspaceSkills}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {workspaceSkills.length === 0 ? (
-                <DropdownMenuItem disabled>No SKILL.md found</DropdownMenuItem>
+                <DropdownMenuItem disabled>{content.workspacePanel.noSkillFound}</DropdownMenuItem>
               ) : (
                 workspaceSkills.map((skill) => (
                   <DropdownMenuSub key={`${skill.root}-${skill.skillName}`}>
@@ -304,14 +307,14 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
                         disabled={isSkillBusy}
                       >
                         <Download className="h-4 w-4" />
-                        Download .skill
+                        {content.artifactsPanel.downloadSkill}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() => handleImportSkill(skill)}
                         disabled={isSkillBusy}
                       >
                         <Upload className="h-4 w-4" />
-                        Import to Skills
+                        {content.artifactsPanel.importToSkills}
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
@@ -324,7 +327,7 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleDownloadWorkspace}
-            title="Download workspace"
+            title={toLocalizedString(content.workspacePanel.downloadWorkspace)}
             className="h-8 w-8"
           >
             <Download className="h-4 w-4" />
@@ -334,7 +337,7 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            title="Close"
+            title={toLocalizedString(content.artifactsPanel.close)}
             className="h-8 w-8"
           >
             <X className="h-4 w-4" />
@@ -348,7 +351,7 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
         <div className="workspace-sidebar w-64 border-r overflow-auto">
           <div className="p-2">
             <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-              FILES
+              {content.workspacePanel.filesLabel}
             </div>
             <WorkspaceFileBrowser sessionId={sessionId} onFileSelect={handleFileSelect} />
           </div>
@@ -358,11 +361,11 @@ export const WorkspaceSandpackPanel: FC<WorkspaceSandpackPanelProps> = ({
         <div className="workspace-editor flex-1 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              Loading workspace...
+              {content.workspacePanel.loadingWorkspace}
             </div>
           ) : fileCount === 0 ? (
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              No files in workspace yet. Start chatting to create files!
+              {content.workspacePanel.noFilesYet}
             </div>
           ) : (
             <Sandpack

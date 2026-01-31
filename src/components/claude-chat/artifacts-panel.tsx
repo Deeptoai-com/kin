@@ -7,6 +7,8 @@
 import JSZip from 'jszip'
 import { Download, Package, Upload, X, Wrench, Clock } from 'lucide-react'
 import { useMemo, useState, type FC } from 'react'
+import { useIntlayer } from 'react-intlayer'
+import { toLocalizedString } from '~/lib/utils'
 import { useServerFn } from '@tanstack/react-start'
 import { toast } from 'sonner'
 import { Button } from '~/components/ui/button'
@@ -55,6 +57,7 @@ function getSkillRoot(path: string): string | null {
 }
 
 export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose }) => {
+  const content = useIntlayer('claude-chat')
   const artifact = useArtifactsStore((state) => {
     if (!artifactId) return null
     return state.getArtifactById(artifactId)
@@ -92,7 +95,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
   const loadSkillFiles = async () => {
     if (!artifact || !skillInfo) return []
     if (!artifact.sessionId || artifact.sessionId === 'unknown') {
-      toast.error('当前会话不可用，无法读取技能文件')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.sessionUnavailable))
       return []
     }
 
@@ -100,7 +103,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
     const listResponse = await fetch(`/api/workspace/${artifact.sessionId}/files`)
     if (!listResponse.ok) {
       if (fallbackFile) {
-        toast.message('工作区不可用，已仅打包 SKILL.md')
+        toast.message(toLocalizedString(content.artifactsPanel.toast.workspaceUnavailable))
         return [fallbackFile]
       }
       throw new Error('Failed to list workspace files')
@@ -112,7 +115,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
       .filter((path) => (prefix ? path.startsWith(prefix) : true))
 
     if (candidates.length === 0 && fallbackFile) {
-      toast.message('未找到工作区文件，已仅打包 SKILL.md')
+      toast.message(toLocalizedString(content.artifactsPanel.toast.noFilesFound))
       return [fallbackFile]
     }
 
@@ -135,16 +138,16 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
 
   const validateSkillFiles = (files: Array<{ path: string; content: string }>) => {
     if (files.length === 0) {
-      toast.error('未找到可打包的技能文件')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.noSkillFiles))
       return false
     }
     if (files.length > 100) {
-      toast.error('文件数量超过限制（最多 100 个文件）')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.tooManyFiles))
       return false
     }
     const totalSize = files.reduce((sum, file) => sum + file.content.length, 0)
     if (totalSize > 10 * 1024 * 1024) {
-      toast.error('技能包大小超过 10 MB 限制')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.sizeLimitExceeded))
       return false
     }
     return true
@@ -169,10 +172,10 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      toast.success(`已导出 ${skillInfo.skillName}.skill`)
+      toast.success(toLocalizedString(content.artifactsPanel.toast.exportSuccess).replace('{name}', skillInfo.skillName))
     } catch (error) {
       console.error('Failed to package skill:', error)
-      toast.error('技能打包失败')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.exportFailed))
     } finally {
       setIsSkillBusy(false)
     }
@@ -190,10 +193,10 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
           files,
         },
       })
-      toast.success(`已导入技能：${skillInfo.skillName}`)
+      toast.success(toLocalizedString(content.artifactsPanel.toast.importSuccess).replace('{name}', skillInfo.skillName))
     } catch (error) {
       console.error('Failed to import skill:', error)
-      toast.error('技能导入失败')
+      toast.error(toLocalizedString(content.artifactsPanel.toast.importFailed))
     } finally {
       setIsSkillBusy(false)
     }
@@ -248,7 +251,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
         {/* Title bar */}
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-sm font-medium text-muted-foreground">Artifact</span>
+            <span className="text-sm font-medium text-muted-foreground">{content.artifactsPanel.title}</span>
             {artifact.title && (
               <>
                 <span className="text-muted-foreground">·</span>
@@ -256,7 +259,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
               </>
             )}
             {artifact.isTemporary && (
-              <span className="text-xs text-muted-foreground italic">(preview)</span>
+              <span className="text-xs text-muted-foreground italic">{content.artifactsPanel.preview}</span>
             )}
           </div>
 
@@ -267,7 +270,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
                   <Button
                     variant="ghost"
                     size="icon"
-                    title="Skill actions"
+                    title={toLocalizedString(content.artifactsPanel.skillActions)}
                     className="h-8 w-8"
                     disabled={isSkillBusy}
                   >
@@ -279,11 +282,11 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={handleDownloadSkill} disabled={isSkillBusy}>
                     <Download className="h-4 w-4" />
-                    Download .skill
+                    {content.artifactsPanel.downloadSkill}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={handleImportSkill} disabled={isSkillBusy}>
                     <Upload className="h-4 w-4" />
-                    Import to Skills
+                    {content.artifactsPanel.importToSkills}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -292,7 +295,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
               variant="ghost"
               size="icon"
               onClick={downloadArtifact}
-              title="Download artifact"
+              title={toLocalizedString(content.artifactsPanel.downloadArtifact)}
               className="h-8 w-8"
             >
               <Download className="h-4 w-4" />
@@ -302,7 +305,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
               variant="ghost"
               size="icon"
               onClick={onClose}
-              title="Close"
+              title={toLocalizedString(content.artifactsPanel.close)}
               className="h-8 w-8"
             >
               <X className="h-4 w-4" />
@@ -323,13 +326,13 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
             {artifact.toolName && (
               <div className="flex items-center gap-1.5">
                 <Wrench className="h-3 w-3" />
-                <span>来源: {artifact.toolName}</span>
+                <span>{toLocalizedString(content.artifactsPanel.source).replace('{tool}', artifact.toolName)}</span>
               </div>
             )}
             {artifact.updatedAt && (
               <div className="flex items-center gap-1.5">
                 <Clock className="h-3 w-3" />
-                <span>更新: {new Date(artifact.updatedAt).toLocaleTimeString('zh-CN')}</span>
+                <span>{toLocalizedString(content.artifactsPanel.updated).replace('{time}', new Date(artifact.updatedAt).toLocaleTimeString())}</span>
               </div>
             )}
             {artifact.fileName && (

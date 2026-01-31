@@ -45,6 +45,8 @@ import { SessionInfoPanel, type SessionMetadata } from './session-info-panel';
 import { PermissionBadge, type PermissionInfo } from './permission-badge';
 import { ToolbarStatus, type AgentStatusType } from './claude-status';
 import { McpStatusIndicator } from './mcp-status-indicator';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
 import { useChatSessionStore } from '~/lib/chat-session-store';
 import { useDraftAutoSave } from '~/lib/hooks/use-session-protection';
@@ -158,6 +160,7 @@ export function ChatComposer({
   hideSkillsTrigger,
   onSkillsOpenChange,
 }: ChatComposerProps) {
+  const content = useIntlayer('claude-chat');
   const api = useAssistantApi();
   const composerText = useAssistantState(({ composer }) => composer.text);
   const composerRunConfig = useAssistantState(({ composer }) => composer.runConfig);
@@ -377,7 +380,7 @@ export function ChatComposer({
         <div className="relative z-10">
           <div className="wrap-break-word max-h-96 w-full overflow-y-auto">
             <ComposerPrimitive.Input
-              placeholder="How can I help you today?"
+              placeholder={toLocalizedString(content.chatInput.placeholderGreeting)}
               className="block min-h-6 w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
@@ -607,6 +610,7 @@ function ComposerAttachmentsSection({ uploadedFiles, uploadError, isUploading }:
  * Attachment Thumbnail Component
  */
 function ClaudeAttachment() {
+  const content = useIntlayer('claude-chat');
   return (
     <AttachmentPrimitive.Root className="group/thumbnail relative">
       <div
@@ -627,7 +631,7 @@ function ClaudeAttachment() {
       </div>
       <AttachmentPrimitive.Remove
         className="-left-2 -top-2 absolute flex h-5 w-5 items-center justify-center rounded-full border bg-card/90 text-muted-foreground opacity-0 backdrop-blur-sm transition-all hover:bg-card hover:text-foreground group-focus-within/thumbnail:opacity-100 group-hover/thumbnail:opacity-100"
-        aria-label="Remove attachment"
+        aria-label={toLocalizedString(content.composer.removeAttachment)}
       >
         <Cross2Icon width={12} height={12} />
       </AttachmentPrimitive.Remove>

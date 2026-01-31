@@ -6,7 +6,9 @@
  */
 
 import { type FC, useEffect, useMemo, useState } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { useQuery } from '@tanstack/react-query';
+import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import { Link } from '@tanstack/react-router';
 import { ArrowUpRight } from 'lucide-react';
@@ -60,6 +62,7 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
   onSkillsOpenChange,
   hideSkillsTrigger,
 }) => {
+  const content = useIntlayer('claude-chat');
   const [skillsOpen, setSkillsOpen] = useState(false);
   const listAllSkills = useServerFn(listAllSkillsFn);
   const getSkillSchema = useServerFn(getSkillSchemaFn);
@@ -166,30 +169,30 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded-full border bg-transparent px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="查看 Skills 示例"
+              aria-label={toLocalizedString(content.contextBadges.viewSkillsExample)}
             >
               Skills · {skillSlugs.length}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-80 p-2">
             <DropdownMenuLabel className="flex items-center justify-between px-2 text-xs">
-              <span>当前会话可用 Skills</span>
+              <span>{content.contextBadges.currentSessionSkills}</span>
               <Link
                 to="/agents/skills"
                 className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                aria-label="打开 Skills Store"
+                aria-label={toLocalizedString(content.contextBadges.openSkillsStore)}
               >
-                更多 Skills
+                {content.contextBadges.moreSkills}
                 <ArrowUpRight className="h-3 w-3" />
               </Link>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="max-h-64 overflow-y-auto">
               {isLoadingSchemas && (
-                <div className="px-2 py-2 text-xs text-muted-foreground">正在加载示例...</div>
+                <div className="px-2 py-2 text-xs text-muted-foreground">{content.contextBadges.loadingExamples}</div>
               )}
               {!isLoadingSchemas && skillEntries.length === 0 && (
-                <div className="px-2 py-2 text-xs text-muted-foreground">暂无启用的 Skills</div>
+                <div className="px-2 py-2 text-xs text-muted-foreground">{content.contextBadges.noSkillsEnabled}</div>
               )}
               {skillEntries.map((skill) => (
                 <div key={skill.slug} className="px-1 py-2">
@@ -207,7 +210,7 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
                           className="flex cursor-pointer flex-col items-start gap-0.5 text-xs"
                         >
                           <span className="font-medium">
-                            {example.title ?? `示例 ${index + 1}`}
+                            {example.title ?? toLocalizedString(content.contextBadges.exampleIndex).replace('{n}', String(index + 1))}
                           </span>
                           <span className="text-[11px] text-muted-foreground line-clamp-2">
                             {example.prompt}
@@ -216,7 +219,7 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <div className="mt-1 px-2 text-[11px] text-muted-foreground">暂无示例</div>
+                    <div className="mt-1 px-2 text-[11px] text-muted-foreground">{content.contextBadges.noExamples}</div>
                   )}
                 </div>
               ))}

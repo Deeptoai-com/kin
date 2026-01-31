@@ -1,8 +1,10 @@
 import { FC } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { CheckCircle, Circle, Eye, ShieldCheck, Trash2, User, Globe, Loader2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
 import type { ExtendedMcpInfo } from '~/claude/mcp';
+import { toLocalizedString } from '~/lib/utils';
 
 interface McpCardProps {
   mcp: ExtendedMcpInfo;
@@ -25,6 +27,8 @@ export const McpCard: FC<McpCardProps> = ({
   verifying,
   deleting,
 }) => {
+  const content = useIntlayer('mcp');
+
   // Determine if this is a custom MCP (system or personal)
   const isCustom = mcp.store === 'system' || mcp.store === 'user';
   const isSystem = mcp.store === 'system';
@@ -44,13 +48,13 @@ export const McpCard: FC<McpCardProps> = ({
             {isSystem && (
               <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                 <Globe className="mr-1 h-3 w-3" />
-                System
+                {content.card.systemBadge}
               </Badge>
             )}
             {isPersonal && (
               <Badge variant="secondary" className="text-xs">
                 <User className="mr-1 h-3 w-3" />
-                Personal
+                {content.card.personalBadge}
               </Badge>
             )}
           </div>
@@ -73,14 +77,14 @@ export const McpCard: FC<McpCardProps> = ({
           onClick={onToggle}
           className="flex-1"
         >
-          {isEnabled ? 'Disable' : 'Enable'}
+          {isEnabled ? content.card.disable : content.card.enable}
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={onViewDetails}
           className="shrink-0"
-          title="View details"
+          title={toLocalizedString(content.card.viewDetails)}
         >
           <Eye className="h-4 w-4" />
         </Button>
@@ -89,7 +93,7 @@ export const McpCard: FC<McpCardProps> = ({
           size="sm"
           onClick={onVerify}
           className="shrink-0"
-          title="Verify MCP"
+          title={toLocalizedString(content.card.verifyMcp)}
           disabled={verifying}
         >
           {verifying ? (
@@ -104,7 +108,7 @@ export const McpCard: FC<McpCardProps> = ({
             size="sm"
             onClick={onDelete}
             className="shrink-0 text-destructive hover:text-destructive"
-            title="Delete MCP"
+            title={toLocalizedString(content.card.deleteMcp)}
             disabled={deleting}
           >
             {deleting ? (

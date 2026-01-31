@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,7 +16,19 @@ interface SettingsContentProps {
 }
 
 export function SettingsContent({ activeSection, children }: SettingsContentProps) {
-  const activeItem = settingsNavItems.find((item) => item.section === activeSection);
+  const content = useIntlayer('settings');
+
+  // Create a mapping of section to localized label
+  const getSectionLabel = (section: SettingsSection): string => {
+    const labelMap: Record<SettingsSection, string> = {
+      account: content.sections.account.title,
+      organization: content.sections.organization.title,
+      preferences: content.sections.preferences.title,
+      plans: content.sections.plans.title,
+      billing: content.sections.billing.title,
+    };
+    return labelMap[section];
+  };
 
   return (
     <main className="flex h-full flex-1 flex-col overflow-hidden">
@@ -24,11 +37,11 @@ export function SettingsContent({ activeSection, children }: SettingsContentProp
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">Settings</BreadcrumbLink>
+                <BreadcrumbLink href="#">{content.page.breadcrumb}</BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>
-                <BreadcrumbPage>{activeItem?.label || 'General'}</BreadcrumbPage>
+                <BreadcrumbPage>{getSectionLabel(activeSection)}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>

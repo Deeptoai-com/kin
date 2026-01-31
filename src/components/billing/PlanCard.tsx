@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { Badge } from '~/components/ui/badge';
 import { cn } from '~/lib/utils';
 
@@ -11,6 +12,7 @@ type PlanCardProps = {
 };
 
 export function PlanCard({ name, price, features, current, cta }: PlanCardProps) {
+  const content = useIntlayer('billing');
   return (
     <div
       className={cn(
@@ -23,7 +25,7 @@ export function PlanCard({ name, price, features, current, cta }: PlanCardProps)
           <div className="text-lg font-semibold">{name}</div>
           <div className="mt-1 text-2xl font-bold">{price}</div>
         </div>
-        {current ? <Badge variant="secondary">Current plan</Badge> : null}
+        {current ? <Badge variant="secondary">{content.currentPlanBadge}</Badge> : null}
       </div>
       <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
         {features.map((feature) => (
@@ -33,7 +35,7 @@ export function PlanCard({ name, price, features, current, cta }: PlanCardProps)
       <div className="mt-4 flex-1" />
       <div className="mt-4">
         {current ? (
-          <div className="text-center text-sm text-muted-foreground">Current plan</div>
+          <div className="text-center text-sm text-muted-foreground">{content.currentPlanBadge}</div>
         ) : (
           cta
         )}

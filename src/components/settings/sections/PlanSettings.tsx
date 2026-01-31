@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { motion } from 'framer-motion';
 import { CheckCircle2, X } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
 
 import { CreditMeter } from '~/components/billing/CreditMeter';
 import { EnterpriseCTA } from '~/components/billing/EnterpriseCTA';
@@ -11,8 +12,10 @@ import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { useBillingInfo, useOpenPortal, useStartCheckout } from '~/hooks/useBilling';
 import { isClient } from '~/lib/environment';
+import { toLocalizedString } from '~/lib/utils';
 
 export function PlanSettingsSection() {
+  const content = useIntlayer('settings');
   const { data, isPending, error } = useBillingInfo();
   const startCheckout = useStartCheckout();
   const openPortal = useOpenPortal();
@@ -66,13 +69,13 @@ export function PlanSettingsSection() {
   }, [showSuccess]);
 
   if (isPending) {
-    return <div className="text-sm text-muted-foreground">Loading plan details…</div>;
+    return <div className="text-sm text-muted-foreground">{content.plans.loadingPlanDetails}</div>;
   }
 
   if (!data || error) {
     return (
       <div className="text-sm text-destructive">
-        Failed to load plan information. Please refresh and try again.
+        {content.plans.failedToLoadPlan}
       </div>
     );
   }
@@ -81,22 +84,22 @@ export function PlanSettingsSection() {
 
   const handleCheckout = (productId: string | null | undefined) => {
     if (!productId) {
-      window.alert('Plan not configured. Set POLAR product IDs in your environment.');
+      window.alert(toLocalizedString(content.plans.planNotConfigured));
       return;
     }
     void startCheckout([productId]).catch(() => {
-      window.alert('Unable to start checkout. Please try again.');
+      window.alert(toLocalizedString(content.plans.unableToStartCheckout));
     });
   };
 
   const handleBuyCredits = (amount: number) => {
     const productId = amount === 50 ? data.products.credits50 : amount === 100 ? data.products.credits100 : null;
     if (!productId) {
-      window.alert('Credit pack not configured. Add the POLAR_PRODUCT_CREDITS_* env vars.');
+      window.alert(toLocalizedString(content.plans.creditPackNotConfigured));
       return;
     }
     void startCheckout([productId], { kind: 'credit_pack', credits: amount }).catch(() => {
-      window.alert('Unable to start checkout. Please try again.');
+      window.alert(toLocalizedString(content.plans.unableToStartCheckout));
     });
   };
 
@@ -114,45 +117,45 @@ export function PlanSettingsSection() {
 
       <section className="grid gap-4 md:grid-cols-3">
         <PlanCard
-          name="Pro"
-          price="$25 / month"
-          features={['100 monthly credits', 'Private projects', 'Roles & permissions']}
+          name={content.plans.pro.name}
+          price={content.plans.pro.price}
+          features={[content.plans.pro.feature1, content.plans.pro.feature2, content.plans.pro.feature3]}
           current={currentPlan === 'pro'}
           cta={
             currentPlan === 'pro' ? (
               <Button variant="outline" className="w-full" onClick={openPortal}>
-                Manage in Portal
+                {content.plans.manageInPortal}
               </Button>
             ) : (
               <Button className="w-full" onClick={() => handleCheckout(data.products.pro)}>
-                {currentPlan === 'business' ? 'Downgrade to Pro' : 'Upgrade to Pro'}
+                {currentPlan === 'business' ? content.plans.downgradeToPro : content.plans.upgradeToPro}
               </Button>
             )
           }
         />
 
         <PlanCard
-          name="Business"
-          price="$50 / month"
-          features={['150 monthly credits', 'SSO & audit logs', 'Priority support']}
+          name={content.plans.business.name}
+          price={content.plans.business.price}
+          features={[content.plans.business.feature1, content.plans.business.feature2, content.plans.business.feature3]}
           current={currentPlan === 'business'}
           cta={
             currentPlan === 'business' ? (
               <Button variant="outline" className="w-full" onClick={openPortal}>
-                Manage in Portal
+                {content.plans.manageInPortal}
               </Button>
             ) : (
               <Button className="w-full" onClick={() => handleCheckout(data.products.business)}>
-                {currentPlan === 'pro' ? 'Upgrade to Business' : 'Choose Business'}
+                {currentPlan === 'pro' ? content.plans.upgradeToBusiness : content.plans.chooseBusiness}
               </Button>
             )
           }
         />
 
         <PlanCard
-          name="Enterprise"
-          price="Custom"
-          features={['Dedicated support', 'Onboarding & SLAs', 'Custom integrations']}
+          name={content.plans.enterprise.name}
+          price={content.plans.enterprise.price}
+          features={[content.plans.enterprise.feature1, content.plans.enterprise.feature2, content.plans.enterprise.feature3]}
           current={currentPlan === 'enterprise'}
           cta={<EnterpriseCTA />}
         />
@@ -161,20 +164,20 @@ export function PlanSettingsSection() {
       <section className="rounded border bg-card p-4 text-card-foreground shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <h2 className="text-base font-semibold">Need more credits?</h2>
+            <h2 className="text-base font-semibold">{content.plans.needMoreCredits}</h2>
             <p className="text-sm text-muted-foreground">
-              Purchase one-time credit packs that never expire and apply instantly.
+              {content.plans.creditPackDescription}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" onClick={() => handleBuyCredits(50)}>
-              Buy 50
+              {content.plans.buy50}
             </Button>
             <Button variant="outline" onClick={() => handleBuyCredits(100)}>
-              Buy 100
+              {content.plans.buy100}
             </Button>
             <Button variant="ghost" onClick={openPortal}>
-              Open billing portal
+              {content.plans.openBillingPortal}
             </Button>
           </div>
         </div>
@@ -192,13 +195,14 @@ function SuccessCelebration({
   readonly confettiActive: boolean;
   readonly onDismiss: () => void;
 }) {
+  const content = useIntlayer('settings');
   return (
     <div className="relative overflow-hidden">
       <Alert variant="success" className="pr-12">
         <CheckCircle2 className="text-emerald-600 dark:text-emerald-200" />
-        <AlertTitle>Subscription updated</AlertTitle>
+        <AlertTitle>{content.plans.subscriptionUpdated}</AlertTitle>
         <AlertDescription>
-          Your plan has been refreshed. Give it a moment if credits take a few seconds to sync.
+          {content.plans.planRefreshed}
         </AlertDescription>
         <button
           type="button"
@@ -206,7 +210,7 @@ function SuccessCelebration({
           className="absolute right-4 top-4 rounded-full p-1 text-emerald-900/60 transition hover:text-emerald-900 dark:text-emerald-50/60 dark:hover:text-emerald-50"
         >
           <X className="h-4 w-4" />
-          <span className="sr-only">Dismiss success message</span>
+          <span className="sr-only">{content.plans.dismissSuccessMessage}</span>
         </button>
       </Alert>
       <ConfettiBurst active={confettiActive} />

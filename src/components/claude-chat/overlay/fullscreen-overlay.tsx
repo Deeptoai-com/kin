@@ -10,9 +10,10 @@
  */
 
 import { useEffect, type ReactNode } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X as CloseIcon } from 'lucide-react';
-import { cn } from '~/lib/utils';
+import { cn, toLocalizedString } from '~/lib/utils';
 
 export interface FullscreenOverlayProps {
   /** Whether the overlay is visible */
@@ -65,6 +66,7 @@ export function FullscreenOverlay({
   error,
   theme = 'light',
 }: FullscreenOverlayProps) {
+  const content = useIntlayer('claude-chat');
   // Handle body scroll lock
   useEffect(() => {
     if (!isOpen) return;
@@ -118,7 +120,7 @@ export function FullscreenOverlay({
             <Dialog.Close asChild>
               <button
                 className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[#f0f0eb] dark:hover:bg-[#2a2928]"
-                aria-label="Close"
+                aria-label={toLocalizedString(content.overlay.close)}
               >
                 <CloseIcon className="h-4 w-4" />
               </button>

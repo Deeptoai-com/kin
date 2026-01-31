@@ -5,6 +5,8 @@
  */
 
 import * as React from 'react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -60,6 +62,7 @@ export function PermissionSettingsSection({
   variant = 'dialog',
   permissionInfo,
 }: PermissionSettingsSectionProps) {
+  const content = useIntlayer('settings');
   const router = useRouter();
   const updatePermissions = useServerFn(updateOrganizationPermissions);
   const [saving, setSaving] = React.useState(false);
@@ -115,8 +118,8 @@ export function PermissionSettingsSection({
       case 'default':
         return {
           icon: ShieldCheckIcon,
-          label: 'Standard',
-          description: '安全模式：需要权限确认',
+          label: toLocalizedString(content.permissionModes.standard),
+          description: toLocalizedString(content.permissionModes.descStandard),
           color: 'text-green-600 dark:text-green-400',
           bgColor: 'bg-green-50 dark:bg-green-950',
           borderColor: 'border-green-200 dark:border-green-800',
@@ -124,8 +127,8 @@ export function PermissionSettingsSection({
       case 'plan':
         return {
           icon: ShieldCheckIcon,
-          label: 'Plan',
-          description: '规划模式：优先使用 EnterPlanMode',
+          label: toLocalizedString(content.permissionModes.plan),
+          description: toLocalizedString(content.permissionModes.descPlan),
           color: 'text-blue-600 dark:text-blue-400',
           bgColor: 'bg-blue-50 dark:bg-blue-950',
           borderColor: 'border-blue-200 dark:border-blue-800',
@@ -133,8 +136,8 @@ export function PermissionSettingsSection({
       case 'dontAsk':
         return {
           icon: ShieldCheckIcon,
-          label: 'Dont Ask',
-          description: '自动模式：自动执行安全操作',
+          label: toLocalizedString(content.permissionModes.dontAsk),
+          description: toLocalizedString(content.permissionModes.descDontAsk),
           color: 'text-cyan-600 dark:text-cyan-400',
           bgColor: 'bg-cyan-50 dark:bg-cyan-950',
           borderColor: 'border-cyan-200 dark:border-cyan-800',
@@ -142,8 +145,8 @@ export function PermissionSettingsSection({
       case 'acceptEdits':
         return {
           icon: ShieldCheckIcon,
-          label: 'Accept Edits',
-          description: '编辑模式：自动接受文件编辑',
+          label: toLocalizedString(content.permissionModes.acceptEdits),
+          description: toLocalizedString(content.permissionModes.descAcceptEdits),
           color: 'text-indigo-600 dark:text-indigo-400',
           bgColor: 'bg-indigo-50 dark:bg-indigo-950',
           borderColor: 'border-indigo-200 dark:border-indigo-800',
@@ -151,8 +154,8 @@ export function PermissionSettingsSection({
       case 'delegate':
         return {
           icon: ShieldCheckIcon,
-          label: 'Delegate',
-          description: '委托模式：允许委派任务',
+          label: toLocalizedString(content.permissionModes.delegate),
+          description: toLocalizedString(content.permissionModes.descDelegate),
           color: 'text-purple-600 dark:text-purple-400',
           bgColor: 'bg-purple-50 dark:bg-purple-950',
           borderColor: 'border-purple-200 dark:border-purple-800',
@@ -160,8 +163,8 @@ export function PermissionSettingsSection({
       case 'bypassPermissions':
         return {
           icon: ShieldIcon,
-          label: 'Bypass',
-          description: '高级模式：无权限确认',
+          label: toLocalizedString(content.permissionModes.bypass),
+          description: toLocalizedString(content.permissionModes.descBypass),
           color: 'text-yellow-600 dark:text-yellow-400',
           bgColor: 'bg-yellow-50 dark:bg-yellow-950',
           borderColor: 'border-yellow-200 dark:border-yellow-800',
@@ -169,8 +172,8 @@ export function PermissionSettingsSection({
       default:
         return {
           icon: ShieldCheckIcon,
-          label: 'Standard',
-          description: '安全模式：需要权限确认',
+          label: toLocalizedString(content.permissionModes.standard),
+          description: toLocalizedString(content.permissionModes.descStandard),
           color: 'text-green-600 dark:text-green-400',
           bgColor: 'bg-green-50 dark:bg-green-950',
           borderColor: 'border-green-200 dark:border-green-800',

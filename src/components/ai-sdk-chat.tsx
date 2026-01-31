@@ -34,6 +34,8 @@ import {
 } from '~/components/ai-elements/prompt-input';
 import { Action, Actions } from '~/components/ai-elements/actions';
 import { Fragment, useEffect, useState, useRef } from 'react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useChat } from '@ai-sdk/react';
 import { Response } from '~/components/ai-elements/response';
 import { CopyIcon, RefreshCcwIcon, Bot } from 'lucide-react';
@@ -76,6 +78,7 @@ const suggestions = [
 ];
 
 export function AISdkChat() {
+  const content = useIntlayer('ai-elements');
   const [input, setInput] = useState('');
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const [currentAgentId, setCurrentAgentId] = useState<string>('assistant-agent');
@@ -300,7 +303,7 @@ export function AISdkChat() {
                       </p>
                       {!currentThreadId && (
                         <p className="text-xs text-muted-foreground mt-2">
-                          Start a conversation or select a session from the sidebar
+                          {toLocalizedString(content.chatSurface.startOrSelect)}
                         </p>
                       )}
                     </div>
@@ -347,7 +350,7 @@ export function AISdkChat() {
                                     <Actions className="mt-2">
                                       <Action
                                         onClick={() => regenerate()}
-                                        label="Retry"
+                                        label={toLocalizedString(content.chatSurface.retry)}
                                       >
                                         <RefreshCcwIcon className="size-3" />
                                       </Action>
@@ -355,7 +358,7 @@ export function AISdkChat() {
                                         onClick={() =>
                                           navigator.clipboard.writeText(part.text)
                                         }
-                                        label="Copy"
+                                        label={toLocalizedString(content.chatSurface.copy)}
                                       >
                                         <CopyIcon className="size-3" />
                                       </Action>
@@ -417,7 +420,7 @@ export function AISdkChat() {
                 <PromptInputTextarea
                   onChange={(e) => setInput(e.target.value)}
                   value={input}
-                  placeholder="Type your message..."
+                  placeholder={toLocalizedString(content.chatSurface.typeYourMessage)}
                 />
               </PromptInputBody>
               <PromptInputFooter>

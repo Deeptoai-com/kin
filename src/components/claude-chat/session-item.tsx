@@ -5,7 +5,8 @@
  * Supports inline title editing.
  */
 
-import { cn } from '~/lib/utils';
+import { useIntlayer } from 'react-intlayer';
+import { cn, toLocalizedString } from '~/lib/utils';
 import { Star, MessageSquare, Pencil, Check, X, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 
@@ -27,13 +28,15 @@ interface SessionItemProps {
 }
 
 export function SessionItem({ session, isActive, onClick, onUpdateTitle, onDelete }: SessionItemProps) {
+  const content = useIntlayer('claude-chat');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(session.title || '');
   const [isHovered, setIsHovered] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const displayTitle = session.title || 'New Chat';
+  const displayTitle = session.title || content.sessionItem.newChat;
+  const displayTitleText = session.title || toLocalizedString(content.sessionItem.newChat);
   const timeAgo = formatTimeAgo(session.updatedAt);
 
   // Focus input when entering edit mode
@@ -78,7 +81,7 @@ export function SessionItem({ session, isActive, onClick, onUpdateTitle, onDelet
 
     // Confirm deletion
     const confirmed = window.confirm(
-      `Delete "${displayTitle}"?\n\nThis will permanently delete the conversation and all its files.`
+      `Delete "${displayTitleText}"?\n\nThis will permanently delete the conversation and all its files.`
     );
 
     if (!confirmed || !onDelete) return;
@@ -162,7 +165,7 @@ export function SessionItem({ session, isActive, onClick, onUpdateTitle, onDelet
                           type="button"
                           onClick={handleStartEdit}
                           className="p-0.5 hover:bg-[#00000010] dark:hover:bg-[#ffffff10] rounded opacity-60 hover:opacity-100"
-                          title="Edit title"
+                          title={toLocalizedString(content.sessionItem.editTitle)}
                         >
                           <Pencil className="h-3 w-3 text-[#6b6a68] dark:text-[#9a9893]" />
                         </button>
@@ -176,7 +179,7 @@ export function SessionItem({ session, isActive, onClick, onUpdateTitle, onDelet
                             "p-0.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded opacity-60 hover:opacity-100",
                             isDeleting && "opacity-40 cursor-not-allowed"
                           )}
-                          title="Delete conversation"
+                          title={toLocalizedString(content.sessionItem.deleteConversation)}
                         >
                           <Trash2 className={cn(
                             "h-3 w-3",

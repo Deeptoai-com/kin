@@ -1,5 +1,6 @@
 import { AccountView } from '@daveyplate/better-auth-ui';
 import { useRouterState } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { accountViewClassNames } from '~/components/auth/auth-styles';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~/components/ui/dialog';
 import { PreferencesSettings, SettingsLayout, PlanSettingsSection, OrganizationSettings } from './index';
@@ -12,6 +13,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+  const content = useIntlayer('settings');
   const location = useRouterState({ select: (state) => state.location });
   const search = location.search as Record<string, unknown>;
   const rawSettings = (search as { settings?: unknown }).settings;
@@ -39,8 +41,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] md:max-w-[1100px] w-[95dvw] max-h-[90vh] p-0 overflow-hidden">
-        <DialogTitle className="sr-only">Settings</DialogTitle>
-        <DialogDescription className="sr-only">Project and chat settings</DialogDescription>
+        <DialogTitle className="sr-only">{content.dialog.title}</DialogTitle>
+        <DialogDescription className="sr-only">{content.dialog.description}</DialogDescription>
         <SettingsLayout activeSection={activeSection}>{renderContent()}</SettingsLayout>
       </DialogContent>
     </Dialog>

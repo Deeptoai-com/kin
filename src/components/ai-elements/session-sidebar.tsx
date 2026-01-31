@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { PlusIcon } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -44,6 +45,7 @@ export function SessionSidebar({
   className,
   refreshTrigger,
 }: SessionSidebarProps) {
+  const content = useIntlayer('ai-elements');
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -92,7 +94,7 @@ export function SessionSidebar({
     <div className={cn('flex flex-col h-full bg-muted/30', className)}>
       {/* Header - height aligned with main chat header (px-4 py-2) */}
       <div className="flex items-center justify-between px-4 py-2 border-b">
-        <h2 className="font-semibold text-sm">Sessions</h2>
+        <h2 className="font-semibold text-sm">{content.sessionSidebar.title}</h2>
         <Button
           variant="ghost"
           size="icon"
@@ -100,7 +102,7 @@ export function SessionSidebar({
           onClick={onNewThread}
         >
           <PlusIcon className="h-4 w-4" />
-          <span className="sr-only">New session</span>
+          <span className="sr-only">{content.sessionSidebar.newSession}</span>
         </Button>
       </div>
 
@@ -120,8 +122,8 @@ export function SessionSidebar({
           ) : threads.length === 0 ? (
             // Empty state
             <div className="p-4 text-center text-sm text-muted-foreground">
-              <p>No sessions yet</p>
-              <p className="text-xs mt-1">Click + to create a new session</p>
+              <p>{content.sessionSidebar.noSessionsYet}</p>
+              <p className="text-xs mt-1">{content.sessionSidebar.clickToCreate}</p>
             </div>
           ) : (
             // Thread list

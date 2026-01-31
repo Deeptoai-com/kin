@@ -1,5 +1,7 @@
 import { FC, useState, useCallback } from 'react';
 import { Github, Loader2, X, Terminal, CheckCircle2, AlertCircle, TriangleAlert } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -62,6 +64,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
   onOpenChange,
   onSuccess,
 }) => {
+  const content = useIntlayer('skills');
   // Server Functions
   const checkCompatibility = useServerFn(checkGitHubSkillCompatibilityFn);
   const installSkill = useServerFn(installGitHubSkillFn);
@@ -142,16 +145,16 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
     // Invalid command
     setParseResult({
       valid: false,
-      error: '命令格式无效。请使用：npx skills add <仓库地址> --skill <技能名称>',
+      error: content.github.parseError,
     });
-  }, []);
+  }, [content.github.parseError]);
 
   // Handle install
   const handleInstall = async () => {
     if (!command.trim() || !parseResult?.valid || !parseResult.url) {
       setInstallResult({
         success: false,
-        error: '请输入有效的安装命令',
+        error: content.github.invalidCommand,
       });
       return;
     }
@@ -195,7 +198,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
       } catch (err) {
         setInstallResult({
           success: false,
-          error: err instanceof Error ? err.message : '安装失败',
+          error: err instanceof Error ? err.message : content.github.installFailed,
         });
       } finally {
         setIsInstalling(false);
@@ -224,7 +227,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
         setCompatibilityWarning(null);
         setInstallResult({
           success: false,
-          error: err instanceof Error ? err.message : '兼容性检查失败',
+          error: err instanceof Error ? err.message : content.github.compatCheckFailed,
         });
       } finally {
         setIsChecking(false);
@@ -266,10 +269,10 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Github className="h-5 w-5" />
-            从 GitHub 安装技能
+            {content.github.title}
           </DialogTitle>
           <DialogDescription>
-            使用 npx skills add 命令格式从 GitHub 仓库安装技能
+            {content.github.description}
           </DialogDescription>
         </DialogHeader>
 
@@ -277,14 +280,14 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
           {/* Command Input */}
           <div className="space-y-2">
             <label className="text-sm font-medium">
-              安装命令
+              {content.github.commandLabel}
             </label>
             <div className="relative">
               <Terminal className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={command}
                 onChange={(e) => handleCommandChange(e.target.value)}
-                placeholder="npx skills add owner/repo --skill skill-name"
+                placeholder={toLocalizedString(content.github.commandPlaceholder)}
                 className="pl-9 font-mono text-sm"
                 disabled={isInstalling}
                 autoFocus
@@ -302,7 +305,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
 
             {/* Command Format Help */}
             <div className="text-xs text-muted-foreground space-y-1">
-              <p>支持的格式：</p>
+              <p>{content.github.formatHelp}</p>
               <ul className="list-disc list-inside space-y-0.5 ml-2">
                 <li><code className="bg-muted px-1 rounded">npx skills add owner/repo --skill skill-name</code></li>
                 <li><code className="bg-muted px-1 rounded">npx skills add https://github.com/owner/repo -s name</code></li>
@@ -322,11 +325,11 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
               {parseResult.valid ? (
                 <div className="space-y-1">
                   <p className="font-medium text-green-600 dark:text-green-400">
-                    解析成功
+                    {content.github.parseSuccess}
                   </p>
                   <div className="text-xs space-y-0.5 text-muted-foreground">
-                    <p>仓库：{parseResult.owner}/{parseResult.repo}</p>
-                    <p>技能名称：{parseResult.skillName}</p>
+                    <p>{content.github.repoLabel}{parseResult.owner}/{parseResult.repo}</p>
+                    <p>{content.github.skillNameLabel}{parseResult.skillName}</p>
                   </div>
                 </div>
               ) : (
@@ -344,7 +347,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
                 <TriangleAlert className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-2">
                   <p className="font-medium text-amber-600 dark:text-amber-400">
-                    兼容性警告
+                    {content.upload.compatibilityWarning}
                   </p>
                   <div className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
                     {compatibilityWarning.formattedWarnings.map((warning, idx) => (
@@ -352,7 +355,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
                     ))}
                   </div>
                   <p className="text-xs text-amber-600/70 dark:text-amber-400/70">
-                    建议谨慎安装。如仍要安装，请再次点击"安装"按钮继续。
+                    {content.github.installAnyway ? '建议谨慎安装。如仍要安装，请再次点击"安装"按钮继续。' : content.upload.compatibilityAdvice}
                   </p>
                 </div>
               </div>
@@ -373,13 +376,12 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
                   <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-medium text-green-600 dark:text-green-400">
-                      安装成功
+                      {content.github.installSuccess}
                     </p>
                     {installResult.skill && (
-                      <p className="text-xs text-muted-foreground">
-                        技能 <strong>{installResult.skill.name || installResult.skill.slug}</strong>
-                        已添加到技能库
-                      </p>
+                      <p className="text-xs text-muted-foreground" dangerouslySetInnerHTML={{
+                        __html: toLocalizedString(content.github.installedMessage).replace('{name}', installResult.skill.name || installResult.skill.slug)
+                      }} />
                     )}
                   </div>
                 </div>
@@ -388,7 +390,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
                   <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-destructive">
-                      安装失败
+                      {content.github.installFailed}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {installResult.error}
@@ -407,7 +409,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
                 onClick={handleRecheck}
                 disabled={isInstalling}
               >
-                重新检查
+                {content.github.recheck}
               </Button>
             )}
             <Button
@@ -415,7 +417,7 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
               onClick={handleClose}
               disabled={isInstalling || isChecking}
             >
-              取消
+              {content.github.cancel}
             </Button>
             <Button
               onClick={handleInstall}
@@ -425,27 +427,27 @@ export const GitHubSkillInstaller: FC<GitHubSkillInstallerProps> = ({
               {isChecking ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  检查中...
+                  {content.github.checking}
                 </>
               ) : isInstalling ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  安装中...
+                  {content.github.installing}
                 </>
               ) : installResult?.success ? (
                 <>
                   <CheckCircle2 className="h-4 w-4 mr-2" />
-                  完成
+                  {content.github.complete}
                 </>
               ) : hasCheckedCompatibility && compatibilityWarning?.formattedWarnings.length > 0 ? (
                 <>
                   <AlertCircle className="h-4 w-4 mr-2" />
-                  仍然安装
+                  {content.github.installAnyway}
                 </>
               ) : (
                 <>
                   <Github className="h-4 w-4 mr-2" />
-                  安装
+                  {content.github.install}
                 </>
               )}
             </Button>

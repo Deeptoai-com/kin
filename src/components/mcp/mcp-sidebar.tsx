@@ -1,4 +1,5 @@
 import { FC } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { cn } from '~/lib/utils';
 
 interface CategoryItem {
@@ -20,9 +21,11 @@ export const McpSidebar: FC<McpSidebarProps> = ({
   onFilterChange,
   getCategoryCount,
 }) => {
+  const content = useIntlayer('mcp');
+
   return (
     <aside className="w-64 space-y-4 border-r px-4 py-6">
-      <h2 className="font-semibold text-lg">MCP Store</h2>
+      <h2 className="font-semibold text-lg">{content.sidebar.title}</h2>
       <nav className="space-y-1 text-sm">
         {categories.map((category) => {
           const Icon = category.icon;

@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { useRouterState, defaultStringifySearch } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { Cross2Icon } from '@radix-ui/react-icons';
 
 import { Button } from '~/components/ui/button';
+import { toLocalizedString } from '~/lib/utils';
 import { resendVerificationEmail } from '~/server/function/resend-verification-email.server';
 
 interface EmailVerificationBannerProps {
@@ -14,6 +16,7 @@ interface EmailVerificationBannerProps {
 const DISMISSED_KEY = 'email-verification-banner-dismissed';
 
 export function EmailVerificationBanner({ email }: EmailVerificationBannerProps) {
+  const content = useIntlayer('auth');
   const location = useRouterState({ select: (state) => state.location });
   const resendFn = useServerFn(resendVerificationEmail);
 
@@ -84,20 +87,19 @@ export function EmailVerificationBanner({ email }: EmailVerificationBannerProps)
         type="button"
         onClick={handleDismiss}
         className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100"
-        aria-label="Close"
+        aria-label={toLocalizedString(content.emailVerificationBanner.close)}
       >
         <Cross2Icon className="h-4 w-4" />
       </button>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pr-8">
         <div className="space-y-1">
-          <p className="font-semibold">Verify your email address</p>
+          <p className="font-semibold">{content.emailVerificationBanner.title}</p>
           <p>
-            We sent a verification link to <span className="font-medium">{email}</span>. You need to
-            verify your email before you can access all features.
+            {toLocalizedString(content.emailVerificationBanner.message).replace('{email}', email)}
           </p>
           {status === 'success' ? (
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              Verification email sent. Check your inbox for the latest link.
+              {content.emailVerificationBanner.sentMessage}
             </p>
           ) : null}
           {error ? (

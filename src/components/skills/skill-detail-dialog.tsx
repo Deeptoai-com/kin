@@ -1,5 +1,6 @@
 import { FC, useState } from 'react';
 import { X, File, Folder, FolderOpen, ChevronRight, ChevronDown } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/lib/utils';
 import type { SkillDetail, SkillFile } from '~/claude/skills';
@@ -15,6 +16,7 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
   isOpen,
   onClose,
 }) => {
+  const content = useIntlayer('skills');
   const [selectedFile, setSelectedFile] = useState<SkillFile | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['/']));
 
@@ -81,7 +83,7 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
         <div className="flex flex-1 overflow-hidden">
           {/* File Tree */}
           <div className="w-72 border-r overflow-y-auto p-4">
-            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Files</h3>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">{content.detail.filesLabel}</h3>
             <FileTree
               files={skill.files}
               expandedDirs={expandedDirs}
@@ -115,7 +117,7 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <p>Select a file to view its content</p>
+                <p>{content.detail.selectFile}</p>
               </div>
             )}
           </div>
@@ -200,15 +202,17 @@ interface FileContentProps {
 }
 
 const FileContent: FC<FileContentProps> = ({ file }) => {
+  const content = useIntlayer('skills');
+
   if (file.type === 'dir') {
-    return <div className="text-muted-foreground">Directories have no content preview</div>;
+    return <div className="text-muted-foreground">{content.detail.directoryNoContent}</div>;
   }
 
   if (file.isBinary) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <File className="h-5 w-5" />
-        <span>Binary file - preview not available</span>
+        <span>{content.detail.binaryFile}</span>
       </div>
     );
   }
@@ -217,7 +221,7 @@ const FileContent: FC<FileContentProps> = ({ file }) => {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <File className="h-5 w-5" />
-        <span>File too large for preview (&gt;1MB)</span>
+        <span>{content.detail.tooLarge}</span>
       </div>
     );
   }
@@ -226,7 +230,7 @@ const FileContent: FC<FileContentProps> = ({ file }) => {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <File className="h-5 w-5" />
-        <span>No content available</span>
+        <span>{content.detail.noContent}</span>
       </div>
     );
   }

@@ -12,6 +12,8 @@
 
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { useEffect, useState, type FC } from 'react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 
 export type AgentStatusType = 'idle' | 'thinking' | 'reasoning' | 'toolUse' | 'streaming';
 
@@ -80,6 +82,7 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
   onAbort,
   compact = false,
 }) => {
+  const content = useIntlayer('claude-chat');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [animationPhase, setAnimationPhase] = useState(0);
 
@@ -182,10 +185,10 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
           <button
             onClick={onAbort}
             className="flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
-            title="Stop (Esc)"
+            title={toLocalizedString(content.status.stopEsc)}
           >
           <Cross2Icon className="h-3 w-3" />
-          <span className="hidden sm:inline">停止</span>
+          <span className="hidden sm:inline">{content.status.stop}</span>
           </button>
         )}
       </div>
@@ -228,6 +231,7 @@ export const ToolbarStatus: FC<{
   queueCount?: number;
   onAbort?: () => void;
 }> = ({ status, toolName, queueCount = 0, onAbort }) => {
+  const content = useIntlayer('claude-chat');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [animationPhase, setAnimationPhase] = useState(0);
 
@@ -324,8 +328,8 @@ export const ToolbarStatus: FC<{
           type="button"
           onClick={onAbort}
           className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 active:scale-95"
-          aria-label="停止生成"
-          title="停止生成 (Esc)"
+          aria-label={toLocalizedString(content.status.stop)}
+          title={toLocalizedString(content.status.stopEsc)}
         >
           <Cross2Icon className="h-4 w-4" />
         </button>

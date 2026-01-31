@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { Copy, Check } from 'lucide-react';
 import { FullscreenOverlay } from './fullscreen-overlay';
 import { CodeBlock } from '../code-block';
@@ -110,6 +111,7 @@ export function CodePreviewOverlay({
   error,
   onOpenFile,
 }: CodePreviewOverlayProps) {
+  const intlayerContent = useIntlayer('claude-chat');
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -148,12 +150,12 @@ export function CodePreviewOverlay({
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5 text-green-600" />
-              <span>Copied</span>
+              <span>{intlayerContent.overlay.copied}</span>
             </>
           ) : (
             <>
               <Copy className="h-3.5 w-3.5" />
-              <span>Copy</span>
+              <span>{intlayerContent.overlay.copy}</span>
             </>
           )}
         </button>

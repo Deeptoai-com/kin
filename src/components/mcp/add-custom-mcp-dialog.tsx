@@ -1,4 +1,6 @@
 import { FC, useState, useCallback } from 'react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import {
   Dialog,
@@ -48,28 +50,22 @@ import {
 // Example configurations for guidance
 // ============================================================================
 
-const EXAMPLES = {
-  form: {
-    title: 'Z.AI Vision Server',
-    description: 'Example: Adding a vision understanding MCP server',
-    config: {
-      slug: 'zai-vision',
-      name: 'Z.AI Vision Server',
-      description: 'GLM-4.6V visual understanding capabilities',
-      category: 'development',
-      type: 'stdio',
-      command: 'npx',
-      args: '-y @z_ai/mcp-server',
-      envVars: [{ key: 'Z_AI_API_KEY', value: '${Z_AI_API_KEY}' }],
-      credentials: [
-        { key: 'Z_AI_API_KEY', label: 'Z.AI API Key', required: true, sensitive: true },
-      ],
-    },
-  },
-  json: {
-    title: 'Paste Configuration',
-    description: 'Paste YAML or JSON configuration',
-    example: `name: my-custom-mcp
+// Hardcoded example values (not translated)
+const EXAMPLE_CONFIG = {
+  slug: 'zai-vision',
+  name: 'Z.AI Vision Server',
+  description: 'GLM-4.6V visual understanding capabilities',
+  category: 'development',
+  type: 'stdio' as const,
+  command: 'npx',
+  args: '-y @z_ai/mcp-server',
+  envVars: [{ key: 'Z_AI_API_KEY', value: '${Z_AI_API_KEY}' }],
+  credentials: [
+    { key: 'Z_AI_API_KEY', label: 'Z.AI API Key', required: true, sensitive: true },
+  ],
+};
+
+const JSON_EXAMPLE = `name: my-custom-mcp
 description: My custom MCP server
 category: development
 
@@ -84,19 +80,10 @@ credentials:
   - key: API_KEY
     label: API Key
     required: true
-    sensitive: true`,
-  },
-  url: {
-    title: 'Import from URL',
-    description: 'Import MCP configuration from a URL',
-    example: 'https://raw.githubusercontent.com/user/repo/main/MCP.md',
-  },
-  npm: {
-    title: 'npm Package',
-    description: 'Auto-detect from npm package',
-    example: '@modelcontextprotocol/server-github',
-  },
-};
+    sensitive: true`;
+
+const URL_EXAMPLE = 'https://raw.githubusercontent.com/user/repo/main/MCP.md';
+const NPM_EXAMPLE = '@modelcontextprotocol/server-github';
 
 // ============================================================================
 // Types
@@ -154,6 +141,7 @@ export const AddCustomMcpDialog: FC<{
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ isOpen, onClose, onSuccess }) => {
+  const content = useIntlayer('mcp');
   const addCustomMcp = useServerFn(addCustomMcpFn);
   const parseMcpConfig = useServerFn(parseMcpConfigFn);
   const fetchMcpFromUrl = useServerFn(fetchMcpFromUrlFn);
@@ -283,17 +271,17 @@ export const AddCustomMcpDialog: FC<{
     setSuccess(null);
 
     if (!form.slug || !form.name) {
-      setError('Slug and Name are required.');
+      setError(toLocalizedString(content.addDialog.errors.slugNameRequired));
       return;
     }
 
     if (form.type === 'stdio' && !form.command) {
-      setError('Command is required for stdio type.');
+      setError(toLocalizedString(content.addDialog.errors.commandRequired));
       return;
     }
 
     if ((form.type === 'http' || form.type === 'sse') && !form.url) {
-      setError('URL is required for HTTP/SSE type.');
+      setError(toLocalizedString(content.addDialog.errors.urlRequired));
       return;
     }
 
@@ -301,17 +289,17 @@ export const AddCustomMcpDialog: FC<{
     try {
       const result = await addCustomMcp({ data: buildMcpData() });
       if (result.ok) {
-        const scopeLabel = result.scope === 'system' ? 'system' : 'personal';
-        setSuccess(`MCP "${result.slug}" added as ${scopeLabel} successfully!`);
+        const scopeLabel = result.scope === 'system' ? content.addDialog.success.scopeSystem : content.addDialog.success.scopePersonal;
+        setSuccess(toLocalizedString(content.addDialog.success.added).replace('{slug}', result.slug).replace('{scope}', toLocalizedString(scopeLabel)));
         setTimeout(() => {
           handleClose();
           onSuccess();
         }, 1000);
       } else {
-        setError(result.error || 'Failed to add MCP.');
+        setError(result.error || toLocalizedString(content.addDialog.errors.failedToAdd));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred.');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.addDialog.errors.anErrorOccurred));
     } finally {
       setIsLoading(false);
     }
@@ -321,7 +309,7 @@ export const AddCustomMcpDialog: FC<{
   const handleParseJson = async () => {
     setError(null);
     if (!jsonContent.trim()) {
-      setError('Please paste configuration content.');
+      setError(toLocalizedString(content.addDialog.errors.pasteContent));
       return;
     }
 
@@ -331,12 +319,12 @@ export const AddCustomMcpDialog: FC<{
       if (result.ok && result.data) {
         populateFormFromParsed(result.data);
         setActiveTab('form');
-        setSuccess('Configuration parsed! Review and submit.');
+        setSuccess(toLocalizedString(content.addDialog.success.parsed));
       } else {
-        setError(result.error || 'Failed to parse configuration.');
+        setError(result.error || toLocalizedString(content.addDialog.errors.parseFailed));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Parse error.');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.addDialog.errors.parseError));
     } finally {
       setIsLoading(false);
     }
@@ -346,7 +334,7 @@ export const AddCustomMcpDialog: FC<{
   const handleFetchUrl = async () => {
     setError(null);
     if (!importUrl.trim()) {
-      setError('Please enter a URL.');
+      setError(toLocalizedString(content.addDialog.errors.enterUrl));
       return;
     }
 
@@ -356,12 +344,12 @@ export const AddCustomMcpDialog: FC<{
       if (result.ok && result.data) {
         populateFormFromParsed(result.data);
         setActiveTab('form');
-        setSuccess('Configuration imported! Review and submit.');
+        setSuccess(toLocalizedString(content.addDialog.success.imported));
       } else {
-        setError(result.error || 'Failed to fetch from URL.');
+        setError(result.error || toLocalizedString(content.addDialog.errors.fetchFailed));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fetch error.');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.addDialog.errors.fetchError));
     } finally {
       setIsLoading(false);
     }
@@ -371,7 +359,7 @@ export const AddCustomMcpDialog: FC<{
   const handleParseNpm = async () => {
     setError(null);
     if (!npmPackage.trim()) {
-      setError('Please enter an npm package name.');
+      setError(toLocalizedString(content.addDialog.errors.enterPackage));
       return;
     }
 
@@ -390,12 +378,12 @@ export const AddCustomMcpDialog: FC<{
           args: config.mcp.args?.join(' ') || '',
         }));
         setActiveTab('form');
-        setSuccess('Package info loaded! Review and submit.');
+        setSuccess(toLocalizedString(content.addDialog.success.packageLoaded));
       } else {
-        setError(result.error || 'Failed to parse npm package.');
+        setError(result.error || toLocalizedString(content.addDialog.errors.npmParseFailed));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'npm error.');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.addDialog.errors.npmError));
     } finally {
       setIsLoading(false);
     }
@@ -431,7 +419,7 @@ export const AddCustomMcpDialog: FC<{
 
   // Load example into form
   const loadFormExample = () => {
-    const ex = EXAMPLES.form.config;
+    const ex = EXAMPLE_CONFIG;
     setForm((prev) => ({
       slug: ex.slug,
       name: ex.name,
@@ -453,9 +441,9 @@ export const AddCustomMcpDialog: FC<{
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Custom MCP Server</DialogTitle>
+          <DialogTitle>{toLocalizedString(content.addDialog.title)}</DialogTitle>
           <DialogDescription>
-            Add a custom MCP server using one of the methods below.
+            {toLocalizedString(content.addDialog.description)}
           </DialogDescription>
         </DialogHeader>
 
@@ -477,26 +465,26 @@ export const AddCustomMcpDialog: FC<{
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="form" className="text-xs">
               <FileText className="mr-1 h-3 w-3" />
-              Form
+              {toLocalizedString(content.addDialog.tabs.form)}
             </TabsTrigger>
             <TabsTrigger value="json" className="text-xs">
               <Code className="mr-1 h-3 w-3" />
-              YAML/JSON
+              {toLocalizedString(content.addDialog.tabs.yamlJson)}
             </TabsTrigger>
             <TabsTrigger value="url" className="text-xs">
               <Link className="mr-1 h-3 w-3" />
-              URL
+              {toLocalizedString(content.addDialog.tabs.url)}
             </TabsTrigger>
             <TabsTrigger value="npm" className="text-xs">
               <Package className="mr-1 h-3 w-3" />
-              npm
+              {toLocalizedString(content.addDialog.tabs.npm)}
             </TabsTrigger>
           </TabsList>
 
           {/* Form Tab */}
           <TabsContent value="form" className="space-y-4 mt-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Fill in the configuration manually</span>
+              <span className="text-sm text-muted-foreground">{toLocalizedString(content.addDialog.form.manual)}</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -504,57 +492,57 @@ export const AddCustomMcpDialog: FC<{
                 className="text-xs"
               >
                 {showExample ? <ChevronUp className="mr-1 h-3 w-3" /> : <ChevronDown className="mr-1 h-3 w-3" />}
-                Example
+                {toLocalizedString(content.addDialog.form.example)}
               </Button>
             </div>
 
             {showExample && (
               <div className="rounded-lg border bg-muted/50 p-3 text-sm">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{EXAMPLES.form.title}</span>
+                  <span className="font-medium">{toLocalizedString(content.addDialog.form.exampleTitle)}</span>
                   <Button variant="outline" size="sm" onClick={loadFormExample}>
-                    Use Example
+                    {toLocalizedString(content.addDialog.form.useExample)}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">{EXAMPLES.form.description}</p>
+                <p className="text-xs text-muted-foreground">{toLocalizedString(content.addDialog.form.exampleDescription)}</p>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">{toLocalizedString(content.addDialog.form.nameLabel)} *</Label>
                 <Input
                   id="name"
                   value={form.name}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="My MCP Server"
+                  placeholder={toLocalizedString(content.addDialog.form.namePlaceholder)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="slug">Slug *</Label>
+                <Label htmlFor="slug">{toLocalizedString(content.addDialog.form.slugLabel)} *</Label>
                 <Input
                   id="slug"
                   value={form.slug}
                   onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
-                  placeholder="my-mcp-server"
+                  placeholder={toLocalizedString(content.addDialog.form.slugPlaceholder)}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{toLocalizedString(content.addDialog.form.descriptionLabel)}</Label>
               <Textarea
                 id="description"
                 value={form.description}
                 onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="What does this MCP server do?"
+                placeholder={toLocalizedString(content.addDialog.form.descriptionPlaceholder)}
                 rows={2}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Category</Label>
+                <Label>{toLocalizedString(content.addDialog.form.categoryLabel)}</Label>
                 <Select
                   value={form.category}
                   onValueChange={(value) => setForm((prev) => ({ ...prev, category: value }))}
@@ -563,15 +551,15 @@ export const AddCustomMcpDialog: FC<{
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="development">Development</SelectItem>
-                    <SelectItem value="data">Data</SelectItem>
-                    <SelectItem value="integration">Integration</SelectItem>
+                    <SelectItem value="general">{toLocalizedString(content.addDialog.form.categoryGeneral)}</SelectItem>
+                    <SelectItem value="development">{toLocalizedString(content.addDialog.form.categoryDevelopment)}</SelectItem>
+                    <SelectItem value="data">{toLocalizedString(content.addDialog.form.categoryData)}</SelectItem>
+                    <SelectItem value="integration">{toLocalizedString(content.addDialog.form.categoryIntegration)}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Connection Type</Label>
+                <Label>{toLocalizedString(content.addDialog.form.connectionTypeLabel)}</Label>
                 <Select
                   value={form.type}
                   onValueChange={(value) => setForm((prev) => ({ ...prev, type: value as 'stdio' | 'http' | 'sse' }))}
@@ -580,9 +568,9 @@ export const AddCustomMcpDialog: FC<{
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="stdio">stdio (Local Process)</SelectItem>
-                    <SelectItem value="http">HTTP</SelectItem>
-                    <SelectItem value="sse">SSE (Server-Sent Events)</SelectItem>
+                    <SelectItem value="stdio">{toLocalizedString(content.addDialog.form.typeStdio)}</SelectItem>
+                    <SelectItem value="http">{toLocalizedString(content.addDialog.form.typeHttp)}</SelectItem>
+                    <SelectItem value="sse">{toLocalizedString(content.addDialog.form.typeSse)}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -590,7 +578,7 @@ export const AddCustomMcpDialog: FC<{
 
             {/* Visibility/Scope Selection */}
             <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
-              <Label className="text-sm font-medium">Visibility</Label>
+              <Label className="text-sm font-medium">{toLocalizedString(content.addDialog.form.visibility)}</Label>
               <RadioGroup
                 value={form.scope}
                 onValueChange={(value) => setForm((prev) => ({ ...prev, scope: value as 'personal' | 'system' }))}
@@ -601,10 +589,10 @@ export const AddCustomMcpDialog: FC<{
                   <div className="flex-1">
                     <label htmlFor="scope-personal" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                       <User className="h-4 w-4 text-muted-foreground" />
-                      Personal
+                      {toLocalizedString(content.addDialog.form.visibilityPersonal)}
                     </label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Only visible to you. You can modify or delete it anytime.
+                      {toLocalizedString(content.addDialog.form.visibilityPersonalDesc)}
                     </p>
                   </div>
                 </div>
@@ -613,10 +601,10 @@ export const AddCustomMcpDialog: FC<{
                   <div className="flex-1">
                     <label htmlFor="scope-system" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                       <Globe className="h-4 w-4 text-blue-500" />
-                      System
+                      {toLocalizedString(content.addDialog.form.visibilitySystem)}
                     </label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Visible to all users. Only administrators can modify or delete.
+                      {toLocalizedString(content.addDialog.form.visibilitySystemDesc)}
                     </p>
                   </div>
                 </div>
@@ -626,41 +614,41 @@ export const AddCustomMcpDialog: FC<{
             {form.type === 'stdio' ? (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="command">Command *</Label>
+                  <Label htmlFor="command">{toLocalizedString(content.addDialog.form.commandLabel)} *</Label>
                   <Input
                     id="command"
                     value={form.command}
                     onChange={(e) => setForm((prev) => ({ ...prev, command: e.target.value }))}
-                    placeholder="npx"
+                    placeholder={toLocalizedString(content.addDialog.form.commandPlaceholder)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="args">Arguments (space or comma separated)</Label>
+                  <Label htmlFor="args">{toLocalizedString(content.addDialog.form.argsLabel)}</Label>
                   <Input
                     id="args"
                     value={form.args}
                     onChange={(e) => setForm((prev) => ({ ...prev, args: e.target.value }))}
-                    placeholder="-y @org/mcp-server"
+                    placeholder={toLocalizedString(content.addDialog.form.argsPlaceholder)}
                   />
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Environment Variables</Label>
+                    <Label>{toLocalizedString(content.addDialog.form.envVarsLabel)}</Label>
                     <Button variant="ghost" size="sm" onClick={addEnvVar}>
                       <Plus className="h-3 w-3 mr-1" />
-                      Add
+                      {toLocalizedString(content.addDialog.form.addEnvVar)}
                     </Button>
                   </div>
                   {form.envVars.map((ev, i) => (
                     <div key={i} className="flex gap-2">
                       <Input
-                        placeholder="KEY"
+                        placeholder={toLocalizedString(content.addDialog.form.keyPlaceholder)}
                         value={ev.key}
                         onChange={(e) => updateEnvVar(i, 'key', e.target.value)}
                         className="flex-1"
                       />
                       <Input
-                        placeholder="${KEY} or value"
+                        placeholder={toLocalizedString(content.addDialog.form.valuePlaceholder)}
                         value={ev.value}
                         onChange={(e) => updateEnvVar(i, 'value', e.target.value)}
                         className="flex-1"
@@ -674,37 +662,37 @@ export const AddCustomMcpDialog: FC<{
               </div>
             ) : (
               <div className="space-y-2">
-                <Label htmlFor="url">URL *</Label>
+                <Label htmlFor="url">{toLocalizedString(content.addDialog.form.urlLabel)} *</Label>
                 <Input
                   id="url"
                   value={form.url}
                   onChange={(e) => setForm((prev) => ({ ...prev, url: e.target.value }))}
-                  placeholder="https://api.example.com/mcp"
+                  placeholder={toLocalizedString(content.addDialog.form.urlPlaceholder)}
                 />
               </div>
             )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Credential Fields (for user to fill)</Label>
+                <Label>{toLocalizedString(content.addDialog.form.credentialsLabel)}</Label>
                 <Button variant="ghost" size="sm" onClick={addCredential}>
                   <Plus className="h-3 w-3 mr-1" />
-                  Add
+                  {toLocalizedString(content.addDialog.form.addEnvVar)}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Define fields that users need to provide (like API keys)
+                {toLocalizedString(content.addDialog.form.credentialsHint)}
               </p>
               {form.credentials.map((cred, i) => (
                 <div key={i} className="flex gap-2 items-start">
                   <Input
-                    placeholder="KEY"
+                    placeholder={toLocalizedString(content.addDialog.form.keyPlaceholderShort)}
                     value={cred.key}
                     onChange={(e) => updateCredential(i, 'key', e.target.value)}
                     className="w-28"
                   />
                   <Input
-                    placeholder="Label"
+                    placeholder={toLocalizedString(content.addDialog.form.labelPlaceholder)}
                     value={cred.label}
                     onChange={(e) => updateCredential(i, 'label', e.target.value)}
                     className="flex-1"
@@ -715,7 +703,7 @@ export const AddCustomMcpDialog: FC<{
                       checked={cred.required}
                       onChange={(e) => updateCredential(i, 'required', e.target.checked)}
                     />
-                    Required
+                    {toLocalizedString(content.addDialog.form.required)}
                   </label>
                   <Button variant="ghost" size="icon" onClick={() => removeCredential(i)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
@@ -726,11 +714,11 @@ export const AddCustomMcpDialog: FC<{
 
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {toLocalizedString(content.addDialog.form.cancelButton)}
               </Button>
               <Button onClick={handleSubmitForm} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Add MCP
+                {toLocalizedString(content.addDialog.form.addButton)}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -738,23 +726,23 @@ export const AddCustomMcpDialog: FC<{
           {/* JSON/YAML Tab */}
           <TabsContent value="json" className="space-y-4 mt-4">
             <div className="rounded-lg border bg-muted/50 p-3 text-sm">
-              <p className="font-medium mb-2">{EXAMPLES.json.title}</p>
-              <p className="text-xs text-muted-foreground mb-2">{EXAMPLES.json.description}</p>
+              <p className="font-medium mb-2">{toLocalizedString(content.addDialog.json.title)}</p>
+              <p className="text-xs text-muted-foreground mb-2">{toLocalizedString(content.addDialog.json.description)}</p>
               <details className="text-xs">
-                <summary className="cursor-pointer text-primary hover:underline">View example format</summary>
+                <summary className="cursor-pointer text-primary hover:underline">{toLocalizedString(content.addDialog.json.viewExample)}</summary>
                 <pre className="mt-2 p-2 bg-background rounded text-xs overflow-x-auto">
-                  {EXAMPLES.json.example}
+                  {JSON_EXAMPLE}
                 </pre>
               </details>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="jsonContent">Configuration (YAML or JSON)</Label>
+              <Label htmlFor="jsonContent">{toLocalizedString(content.addDialog.json.configLabel)}</Label>
               <Textarea
                 id="jsonContent"
                 value={jsonContent}
                 onChange={(e) => setJsonContent(e.target.value)}
-                placeholder="Paste your YAML or JSON configuration here..."
+                placeholder={toLocalizedString(content.addDialog.json.configPlaceholder)}
                 rows={12}
                 className="font-mono text-sm"
               />
@@ -762,11 +750,11 @@ export const AddCustomMcpDialog: FC<{
 
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {toLocalizedString(content.addDialog.form.cancelButton)}
               </Button>
               <Button onClick={handleParseJson} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Parse & Continue
+                {toLocalizedString(content.addDialog.json.parseButton)}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -774,31 +762,31 @@ export const AddCustomMcpDialog: FC<{
           {/* URL Tab */}
           <TabsContent value="url" className="space-y-4 mt-4">
             <div className="rounded-lg border bg-muted/50 p-3 text-sm">
-              <p className="font-medium mb-2">{EXAMPLES.url.title}</p>
-              <p className="text-xs text-muted-foreground mb-2">{EXAMPLES.url.description}</p>
-              <p className="text-xs font-mono text-muted-foreground">{EXAMPLES.url.example}</p>
+              <p className="font-medium mb-2">{toLocalizedString(content.addDialog.url.title)}</p>
+              <p className="text-xs text-muted-foreground mb-2">{toLocalizedString(content.addDialog.url.description)}</p>
+              <p className="text-xs font-mono text-muted-foreground">{URL_EXAMPLE}</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="importUrl">MCP Configuration URL</Label>
+              <Label htmlFor="importUrl">{toLocalizedString(content.addDialog.url.urlLabel)}</Label>
               <Input
                 id="importUrl"
                 value={importUrl}
                 onChange={(e) => setImportUrl(e.target.value)}
-                placeholder="https://..."
+                placeholder={toLocalizedString(content.addDialog.url.urlPlaceholder)}
               />
               <p className="text-xs text-muted-foreground">
-                URL should point to an MCP.md file or a raw YAML/JSON configuration
+                {toLocalizedString(content.addDialog.url.urlHint)}
               </p>
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {toLocalizedString(content.addDialog.form.cancelButton)}
               </Button>
               <Button onClick={handleFetchUrl} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Fetch & Continue
+                {toLocalizedString(content.addDialog.url.fetchButton)}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -806,31 +794,31 @@ export const AddCustomMcpDialog: FC<{
           {/* npm Tab */}
           <TabsContent value="npm" className="space-y-4 mt-4">
             <div className="rounded-lg border bg-muted/50 p-3 text-sm">
-              <p className="font-medium mb-2">{EXAMPLES.npm.title}</p>
-              <p className="text-xs text-muted-foreground mb-2">{EXAMPLES.npm.description}</p>
-              <p className="text-xs font-mono text-muted-foreground">{EXAMPLES.npm.example}</p>
+              <p className="font-medium mb-2">{toLocalizedString(content.addDialog.npm.title)}</p>
+              <p className="text-xs text-muted-foreground mb-2">{toLocalizedString(content.addDialog.npm.description)}</p>
+              <p className="text-xs font-mono text-muted-foreground">{NPM_EXAMPLE}</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="npmPackage">npm Package Name</Label>
+              <Label htmlFor="npmPackage">{toLocalizedString(content.addDialog.npm.packageLabel)}</Label>
               <Input
                 id="npmPackage"
                 value={npmPackage}
                 onChange={(e) => setNpmPackage(e.target.value)}
-                placeholder="@org/mcp-server"
+                placeholder={toLocalizedString(content.addDialog.npm.packagePlaceholder)}
               />
               <p className="text-xs text-muted-foreground">
-                The package info will be fetched and a configuration will be auto-generated
+                {toLocalizedString(content.addDialog.npm.packageHint)}
               </p>
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {toLocalizedString(content.addDialog.form.cancelButton)}
               </Button>
               <Button onClick={handleParseNpm} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Detect & Continue
+                {toLocalizedString(content.addDialog.npm.detectButton)}
               </Button>
             </DialogFooter>
           </TabsContent>

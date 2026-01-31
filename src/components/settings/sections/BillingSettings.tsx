@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { z } from 'zod';
+import { useIntlayer } from 'react-intlayer';
 import { InvoiceList, type InvoiceItem } from '~/components/billing/InvoiceList';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { useOpenPortal } from '~/hooks/useBilling';
+import { toLocalizedString } from '~/lib/utils';
 
 const BillingSchema = z.object({
   billingEmail: z.string().email(),
@@ -25,6 +27,7 @@ export interface BillingSettingsSectionProps {
 }
 
 export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSectionProps) {
+  const content = useIntlayer('settings');
   const wrapperSpacing = variant === 'page' ? 'space-y-8' : 'space-y-6';
   const [form, setForm] = React.useState<BillingFormState | null>(null);
   const [invoices, setInvoices] = React.useState<InvoiceItem[]>([]);
@@ -43,11 +46,11 @@ export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSe
           fetch('/api/invoices', { credentials: 'include' }),
         ]);
 
-        if (!profileRes.ok) throw new Error('Failed to load billing profile');
+        if (!profileRes.ok) throw new Error(toLocalizedString(content.billing.failedToLoadBillingProfile));
         const profilePayload = await profileRes.json();
         const profile = BillingSchema.partial().parse(profilePayload.profile ?? {});
 
-        if (!invoicesRes.ok) throw new Error('Failed to load invoices');
+        if (!invoicesRes.ok) throw new Error(toLocalizedString(content.billing.failedToLoadInvoices));
         const invoicePayload = (await invoicesRes.json()) as InvoiceItem[];
 
         if (!cancelled) {
@@ -67,7 +70,7 @@ export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSe
       } catch (err) {
         console.error(err);
         if (!cancelled) {
-          setError('Unable to load billing details.');
+          setError(toLocalizedString(content.billing.unableToLoadBillingDetails));
           setForm({
             billingEmail: '',
             company: '',
@@ -117,12 +120,12 @@ export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSe
 
       if (!res.ok) {
         const message = await res.text();
-        setError(message || 'Failed to save billing settings');
+        setError(message || toLocalizedString(content.billing.failedToSaveBilling));
       }
 
       setSaving(false);
     },
-    [form],
+    [form, content],
   );
 
   const handleGenerate = React.useCallback(async (orderId: string) => {
@@ -132,7 +135,7 @@ export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSe
     });
 
     if (!res.ok) {
-      window.alert('Failed to generate invoice.');
+      window.alert(toLocalizedString(content.billing.failedToGenerateInvoice));
       return;
     }
 
@@ -144,48 +147,48 @@ export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSe
           : item,
       ),
     );
-  }, []);
+  }, [content]);
 
   if (loading || !form) {
-    return <div className="text-sm text-muted-foreground">Loading billing details…</div>;
+    return <div className="text-sm text-muted-foreground">{content.billing.loadingBillingDetails}</div>;
   }
 
   return (
     <div className={wrapperSpacing}>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
         <Field
-          label="Billing email"
+          label={toLocalizedString(content.billing.billingEmail)}
           value={form.billingEmail ?? ''}
           onChange={(value) => updateField('billingEmail', value)}
           required
         />
-        <Field label="Company" value={form.company ?? ''} onChange={(value) => updateField('company', value)} />
+        <Field label={toLocalizedString(content.billing.company)} value={form.company ?? ''} onChange={(value) => updateField('company', value)} />
         <Field
-          label="Address line 1"
+          label={toLocalizedString(content.billing.addressLine1)}
           className="md:col-span-2"
           value={form.line1 ?? ''}
           onChange={(value) => updateField('line1', value)}
         />
         <Field
-          label="Address line 2"
+          label={toLocalizedString(content.billing.addressLine2)}
           className="md:col-span-2"
           value={form.line2 ?? ''}
           onChange={(value) => updateField('line2', value)}
         />
-        <Field label="City" value={form.city ?? ''} onChange={(value) => updateField('city', value)} />
-        <Field label="State/Region" value={form.state ?? ''} onChange={(value) => updateField('state', value)} />
+        <Field label={toLocalizedString(content.billing.city)} value={form.city ?? ''} onChange={(value) => updateField('city', value)} />
+        <Field label={toLocalizedString(content.billing.stateRegion)} value={form.state ?? ''} onChange={(value) => updateField('state', value)} />
         <Field
-          label="Postal code"
+          label={toLocalizedString(content.billing.postalCode)}
           value={form.postalCode ?? ''}
           onChange={(value) => updateField('postalCode', value)}
         />
         <Field
-          label="Country (ISO)"
+          label={toLocalizedString(content.billing.countryISO)}
           value={form.country ?? ''}
           onChange={(value) => updateField('country', value.toUpperCase())}
         />
         <Field
-          label="VAT / Tax ID"
+          label={toLocalizedString(content.billing.vatTaxId)}
           className="md:col-span-2"
           value={form.vat ?? ''}
           onChange={(value) => updateField('vat', value)}
@@ -195,27 +198,27 @@ export function BillingSettingsSection({ variant = 'dialog' }: BillingSettingsSe
         ) : null}
         <div className="md:col-span-2 flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : 'Save billing details'}
+            {saving ? content.billing.saving : content.billing.saveBillingDetails}
           </Button>
           <button
             type="button"
             className="text-sm font-medium text-primary underline"
             onClick={() => {
               void openPortal().catch(() => {
-                window.alert('Unable to open customer portal. Please try again.');
+                window.alert(toLocalizedString(content.billing.unableToOpenPortal));
               });
             }}
           >
-            Open customer portal
+            {content.billing.openCustomerPortal}
           </button>
         </div>
       </form>
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-base font-semibold">Invoices</h2>
+          <h2 className="text-base font-semibold">{content.billing.invoices}</h2>
           <p className="text-sm text-muted-foreground">
-            Download receipts or generate invoices for recent purchases.
+            {content.billing.invoicesDescription}
           </p>
         </div>
         <InvoiceList items={invoices} onGenerate={handleGenerate} />

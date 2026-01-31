@@ -9,6 +9,8 @@
 
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -44,50 +46,50 @@ interface SchemaManageDialogProps {
 /**
  * Schema status badge component
  */
-const SchemaStatusBadge: FC<{ status: SchemaStatus }> = ({ status }) => {
+const SchemaStatusBadge: FC<{ status: SchemaStatus; content: any }> = ({ status, content }) => {
   const config = {
     missing: {
-      label: 'Missing',
+      label: content.card.schemaStatus.missing || content.schema.statusDescriptions.missing,
       variant: 'secondary' as const,
       icon: XCircle,
-      description: 'Schema 未生成',
+      description: content.schema.statusDescriptions.missing,
     },
     valid: {
-      label: 'Valid',
+      label: content.card.schemaStatus.valid || content.schema.statusDescriptions.valid,
       variant: 'default' as const,
       icon: CheckCircle,
-      description: 'Schema 有效且最新',
+      description: content.schema.statusDescriptions.valid,
     },
     invalid: {
-      label: 'Invalid',
+      label: content.card.schemaStatus.invalid || content.schema.statusDescriptions.invalid,
       variant: 'destructive' as const,
       icon: AlertCircle,
-      description: 'Schema 存在但解析失败',
+      description: content.schema.statusDescriptions.invalid,
     },
     stale: {
-      label: 'Stale',
+      label: content.card.schemaStatus.stale || content.schema.statusDescriptions.stale,
       variant: 'outline' as const,
       icon: Clock,
-      description: 'Schema 过期，SKILL.md 已更新',
+      description: content.schema.statusDescriptions.stale,
     },
     failed: {
-      label: 'Failed',
+      label: content.card.schemaStatus.failed || content.schema.statusDescriptions.failed,
       variant: 'destructive' as const,
       icon: AlertCircle,
-      description: '上次生成失败',
+      description: content.schema.statusDescriptions.failed,
     },
     generating: {
-      label: 'Generating',
+      label: content.schema.statusDescriptions.generating,
       variant: 'outline' as const,
       icon: RefreshCw,
-      description: '正在生成 Schema...',
+      description: content.schema.statusDescriptions.generating,
     },
     // Fallback for unknown status
     unknown: {
-      label: 'Unknown',
+      label: content.schema.unknown,
       variant: 'secondary' as const,
       icon: FileJson,
-      description: 'Schema 状态未知',
+      description: content.schema.statusDescriptions.unknown,
     },
   };
 
@@ -107,7 +109,7 @@ const SchemaStatusBadge: FC<{ status: SchemaStatus }> = ({ status }) => {
  * Format date to readable string
  */
 const formatDate = (dateStr: string | null | undefined): string => {
-  if (!dateStr) return '未知';
+  if (!dateStr) return ''; // Return empty, will be replaced with content.schema.unknown in JSX
   return new Date(dateStr).toLocaleString('zh-CN');
 };
 
@@ -116,9 +118,9 @@ const getOptionLabel = (option: unknown): string => {
   if (option && typeof option === 'object') {
     const value = (option as { value?: string }).value;
     const label = (option as { label?: string }).label;
-    return label || value || '选项';
+    return label || value || '';
   }
-  return '选项';
+  return '';
 };
 
 const getOptionValue = (option: unknown, index: number): string => {
@@ -141,6 +143,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const content = useIntlayer('skills');
   // Query schema status
   const {
     data: schemaStatus,
@@ -184,9 +187,9 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
   const getButtonText = () => {
     const status = getStatus();
     if (status === 'missing' || status === 'invalid' || status === 'failed') {
-      return '生成 Schema';
+      return content.schema.generateButton;
     }
-    return '重新生成';
+    return content.schema.regenerateButton;
   };
 
   const meta = schemaStatus?.meta;
@@ -263,14 +266,14 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
         return (
           <Select disabled>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder={placeholder || '请选择'} />
+              <SelectValue placeholder={placeholder || toLocalizedString(content.schema.selectPlaceholder)} />
             </SelectTrigger>
             <SelectContent>
               {options.length === 0 ? (
-                <SelectItem value="__empty__" disabled>无可选项</SelectItem>
+                <SelectItem value="__empty__" disabled>{content.schema.noOptions}</SelectItem>
               ) : options.map((option, index) => (
                 <SelectItem key={getOptionValue(option, index)} value={getOptionValue(option, index)}>
-                  {getOptionLabel(option)}
+                  {getOptionLabel(option) || content.schema.optionLabel}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -280,7 +283,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
         return (
           <div className="grid gap-2">
             {options.length === 0 ? (
-              <div className="text-xs text-muted-foreground">无可选项</div>
+              <div className="text-xs text-muted-foreground">{content.schema.noOptions}</div>
             ) : options.map((option, index) => (
               <label
                 key={getOptionValue(option, index)}
@@ -290,7 +293,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
                   disabled
                   className="border-muted-foreground/50 bg-background data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                 />
-                <span>{getOptionLabel(option)}</span>
+                <span>{getOptionLabel(option) || content.schema.optionLabel}</span>
               </label>
             ))}
           </div>
@@ -299,7 +302,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
         return (
           <div className="flex items-center gap-2">
             <Switch disabled />
-            <span className="text-xs text-muted-foreground">是 / 否</span>
+            <span className="text-xs text-muted-foreground">{content.schema.booleanLabel}</span>
           </div>
         );
       case 'file':
@@ -322,9 +325,9 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Schema 管理</DialogTitle>
+          <DialogTitle>{content.schema.title}</DialogTitle>
           <DialogDescription>
-            管理 <code>{skillName}</code> 的 JSON Schema
+            {toLocalizedString(content.schema.description).replace('{name}', skillName)}
           </DialogDescription>
         </DialogHeader>
 
@@ -332,18 +335,18 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
           {isLoadingStatus ? (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">加载中...</span>
+              <span className="ml-2 text-muted-foreground">{content.schema.loading}</span>
             </div>
           ) : schemaStatus ? (
             <div className="space-y-4">
               {/* Status Badge */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-muted-foreground">状态:</span>
-                <SchemaStatusBadge status={getStatus()} />
+                <span className="text-sm text-muted-foreground">{content.schema.statusLabel}</span>
+                <SchemaStatusBadge status={getStatus()} content={content} />
                 {needsReview && (
                   <Badge variant="destructive" className="gap-1" title="需要人工校验">
                     <AlertCircle className="h-3 w-3" />
-                    需人工校验
+                    {content.schema.needsReview}
                   </Badge>
                 )}
               </div>
@@ -351,40 +354,40 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
               {/* Metadata Info */}
               {meta && (
                 <div className="space-y-2 rounded-lg border bg-muted/50 p-3 max-w-full">
-                  <div className="text-sm font-medium">元数据</div>
+                  <div className="text-sm font-medium">{content.schema.metadata}</div>
                   <div className="grid grid-cols-2 gap-2 text-xs min-w-0">
                     <div className="min-w-0">
-                      <span className="text-muted-foreground">生成时间:</span>
-                      <div className="mt-1 font-mono break-words">{formatDate(meta.generatedAt)}</div>
+                      <span className="text-muted-foreground">{content.schema.generatedAt}</span>
+                      <div className="mt-1 font-mono break-words">{formatDate(meta.generatedAt) || content.schema.unknown}</div>
                     </div>
                     <div className="min-w-0">
-                      <span className="text-muted-foreground">上次尝试:</span>
-                      <div className="mt-1 font-mono break-words">{formatDate(meta.lastAttemptAt ?? meta.generatedAt)}</div>
+                      <span className="text-muted-foreground">{content.schema.lastAttempt}</span>
+                      <div className="mt-1 font-mono break-words">{formatDate(meta.lastAttemptAt ?? meta.generatedAt) || content.schema.unknown}</div>
                     </div>
                     <div className="min-w-0">
-                      <span className="text-muted-foreground">生成者:</span>
-                      <div className="mt-1 break-all">{meta.generatedBy || '未知'}</div>
+                      <span className="text-muted-foreground">{content.schema.generatedBy}</span>
+                      <div className="mt-1 break-all">{meta.generatedBy || content.schema.unknown}</div>
                     </div>
                     <div className="min-w-0">
-                      <span className="text-muted-foreground">模型:</span>
-                      <div className="mt-1 break-all">{meta.model || '未知'}</div>
+                      <span className="text-muted-foreground">{content.schema.model}</span>
+                      <div className="mt-1 break-all">{meta.model || content.schema.unknown}</div>
                     </div>
                     <div className="min-w-0">
-                      <span className="text-muted-foreground">SKILL.md Hash:</span>
+                      <span className="text-muted-foreground">{content.schema.skillMdHash}</span>
                       <div className="mt-1 font-mono text-xs break-all">
-                        {meta.skillMdHash || '未知'}
+                        {meta.skillMdHash || content.schema.unknown}
                       </div>
                     </div>
                   </div>
                   {meta.lastError && (
                     <div className="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
-                      <div className="font-medium mb-1">上次错误:</div>
+                      <div className="font-medium mb-1">{content.schema.lastError}</div>
                       <div className="font-mono break-words">{meta.lastError}</div>
                     </div>
                   )}
                   {needsReview && (
                     <div className="mt-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-2 text-xs text-amber-800 dark:text-amber-400">
-                      该 Schema 由容错模式生成，请人工核对后再使用。
+                      {content.schema.reviewWarning}
                     </div>
                   )}
                 </div>
@@ -396,15 +399,15 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
                   <Tabs defaultValue="preview" className="w-full">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <TabsList>
-                        <TabsTrigger value="preview">表单预览</TabsTrigger>
-                        <TabsTrigger value="json">JSON 预览</TabsTrigger>
+                        <TabsTrigger value="preview">{content.schema.formPreview}</TabsTrigger>
+                        <TabsTrigger value="json">{content.schema.jsonPreview}</TabsTrigger>
                       </TabsList>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <FileJson className="h-4 w-4" />
                         {previewInputs.length > 0 ? (
-                          <span>字段数: {previewInputs.length}（必填 {requiredCount}）</span>
+                          <span>{toLocalizedString(content.schema.fieldCount).replace('{count}', String(previewInputs.length)).replace('{required}', String(requiredCount))}</span>
                         ) : (
-                          <span>暂无输入字段</span>
+                          <span>{content.schema.noFields}</span>
                         )}
                       </div>
                     </div>
@@ -435,13 +438,13 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
                                     onCheckedChange={(checked) => updateField(index, { required: checked === true })}
                                     className="border-muted-foreground/50 bg-background data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                                   />
-                                  必填
+                                  {content.schema.required}
                                 </label>
                               </div>
                               <div className="mt-3">{renderPreviewControl(field)}</div>
                               {field.placeholder && (
                                 <div className="mt-2 text-[11px] text-muted-foreground break-words">
-                                  <span className="font-medium">占位提示:</span> {field.placeholder}
+                                  <span className="font-medium">{content.schema.placeholderLabel}</span> {field.placeholder}
                                 </div>
                               )}
                             </div>
@@ -449,7 +452,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
                         </div>
                       ) : (
                         <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                          暂无可预览的输入字段
+                          {content.schema.noFieldsPreview}
                         </div>
                       )}
                     </TabsContent>
@@ -468,10 +471,10 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
               {/* Cost Warning */}
               <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3 text-xs">
                 <div className="font-medium text-amber-800 dark:text-amber-400 mb-1">
-                  注意
+                  {toLocalizedString(content.schema.costWarning).split(':')[0]}
                 </div>
                 <div className="text-amber-700 dark:text-amber-500">
-                  生成/重新生成 Schema 会调用 AI API，会产生费用。建议仅在必要时操作。
+                  {toLocalizedString(content.schema.costWarning).split(':')[1] || toLocalizedString(content.schema.costWarning)}
                 </div>
               </div>
             </div>
@@ -480,7 +483,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            关闭
+            {content.schema.closeButton}
           </Button>
           <Button
             variant="secondary"
@@ -490,10 +493,10 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
             {updateMutation.isPending ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                保存中...
+                {content.schema.saving}
               </>
             ) : (
-              '保存修改'
+              content.schema.saveButton
             )}
           </Button>
           <Button
@@ -503,7 +506,7 @@ export const SchemaManageDialog: FC<SchemaManageDialogProps> = ({
             {generateMutation.isPending ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                生成中...
+                {content.schema.generating}
               </>
             ) : (
               getButtonText()

@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { Copy, Check } from 'lucide-react';
 import { FullscreenOverlay } from './fullscreen-overlay';
 import { DiffView } from '../../agent-chat/diff-view';
@@ -72,6 +73,7 @@ export function DiffPreviewOverlay({
   filePath,
   error,
 }: DiffPreviewOverlayProps) {
+  const content = useIntlayer('claude-chat');
   const [copied, setCopied] = useState(false);
 
   const handleCopyNew = useCallback(async () => {
@@ -109,12 +111,12 @@ export function DiffPreviewOverlay({
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5 text-green-600" />
-              <span>Copied</span>
+              <span>{content.overlay.copied}</span>
             </>
           ) : (
             <>
               <Copy className="h-3.5 w-3.5" />
-              <span>Copy New</span>
+              <span>{content.message.copyNew}</span>
             </>
           )}
         </button>

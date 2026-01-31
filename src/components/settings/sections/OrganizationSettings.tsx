@@ -8,6 +8,8 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import {
   Building2Icon,
   PlusIcon,
@@ -35,14 +37,16 @@ import {
 } from '~/components/ui/alert';
 import { Badge } from '~/components/ui/badge';
 
-const organizationSchema = z.object({
-  name: z.string().min(1, 'Organization name is required'),
-  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
-});
+export function OrganizationSettings() {
+  const content = useIntlayer('settings');
+
+  const organizationSchema = z.object({
+    name: z.string().min(1, toLocalizedString(content.organization.nameRequired)),
+    slug: z.string().min(1, toLocalizedString(content.organization.slugRequired)).regex(/^[a-z0-9-]+$/, toLocalizedString(content.organization.slugInvalid)),
+  });
 
 type OrganizationFormValues = z.infer<typeof organizationSchema>;
 
-export function OrganizationSettings() {
   const [organizations, setOrganizations] = React.useState<Array<{
     id: string;
     name: string;
@@ -83,7 +87,7 @@ export function OrganizationSettings() {
       }
     } catch (err) {
       console.error('Failed to load organizations:', err);
-      setError('Failed to load organizations');
+      setError(toLocalizedString(content.organization.failedToLoadOrganizations));
     } finally {
       setLoading(false);
     }
@@ -101,7 +105,7 @@ export function OrganizationSettings() {
       });
 
       if (result.error) {
-        setError(result.error.message || 'Failed to create organization');
+        setError(result.error.message || toLocalizedString(content.organization.failedToCreateOrganization));
         return;
       }
 
@@ -112,7 +116,7 @@ export function OrganizationSettings() {
       await loadOrganizations();
     } catch (err) {
       console.error('Failed to create organization:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create organization');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.organization.failedToCreateOrganization));
     } finally {
       setCreating(false);
     }
@@ -124,21 +128,21 @@ export function OrganizationSettings() {
         return (
           <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">
             <CrownIcon className="h-3 w-3 mr-1" />
-            Owner
+            {content.organization.owner}
           </Badge>
         );
       case 'admin':
         return (
           <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">
             <ShieldIcon className="h-3 w-3 mr-1" />
-            Admin
+            {content.organization.admin}
           </Badge>
         );
       default:
         return (
           <Badge variant="secondary">
             <UserIcon className="h-3 w-3 mr-1" />
-            Member
+            {content.organization.member}
           </Badge>
         );
     }
@@ -151,21 +155,20 @@ export function OrganizationSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Building2Icon className="h-5 w-5" />
-            Create Organization
+            {content.organization.createOrganization}
           </CardTitle>
           <CardDescription>
-            Create an organization to manage permissions and collaborate with your team.
-            You will automatically become the owner of the organization.
+            {content.organization.createOrgDescription}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             {/* Organization Name */}
             <div className="space-y-2">
-              <Label htmlFor="name">Organization Name *</Label>
+              <Label htmlFor="name">{content.organization.orgNameLabel}</Label>
               <Input
                 id="name"
-                placeholder="My Organization"
+                placeholder={toLocalizedString(content.organization.orgNamePlaceholder)}
                 {...form.register('name')}
                 disabled={creating}
               />
@@ -176,10 +179,10 @@ export function OrganizationSettings() {
 
             {/* Organization Slug */}
             <div className="space-y-2">
-              <Label htmlFor="slug">Slug (Optional)</Label>
+              <Label htmlFor="slug">{content.organization.slugLabel}</Label>
               <Input
                 id="slug"
-                placeholder="my-org"
+                placeholder={toLocalizedString(content.organization.slugPlaceholder)}
                 {...form.register('slug')}
                 disabled={creating}
               />
@@ -187,7 +190,7 @@ export function OrganizationSettings() {
                 <p className="text-sm text-red-500">{form.formState.errors.slug.message}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                Unique identifier for your organization. Leave empty to auto-generate.
+                {content.organization.slugHelpText}
               </p>
             </div>
 
@@ -196,7 +199,7 @@ export function OrganizationSettings() {
               <Alert variant="success" className="border-green-200 bg-green-50">
                 <CheckCircle2Icon className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  Organization created successfully! You are now the owner.
+                  {content.organization.orgCreatedSuccess}
                 </AlertDescription>
               </Alert>
             )}
@@ -212,11 +215,11 @@ export function OrganizationSettings() {
             <div className="flex justify-end">
               <Button type="submit" disabled={creating}>
                 {creating ? (
-                  <>Creating...</>
+                  <>{content.organization.creating}</>
                 ) : (
                   <>
                     <PlusIcon className="h-4 w-4 mr-2" />
-                    Create Organization
+                    {content.organization.createOrgButton}
                   </>
                 )}
               </Button>
@@ -228,19 +231,19 @@ export function OrganizationSettings() {
       {/* Existing Organizations */}
       <Card>
         <CardHeader>
-          <CardTitle>Your Organizations</CardTitle>
+          <CardTitle>{content.organization.yourOrganizations}</CardTitle>
           <CardDescription>
-            Organizations you are a member of
+            {content.organization.yourOrgsDescription}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <p className="text-sm text-muted-foreground">{content.organization.loading}</p>
           ) : organizations.length === 0 ? (
             <Alert>
               <InfoIcon className="h-4 w-4" />
               <AlertDescription>
-                You are not a member of any organization yet. Create one above to get started.
+                {content.organization.noOrganizations}
               </AlertDescription>
             </Alert>
           ) : (
@@ -257,7 +260,7 @@ export function OrganizationSettings() {
                     </div>
                     {org.slug && (
                       <p className="text-xs text-muted-foreground">
-                        Slug: {org.slug}
+                        {toLocalizedString(content.organization.slug).replace('{slug}', org.slug)}
                       </p>
                     )}
                   </div>
@@ -272,9 +275,7 @@ export function OrganizationSettings() {
       <Alert>
         <InfoIcon className="h-4 w-4" />
         <AlertDescription>
-          <strong>Organization Owner Benefits:</strong> As an organization owner, you can
-          configure permission modes, enable Bash tool access, and manage team members.
-          Visit the Permissions settings after creating an organization.
+          <strong>{content.organization.orgOwnerBenefits}</strong>
         </AlertDescription>
       </Alert>
     </div>

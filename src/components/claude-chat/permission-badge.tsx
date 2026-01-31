@@ -9,7 +9,9 @@
 
 import { useCallback, useEffect, useRef, useState, type FC } from 'react';
 import { createPortal } from 'react-dom';
+import { useIntlayer } from 'react-intlayer';
 import { InfoIcon, ShieldIcon, ShieldAlertIcon, ShieldCheckIcon } from 'lucide-react';
+import { toLocalizedString } from '~/lib/utils';
 
 // Permission modes
 export type PermissionMode =
@@ -116,6 +118,7 @@ const getModeDisplay = (mode: PermissionMode, bashEnabled: boolean) => {
 };
 
 export const PermissionBadge: FC<PermissionBadgeProps> = ({ permissionInfo }) => {
+  const content = useIntlayer('claude-chat');
   const [showDetails, setShowDetails] = useState(false);
   const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -200,7 +203,7 @@ export const PermissionBadge: FC<PermissionBadgeProps> = ({ permissionInfo }) =>
 
         {/* Bash status indicator */}
         {!info.bashEnabled && (
-          <span className="text-xs opacity-75" title="Bash 工具已禁用">
+          <span className="text-xs opacity-75" title={toLocalizedString(content.sessionInfo.bashDisabled)}>
             🔒
           </span>
         )}

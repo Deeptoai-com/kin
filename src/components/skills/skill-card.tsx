@@ -1,12 +1,14 @@
 import { FC } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Circle, Eye, Trash2, FileJson, RefreshCw } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
 import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
 import { Switch } from '~/components/ui/switch';
 import { useServerFn } from '@tanstack/react-start';
 import { getSkillSchemaStatusFn } from '~/server/function/skills.server';
 import type { ExtendedSkillInfo, SchemaStatus } from '~/claude/skills';
+import { toLocalizedString } from '~/lib/utils';
 
 interface SkillCardProps {
   skill: ExtendedSkillInfo;
@@ -31,6 +33,7 @@ export const SkillCard: FC<SkillCardProps> = ({
   onDeleteSkill,
   onManageSchema,
 }) => {
+  const content = useIntlayer('skills');
   // Determine if this is a user skill (for badge) and if it's deletable (for delete button)
   const isUserSkill = skill.store === 'user';
   const isDeletable = skill.deletable === true; // GitHub-installed skills
@@ -61,7 +64,7 @@ export const SkillCard: FC<SkillCardProps> = ({
       return (
         <Badge variant="outline" className="text-xs">
           <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-          Loading
+          {content.card.schemaStatus.loading}
         </Badge>
       );
     }
@@ -76,11 +79,12 @@ export const SkillCard: FC<SkillCardProps> = ({
 
     const config = variants[schemaStatus] || variants.missing;
     const Icon = config.icon;
+    const label = content.card.schemaStatus[schemaStatus] || schemaStatus;
 
     return (
       <Badge variant={config.variant} className="text-xs" title={`Schema: ${schemaStatus}`}>
         <Icon className="h-3 w-3 mr-1" />
-        {schemaStatus}
+        {label}
       </Badge>
     );
   };
@@ -104,7 +108,7 @@ export const SkillCard: FC<SkillCardProps> = ({
                 variant="secondary"
                 className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               >
-                全局启用中
+                {content.card.globalEnabled}
               </Badge>
             )}
           </div>
@@ -113,11 +117,11 @@ export const SkillCard: FC<SkillCardProps> = ({
             {/* Show badges for skill source */}
             {isUserSkill ? (
               <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-                自定义
+                {content.card.custom}
               </span>
             ) : isDeletable ? (
               <span className="ml-2 text-xs bg-secondary/50 text-secondary-foreground px-2 py-0.5 rounded">
-                GitHub
+                {content.card.github}
               </span>
             ) : null}
           </p>
@@ -139,13 +143,13 @@ export const SkillCard: FC<SkillCardProps> = ({
           onClick={onToggle}
           className="flex-1"
           disabled={isGlobalEnabled}
-          title={isGlobalEnabled ? '已全局启用，无法关闭' : undefined}
+          title={isGlobalEnabled ? toLocalizedString(content.card.enabledTooltip) : undefined}
         >
-          {isEnabled ? '禁用' : '启用'}
+          {isEnabled ? content.card.disableButton : content.card.enableButton}
         </Button>
         {isAdmin && (
           <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">全局</span>
+            <span className="text-xs text-muted-foreground">{content.card.globalLabel}</span>
             <Switch checked={isGlobalEnabled} onCheckedChange={onToggleGlobal} />
           </div>
         )}
@@ -156,7 +160,7 @@ export const SkillCard: FC<SkillCardProps> = ({
             size="sm"
             onClick={() => onManageSchema(skill.slug)}
             className="shrink-0"
-            title="管理 Schema"
+            title={toLocalizedString(content.card.manageSchemaTitle)}
           >
             <FileJson className="h-4 w-4" />
           </Button>
@@ -166,7 +170,7 @@ export const SkillCard: FC<SkillCardProps> = ({
           size="sm"
           onClick={onViewDetails}
           className="shrink-0"
-          title="查看详情"
+          title={toLocalizedString(content.card.viewDetailsTitle)}
         >
           <Eye className="h-4 w-4" />
         </Button>
@@ -177,7 +181,7 @@ export const SkillCard: FC<SkillCardProps> = ({
             size="sm"
             onClick={() => onDeleteSkill(skill.slug)}
             className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-            title={isDeletable ? "删除 GitHub 安装的技能" : "删除自定义技能"}
+            title={toLocalizedString(isDeletable ? content.card.deleteGithubTitle : content.card.deleteCustomTitle)}
           >
             <Trash2 className="h-4 w-4" />
           </Button>

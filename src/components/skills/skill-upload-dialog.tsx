@@ -1,5 +1,7 @@
 import { FC, useState, useCallback } from 'react';
 import { Upload, X, FileArchive, FileText, Loader2, TriangleAlert, AlertCircle } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -36,6 +38,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
   onOpenChange,
   onSuccess,
 }) => {
+  const content = useIntlayer('skills');
   const uploadSkill = useServerFn(uploadUserSkillFn);
   const checkCompatibility = useServerFn(checkSkillCompatibilityFn);
 
@@ -88,14 +91,14 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
     // Check file extension
     const fileName = selectedFile.name.toLowerCase();
     if (!fileName.endsWith('.zip') && !fileName.endsWith('.skill')) {
-      setError('仅支持 .zip 或 .skill 格式的文件');
+      setError(toLocalizedString(content.upload.errorInvalidFormat));
       return;
     }
 
     // Check file size (max 10 MB)
     const maxSize = 10 * 1024 * 1024;
     if (selectedFile.size > maxSize) {
-      setError('文件大小不能超过 10 MB');
+      setError(toLocalizedString(content.upload.errorFileSize));
       return;
     }
 
@@ -115,13 +118,13 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
       const fileCount = Object.keys(zip.files).length;
 
       if (fileCount > 100) {
-        throw new Error('文件数量超过限制（最多 100 个文件）');
+        throw new Error(toLocalizedString(content.upload.errorTooManyFiles));
       }
 
       // Process all files
       for (const [path, zipEntry] of Object.entries(zip.files)) {
         if (!zipEntry.dir) {
-          const content = await zipEntry.async('string');
+          const fileContent = await zipEntry.async('string');
 
           // Check if this is SKILL.md
           if (path.endsWith('SKILL.md') || path === 'SKILL.md') {
@@ -130,19 +133,19 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
 
           files.push({
             path,
-            content,
+            content: fileContent,
           });
         }
       }
 
       if (!hasSkillMd) {
-        throw new Error('技能包必须包含 SKILL.md 文件');
+        throw new Error(toLocalizedString(content.upload.errorNoSkillMd));
       }
 
       setParsedFiles(files);
       setIsUploading(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '解析文件失败');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.upload.errorParseFailed));
       setIsUploading(false);
       setFile(null);
     }
@@ -151,7 +154,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
   // Upload skill
   const handleUpload = async () => {
     if (!parsedFiles || parsedFiles.length === 0) {
-      setError('请先选择有效的技能包');
+      setError(toLocalizedString(content.upload.errorSelectFile));
       return;
     }
 
@@ -167,7 +170,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
         setHasCheckedCompatibility(true);
         return;
       } catch (err) {
-        setError(err instanceof Error ? err.message : '兼容性检查失败');
+        setError(err instanceof Error ? err.message : toLocalizedString(content.upload.errorCompatCheck));
       } finally {
         setIsChecking(false);
       }
@@ -182,7 +185,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
       // Extract skill name from SKILL.md
       const skillMd = parsedFiles.find(f => f.path.endsWith('SKILL.md') || f.path === 'SKILL.md');
       if (!skillMd) {
-        throw new Error('未找到 SKILL.md 文件');
+        throw new Error(toLocalizedString(content.upload.errorNoSkillMdFound));
       }
 
       // Parse frontmatter to get skill name
@@ -201,7 +204,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.upload.errorUploadFailed));
       setIsUploading(false);
     }
   };
@@ -227,9 +230,9 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>上传技能</DialogTitle>
+          <DialogTitle>{content.upload.title}</DialogTitle>
           <DialogDescription>
-            上传包含 SKILL.md 的技能包，支持 .zip 或 .skill 格式
+            {content.upload.description}
           </DialogDescription>
         </DialogHeader>
 
@@ -253,7 +256,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
               // Parsing state
               <div className="flex flex-col items-center space-y-3">
                 <Loader2 className="h-12 w-12 text-primary animate-spin" />
-                <p className="text-sm text-muted-foreground">解析文件中...</p>
+                <p className="text-sm text-muted-foreground">{content.upload.parsing}</p>
               </div>
             ) : file && parsedFiles ? (
               // File parsed successfully
@@ -261,7 +264,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                 <FileArchive className="h-12 w-12 text-green-600" />
                 <p className="font-medium">{file.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {parsedFiles.length} 个文件
+                  {toLocalizedString(content.upload.filesCount).replace('{count}', String(parsedFiles.length))}
                 </p>
                 <Button
                   variant="ghost"
@@ -269,7 +272,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                   onClick={handleReset}
                   className="text-muted-foreground"
                 >
-                  重新选择
+                  {content.upload.reselect}
                 </Button>
               </div>
             ) : (
@@ -278,10 +281,10 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                 <Upload className="h-12 w-12 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">
-                    拖拽文件到此处，或
+                    {content.upload.dragPrompt}
                   </p>
                   <label className="text-primary hover:underline cursor-pointer">
-                    点击选择文件
+                    {content.upload.clickToSelect}
                     <input
                       type="file"
                       className="hidden"
@@ -291,10 +294,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                     />
                   </label>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  支持 .zip 或 .skill 格式，最大 10 MB<br />
-                  必须包含 SKILL.md 文件
-                </p>
+                <p className="text-xs text-muted-foreground" dangerouslySetInnerHTML={{ __html: content.upload.formatHelp }} />
               </div>
             )}
           </div>
@@ -306,7 +306,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                 <TriangleAlert className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-2">
                   <p className="font-medium text-amber-600 dark:text-amber-400">
-                    兼容性警告
+                    {content.upload.compatibilityWarning}
                   </p>
                   <div className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
                     {compatibilityWarning.formattedWarnings.map((warning, idx) => (
@@ -314,7 +314,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                     ))}
                   </div>
                   <p className="text-xs text-amber-600/70 dark:text-amber-400/70">
-                    建议谨慎安装。如仍要上传，请再次点击"上传"按钮继续。
+                    {content.upload.compatibilityAdvice}
                   </p>
                 </div>
               </div>
@@ -336,7 +336,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
                 onClick={handleRecheck}
                 disabled={isUploading}
               >
-                重新检查
+                {content.upload.recheck}
               </Button>
             )}
             <Button
@@ -347,7 +347,7 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
               }}
               disabled={isUploading || isChecking}
             >
-              取消
+              {content.upload.cancel}
             </Button>
             <Button
               onClick={handleUpload}
@@ -356,20 +356,20 @@ export const SkillUploadDialog: FC<SkillUploadDialogProps> = ({
               {isChecking ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  检查中...
+                  {content.upload.checking}
                 </>
               ) : isUploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  上传中...
+                  {content.upload.uploading}
                 </>
               ) : hasCheckedCompatibility && compatibilityWarning?.formattedWarnings.length > 0 ? (
                 <>
                   <AlertCircle className="h-4 w-4 mr-2" />
-                  仍然上传
+                  {content.upload.stillUpload}
                 </>
               ) : (
-                '上传'
+                content.upload.uploadButton
               )}
             </Button>
           </div>

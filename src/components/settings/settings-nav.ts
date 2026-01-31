@@ -14,6 +14,7 @@ export interface SettingsNavItem {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
 }
 
+// Default (English) navigation items - used as fallback
 export const settingsNavItems: SettingsNavItem[] = [
   {
     section: 'account',

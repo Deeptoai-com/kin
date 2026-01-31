@@ -10,6 +10,7 @@
  */
 
 import { type FC, useState, useEffect } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import {
   X,
   RefreshCw,
@@ -26,7 +27,7 @@ import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
-import { cn } from '~/lib/utils';
+import { cn, toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import type { McpDetail, CredentialField } from '~/claude/mcp';
 import {
@@ -55,6 +56,7 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
   onClose,
   onToggle,
 }) => {
+  const content = useIntlayer('mcp');
   const [activeTab, setActiveTab] = useState<TabId>('about');
   const [isEnabled, setIsEnabled] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -99,10 +101,10 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
     setIsRefreshing(false);
   };
 
-  const tabs: { id: TabId; label: string; icon: FC<{ className?: string }> }[] = [
-    { id: 'about', label: 'About', icon: Info },
-    { id: 'configure', label: 'Configure', icon: Settings },
-    { id: 'tools', label: 'Tools', icon: Wrench },
+  const tabs: { id: TabId; labelKey: keyof typeof content.detailDialog.tabs; icon: FC<{ className?: string }> }[] = [
+    { id: 'about', labelKey: 'about', icon: Info },
+    { id: 'configure', labelKey: 'configure', icon: Settings },
+    { id: 'tools', labelKey: 'tools', icon: Wrench },
   ];
 
   return (
@@ -136,19 +138,19 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
                 ) : (
                   <ChevronDown className="h-3 w-3" />
                 )}
-                {isEnabled ? 'Enabled' : 'Disabled'}
+                {isEnabled ? content.detailDialog.enabled : content.detailDialog.disabled}
               </button>
               {/* Store type badge */}
               {mcp.store === 'system' && (
                 <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                   <Globe className="h-3 w-3" />
-                  System
+                  {content.detailDialog.storeBadge.system}
                 </span>
               )}
               {mcp.store === 'user' && (
                 <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                   <User className="h-3 w-3" />
-                  Personal
+                  {content.detailDialog.storeBadge.personal}
                 </span>
               )}
             </div>
@@ -160,7 +162,7 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
                 disabled={isRefreshing}
               >
                 <RefreshCw className={cn('h-4 w-4 mr-1', isRefreshing && 'animate-spin')} />
-                Refresh
+                {content.detailDialog.refresh}
               </Button>
               <Button variant="ghost" size="icon" onClick={onClose}>
                 <X className="h-5 w-5" />
@@ -188,7 +190,7 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
                   )}
                 >
                   <Icon className="h-4 w-4" />
-                  {tab.label}
+                  {content.detailDialog.tabs[tab.labelKey]}
                 </button>
               );
             })}
@@ -211,6 +213,8 @@ export const McpDetailDialog: FC<McpDetailDialogProps> = ({
 // ============================================================================
 
 const AboutTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
+  const content = useIntlayer('mcp');
+
   // Generate MCP config JSON for display
   const mcpConfigJson = mcp.mcp
     ? JSON.stringify({ mcpServers: { [mcp.slug]: formatMcpConfig(mcp.mcp) } }, null, 2)
@@ -225,14 +229,14 @@ const AboutTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
         </div>
       ) : (
         <div className="text-muted-foreground italic">
-          No documentation available for this MCP.
+          {content.detailDialog.about.noDocs}
         </div>
       )}
 
       {/* MCP Config */}
       {mcpConfigJson && (
         <div className="mt-6">
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Configuration</h3>
+          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">{content.detailDialog.about.configuration}</h3>
           <pre className="rounded-md bg-muted p-4 text-xs overflow-x-auto">
             <code>{mcpConfigJson}</code>
           </pre>
@@ -242,7 +246,7 @@ const AboutTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
       {/* Tools list (read-only summary) */}
       {mcp.allowedTools && mcp.allowedTools.length > 0 && (
         <div className="mt-6">
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Tools</h3>
+          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">{content.detailDialog.about.tools}</h3>
           <ul className="list-disc list-inside space-y-1 text-sm">
             {mcp.allowedTools.map((tool) => (
               <li key={tool} className="text-muted-foreground">
@@ -284,6 +288,7 @@ function extractToolName(fullName: string): string {
 // ============================================================================
 
 const ConfigureTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
+  const content = useIntlayer('mcp');
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -324,7 +329,7 @@ const ConfigureTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save credentials');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.detailDialog.configure.saveError));
     } finally {
       setSaving(false);
     }
@@ -333,7 +338,7 @@ const ConfigureTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
   if (!hasCredentials) {
     return (
       <div className="text-muted-foreground">
-        No configuration needed for {mcp.name}.
+        {toLocalizedString(content.detailDialog.configure.noConfig).replace('{name}', mcp.name)}
       </div>
     );
   }
@@ -342,7 +347,7 @@ const ConfigureTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading configuration...
+        {content.detailDialog.configure.loading}
       </div>
     );
   }
@@ -366,7 +371,7 @@ const ConfigureTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
               onChange={(e) =>
                 setCredentials((prev) => ({ ...prev, [field.key]: e.target.value }))
               }
-              placeholder={field.sensitive ? '••••••••' : `Enter ${field.label}`}
+              placeholder={field.sensitive ? '••••••••' : toLocalizedString(content.detailDialog.configure.enterPlaceholder).replace('{label}', field.label)}
             />
           </div>
         ))}
@@ -380,12 +385,12 @@ const ConfigureTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
 
       <div className="flex items-center gap-3">
         <Button onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Configuration'}
+          {saving ? content.detailDialog.configure.saving : content.detailDialog.configure.saveButton}
         </Button>
         {saveSuccess && (
           <span className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
             <CheckIcon className="h-4 w-4" />
-            Saved
+            {content.detailDialog.configure.saved}
           </span>
         )}
       </div>
@@ -409,6 +414,7 @@ interface ToolState {
 }
 
 const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
+  const content = useIntlayer('mcp');
   const [toolStates, setToolStates] = useState<ToolState[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -435,7 +441,7 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
       // Get MCP info for default allowedTools
       const mcpStore = await getMcpStore({});
       if (!mcpStore || !Array.isArray(mcpStore)) {
-        setError('Failed to load MCP info');
+        setError(toLocalizedString(content.detailDialog.tools.loadError));
         return;
       }
 
@@ -453,10 +459,10 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
         if (toolsResult?.ok) {
           fetchedTools = toolsResult.tools || [];
         } else {
-          fetchError = toolsResult?.error || 'Failed to connect to MCP server';
+          fetchError = toolsResult?.error || content.detailDialog.tools.connectionError;
         }
       } catch (err) {
-        fetchError = err instanceof Error ? err.message : 'Failed to connect to MCP server';
+        fetchError = err instanceof Error ? err.message : content.detailDialog.tools.connectionError;
       }
 
       // If connection failed, use predefined tools from MCP.md
@@ -521,7 +527,7 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
       setHasChanges(false);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.detailDialog.tools.saveError));
     } finally {
       setSaving(false);
     }
@@ -531,7 +537,7 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading tools...
+        {content.detailDialog.tools.loading}
       </div>
     );
   }
@@ -539,10 +545,10 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
   if (error) {
     return (
       <div className="rounded-md bg-red-50 p-4 text-red-700 dark:bg-red-900/20 dark:text-red-400">
-        <p className="font-medium">Error loading tools</p>
+        <p className="font-medium">{content.detailDialog.tools.error}</p>
         <p className="text-sm mt-1">{error}</p>
         <Button variant="outline" size="sm" onClick={loadTools} className="mt-2">
-          Retry
+          {content.detailDialog.tools.retry}
         </Button>
       </div>
     );
@@ -551,7 +557,7 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
   if (toolStates.length === 0) {
     return (
       <div className="text-muted-foreground italic">
-        No tools available for this MCP server.
+        {content.detailDialog.tools.noTools}
       </div>
     );
   }
@@ -563,15 +569,15 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
       {/* Connection warning */}
       {connectionError && (
         <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300">
-          <p className="font-medium">Could not connect to MCP server</p>
+          <p className="font-medium">{content.detailDialog.tools.connectionWarning}</p>
           <p className="text-xs mt-1 opacity-80">{connectionError}</p>
-          <p className="text-xs mt-1">Showing predefined tools from configuration. You may need to configure credentials or install the MCP package.</p>
+          <p className="text-xs mt-1">{content.detailDialog.tools.connectionWarningHint}</p>
         </div>
       )}
 
       {/* Stats */}
       <div className="text-sm text-muted-foreground">
-        {toolStates.length} tools · <span className="text-green-600 dark:text-green-400">{enabledCount} enabled</span>
+        {toLocalizedString(content.detailDialog.tools.stats).replace('{count}', String(toolStates.length)).replace('{enabled}', String(enabledCount))}
       </div>
 
       {/* Tool list */}
@@ -598,12 +604,12 @@ const ToolsTab: FC<{ mcp: McpDetail }> = ({ mcp }) => {
       {/* Save button */}
       <div className="flex items-center gap-3 pt-4 border-t">
         <Button onClick={handleSave} disabled={saving || !hasChanges}>
-          {saving ? 'Saving...' : 'Save Changes'}
+          {saving ? content.detailDialog.tools.saving : content.detailDialog.tools.saveChanges}
         </Button>
         {saveSuccess && (
           <span className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
             <CheckIcon className="h-4 w-4" />
-            Saved
+            {content.detailDialog.tools.saved}
           </span>
         )}
       </div>

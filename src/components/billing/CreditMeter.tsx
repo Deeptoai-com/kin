@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useIntlayer } from 'react-intlayer';
 
 type CreditMeterProps = {
   allotment: number;
@@ -7,12 +8,13 @@ type CreditMeterProps = {
 };
 
 export function CreditMeter({ allotment, used, extra }: CreditMeterProps) {
+  const content = useIntlayer('billing');
   const remaining = Math.max(0, allotment - used);
   const progress = allotment > 0 ? Math.min(100, (used / allotment) * 100) : 0;
 
   return (
     <div className="rounded border bg-card p-4 text-card-foreground">
-      <div className="text-sm font-medium">Credits</div>
+      <div className="text-sm font-medium">{content.credits.label}</div>
       <div className="mt-1 text-2xl font-semibold">
         {remaining} / {allotment}{' '}
         <span className="text-sm font-normal text-muted-foreground">(+{extra} extra)</span>
@@ -23,7 +25,7 @@ export function CreditMeter({ allotment, used, extra }: CreditMeterProps) {
           style={{ width: `${progress}%` }}
         />
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">Refills daily while below monthly cap.</p>
+      <p className="mt-2 text-xs text-muted-foreground">{content.credits.refillsDaily}</p>
     </div>
   );
 }

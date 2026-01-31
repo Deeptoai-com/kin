@@ -39,7 +39,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import { cn } from "~/lib/utils";
+import { cn, toLocalizedString } from "~/lib/utils";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
   ImageIcon,
@@ -75,6 +75,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useIntlayer } from "react-intlayer";
 // ============================================================================
 // Provider Context & Types
 // ============================================================================
@@ -268,6 +269,7 @@ export function PromptInputAttachment({
   className,
   ...props
 }: PromptInputAttachmentProps) {
+  const content = useIntlayer("ai-elements");
   const attachments = usePromptInputAttachments();
 
   const mediaType =
@@ -312,7 +314,7 @@ export function PromptInputAttachment({
         </div>
       )}
       <Button
-        aria-label="Remove attachment"
+        aria-label={toLocalizedString(content.promptInput.removeAttachment)}
         className="-right-1.5 -top-1.5 absolute h-6 w-6 rounded-full opacity-0 group-hover:opacity-100"
         onClick={() => attachments.remove(data.id)}
         size="icon"
@@ -464,6 +466,7 @@ export const PromptInput = ({
   children,
   ...props
 }: PromptInputProps) => {
+  const content = useIntlayer("ai-elements");
   // Try to use a provider controller if present
   const controller = useOptionalPromptInputController();
   const usingProvider = !!controller;
@@ -752,12 +755,12 @@ export const PromptInput = ({
       <span aria-hidden="true" className="hidden" ref={anchorRef} />
       <input
         accept={accept}
-        aria-label="Upload files"
+        aria-label={toLocalizedString(content.promptInput.uploadFiles)}
         className="hidden"
         multiple={multiple}
         onChange={handleChange}
         ref={inputRef}
-        title="Upload files"
+        title={toLocalizedString(content.promptInput.uploadFiles)}
         type="file"
       />
       <form
@@ -996,6 +999,7 @@ export const PromptInputSubmit = ({
   children,
   ...props
 }: PromptInputSubmitProps) => {
+  const content = useIntlayer("ai-elements");
   let Icon = <SendIcon className="size-4" />;
 
   if (status === "submitted") {
@@ -1008,7 +1012,7 @@ export const PromptInputSubmit = ({
 
   return (
     <InputGroupButton
-      aria-label="Submit"
+      aria-label={toLocalizedString(content.promptInput.submit)}
       className={cn(className)}
       size={size}
       type="submit"

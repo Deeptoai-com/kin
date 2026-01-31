@@ -1,4 +1,5 @@
 import { FC } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import type { SkillInfo } from '~/claude/skills';
 import { cn } from '~/lib/utils';
 

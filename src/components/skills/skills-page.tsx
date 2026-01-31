@@ -2,6 +2,8 @@ import { FC, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Zap, Code, Palette, Plug, CheckCircle, Circle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { Input } from '~/components/ui/input';
 import { useServerFn } from '@tanstack/react-start';
 import {
@@ -26,13 +28,14 @@ interface CategoryItem {
   icon: FC<{ className?: string }>;
 }
 
-const CATEGORIES: CategoryItem[] = [
-  { id: 'all', label: 'All Skills', icon: Zap },
-  { id: 'development', label: 'Development', icon: Code },
-  { id: 'design', label: 'Design', icon: Palette },
-  { id: 'productivity', label: 'Productivity', icon: Zap },
-  { id: 'integration', label: 'Integration', icon: Plug },
-  { id: 'installed', label: 'Installed', icon: CheckCircle },
+// Get localized categories - will be initialized after content is available
+const getCategories = (content: any): CategoryItem[] => [
+  { id: 'all', label: content.categories.all, icon: Zap },
+  { id: 'development', label: content.categories.development, icon: Code },
+  { id: 'design', label: content.categories.design, icon: Palette },
+  { id: 'productivity', label: content.categories.productivity, icon: Zap },
+  { id: 'integration', label: content.categories.integration, icon: Plug },
+  { id: 'installed', label: content.categories.installed, icon: CheckCircle },
 ];
 
 /**
@@ -51,6 +54,7 @@ export const SkillsPageComponent: FC<{
   enabledSkills: string[];
   isAdmin: boolean;
 }> = ({ skills, enabledSkills: initialEnabledSkills, isAdmin }) => {
+  const content = useIntlayer('skills');
   // Server Functions (type-safe RPC)
   const enableOfficialSkill = useServerFn(enableUserSkillFn);
   const disableOfficialSkill = useServerFn(disableUserSkillFn);
@@ -88,11 +92,12 @@ export const SkillsPageComponent: FC<{
     const skill = skills.find(s => s.slug === skillSlug);
     if (!skill) {
       console.error('Skill not found:', skillSlug);
+      toast.error(toLocalizedString(content.toast.skillNotFound));
       return;
     }
 
     if (globalSkills.includes(skillSlug)) {
-      toast.error('该技能已被管理员全局启用，无法关闭。');
+      toast.error(toLocalizedString(content.toast.globalEnabledError));
       return;
     }
 
@@ -122,12 +127,12 @@ export const SkillsPageComponent: FC<{
       );
     } catch (error) {
       console.error('Failed to toggle skill:', error);
-      const message = error instanceof Error ? error.message : '启用技能失败';
+      const message = error instanceof Error ? error.message : toLocalizedString(content.toast.toggleFailed);
       if (message.startsWith('SKILL_NOT_SYNCED:')) {
         const slug = message.split(':')[1]?.trim() ?? skillSlug;
-        toast.error(`技能未同步到运行时目录：${slug}。当前启用不会生效。`);
+        toast.error(toLocalizedString(content.toast.skillNotSynced).replace('{slug}', slug));
       } else if (message.includes('SKILL_GLOBAL_ENABLED')) {
-        toast.error('该技能已被管理员全局启用，无法关闭。');
+        toast.error(toLocalizedString(content.toast.globalEnabledError));
       } else {
         toast.error(message);
       }
@@ -146,7 +151,7 @@ export const SkillsPageComponent: FC<{
       }
     } catch (error) {
       console.error('Failed to toggle global skill:', error);
-      const message = error instanceof Error ? error.message : '全局启用失败';
+      const message = error instanceof Error ? error.message : toLocalizedString(content.toast.globalEnableFailed);
       toast.error(message);
     }
   };
@@ -164,13 +169,13 @@ export const SkillsPageComponent: FC<{
     const canDelete = skill.store === 'user' || skill.deletable === true;
     if (!canDelete) {
       console.error('Cannot delete official skill:', skillSlug);
-      alert('这是内置技能，无法删除');
+      alert(toLocalizedString(content.toast.cannotDeleteOfficial));
       return;
     }
 
     const confirmMessage = skill.store === 'user'
-      ? '确定要删除这个自定义技能吗？此操作无法撤销。'
-      : '确定要从全局技能库删除这个 GitHub 技能吗？所有用户将无法再看到此技能。';
+      ? toLocalizedString(content.toast.deleteConfirmCustom)
+      : toLocalizedString(content.toast.deleteConfirmGithub);
 
     if (!confirm(confirmMessage)) {
       return;
@@ -188,7 +193,7 @@ export const SkillsPageComponent: FC<{
       window.location.reload();
     } catch (error) {
       console.error('Failed to delete skill:', error);
-      alert('删除技能失败：' + (error as Error).message);
+      alert(`${toLocalizedString(content.toast.deleteFailed)}: ${(error as Error).message}`);
     }
   };
 
@@ -253,11 +258,13 @@ export const SkillsPageComponent: FC<{
     return skills.filter((s) => s.category === categoryId).length;
   };
 
+  const categories = getCategories(content);
+
   return (
     <div className="flex h-[calc(100vh-theme(spacing.16))]">
       {/* Left Sidebar */}
       <SkillsSidebar
-        categories={CATEGORIES}
+        categories={categories}
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
         getCategoryCount={getCategoryCount}
@@ -269,8 +276,8 @@ export const SkillsPageComponent: FC<{
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h2 className="text-lg font-semibold">
             {activeFilter === 'all'
-              ? 'All Skills'
-              : CATEGORIES.find((c) => c.id === activeFilter)?.label || 'Skills'}
+              ? content.toolbar.allSkills
+              : categories.find((c) => c.id === activeFilter)?.label || content.sidebar.title}
             <span className="ml-2 text-muted-foreground">
               • {filteredSkills.length}
             </span>
@@ -281,7 +288,7 @@ export const SkillsPageComponent: FC<{
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search skills..."
+                placeholder={toLocalizedString(content.toolbar.searchPlaceholder)}
                 className="w-64 pl-9"
               />
             </div>
@@ -294,9 +301,9 @@ export const SkillsPageComponent: FC<{
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <Circle className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                <p className="mt-4 text-muted-foreground">No skills found</p>
+                <p className="mt-4 text-muted-foreground">{content.empty.title}</p>
                 <p className="text-sm text-muted-foreground/70">
-                  Try adjusting your search or filter
+                  {content.empty.subtitle}
                 </p>
               </div>
             </div>

@@ -10,6 +10,7 @@ import RiBuilding4Line from '~icons/ri/building-4-line';
 import RiLogoutBox from '~icons/ri/logout-box-line';
 import RiUser from '~icons/ri/user-line';
 import { useRouter, useRouterState } from '@tanstack/react-router';
+import { useIntlayer } from 'react-intlayer';
 import { authClient } from '~/lib/auth-client';
 
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
@@ -40,6 +41,7 @@ export function NavUser({
     avatar: string | null;
   };
 }) {
+  const content = useIntlayer('app');
   const { isMobile } = useSidebar();
   const router = useRouter();
   const location = useRouterState({ select: (state) => state.location });
@@ -126,39 +128,39 @@ export function NavUser({
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Workspace
+                  {content.userMenu.workspace}
                 </DropdownMenuLabel>
                 <DropdownMenuItem onSelect={() => openSettingsDialog('account')}>
                   <RiUser />
-                  Account
+                  {content.userMenu.account}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openSettingsDialog('organization')}>
                   <RiBuilding4Line />
-                  Organization
+                  {content.userMenu.organization}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openSettingsDialog('preferences')}>
                   <RiListSettingsLine />
-                  Preferences
+                  {content.userMenu.preferences}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Billing
+                  {content.userMenu.billing}
                 </DropdownMenuLabel>
                 <DropdownMenuItem onSelect={() => openSettingsDialog('plans')}>
                   <RiBankCard2Line />
-                  Plans & subscription
+                  {content.userMenu.plans}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openSettingsDialog('billing')}>
                   <RiBillLine />
-                  Billing & invoices
+                  {content.userMenu.billingAndInvoices}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={handleLogout}>
                 <RiLogoutBox />
-                Log out
+                {content.userMenu.logout}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

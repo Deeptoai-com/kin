@@ -11,9 +11,11 @@
  */
 
 import { type FC, useState, useEffect } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { Cross2Icon, CopyIcon, CheckIcon } from '@radix-ui/react-icons';
 import { SkillsManagerPanel } from './skills-manager-panel';
 import { useChatSessionStore } from '~/lib/chat-session-store';
+import { toLocalizedString } from '~/lib/utils';
 
 export interface McpServerStatus {
   name: string;
@@ -52,6 +54,7 @@ const toStringArray = (arr: unknown[]): string[] => {
 };
 
 export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) => {
+  const content = useIntlayer('claude-chat');
   const [copied, setCopied] = useState(false);
   const [showSkillsManager, setShowSkillsManager] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -217,7 +220,7 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
         {/* Session ID */}
         <div>
           <div className="mb-1 font-medium text-[#1a1a18] dark:text-[#eee]">
-            🆔 Session ID
+            🆔 {content.sessionInfo.sessionId}
           </div>
           <div className="flex items-center gap-2 pl-4">
             <code className="flex-1 truncate font-mono text-[10px] text-[#6b6a68] dark:text-[#9a9893]">
@@ -226,7 +229,7 @@ export const SessionInfoPanel: FC<SessionInfoPanelProps> = ({ data, onClose }) =
             <button
               onClick={handleCopySessionId}
               className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
-              aria-label="复制 Session ID"
+              aria-label={toLocalizedString(content.sessionInfo.copySessionId)}
             >
               {copied ? (
                 <CheckIcon width={12} height={12} className="text-green-600 dark:text-green-400" />

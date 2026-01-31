@@ -1,4 +1,6 @@
 import { FC, useState } from 'react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import { uploadUserSkillFn } from '~/server/function/skills.server';
 import { Button } from '~/components/ui/button';
@@ -25,6 +27,7 @@ interface SkillUploadFormProps {
  * Follows TanStack Start best practices with Server Functions.
  */
 export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
+  const content = useIntlayer('skills-upload');
   const navigate = useNavigate();
   const uploadSkill = useServerFn(uploadUserSkillFn);
 
@@ -47,7 +50,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
   // Remove file
   const handleRemoveFile = (index: number) => {
     if (files.length === 1) {
-      setError('至少需要保留一个文件');
+      setError(toLocalizedString(content.errors.minOneFile));
       return;
     }
     setFiles(files.filter((_, i) => i !== index));
@@ -70,28 +73,28 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
   // Validate form
   const validateForm = (): string | null => {
     if (!name.trim()) {
-      return '技能名称不能为空';
+      return content.errors.nameRequired;
     }
     if (name.length > 50) {
-      return '技能名称不能超过50个字符';
+      return content.errors.nameTooLong;
     }
     if (files.length === 0) {
-      return '至少需要一个文件';
+      return content.errors.minOneFileRequired;
     }
     if (files.length > 100) {
-      return '文件数量不能超过100个';
+      return content.errors.maxFilesExceeded;
     }
     const totalSize = files.reduce((sum, f) => sum + f.content.length, 0);
     const maxSize = 10 * 1024 * 1024; // 10 MB
     if (totalSize > maxSize) {
-      return `技能总大小不能超过10 MB（当前：${(totalSize / 1024 / 1024).toFixed(2)} MB）`;
+      return toLocalizedString(content.errors.maxSizeExceeded).replace('{size}', (totalSize / 1024 / 1024).toFixed(2));
     }
     for (const file of files) {
       if (!file.path.trim()) {
-        return '文件路径不能为空';
+        return content.errors.emptyPath;
       }
       if (file.path.includes('..')) {
-        return '文件路径不能包含 ".."';
+        return content.errors.noParentDir;
       }
     }
     return null;
@@ -128,7 +131,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
       navigate({ to: '/agents/skills' });
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败');
+      setError(err instanceof Error ? err.message : toLocalizedString(content.errors.uploadFailed));
       setIsUploading(false);
     }
   };
@@ -138,38 +141,38 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
       {/* Metadata Card */}
       <Card>
         <CardHeader>
-          <CardTitle>技能元数据</CardTitle>
+          <CardTitle>{content.metadata.title}</CardTitle>
           <CardDescription>
-            填写技能的基本信息
+            {content.metadata.description}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Name */}
           <div className="space-y-2">
             <Label htmlFor="name">
-              技能名称 <span className="text-destructive">*</span>
+              {content.metadata.nameLabel} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例如：my-custom-skill"
+              placeholder={toLocalizedString(content.metadata.namePlaceholder)}
               disabled={isUploading}
               maxLength={50}
             />
             <p className="text-xs text-muted-foreground">
-              {name.length}/50 字符
+              {toLocalizedString(content.metadata.nameCounter).replace('{count}', String(name.length))}
             </p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">描述</Label>
+            <Label htmlFor="description">{content.metadata.descriptionLabel}</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="描述这个技能的功能..."
+              placeholder={toLocalizedString(content.metadata.descriptionPlaceholder)}
               disabled={isUploading}
               rows={3}
             />
@@ -177,7 +180,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
 
           {/* Category */}
           <div className="space-y-2">
-            <Label htmlFor="category">分类</Label>
+            <Label htmlFor="category">{content.metadata.categoryLabel}</Label>
             <select
               id="category"
               value={category}
@@ -185,10 +188,10 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
               disabled={isUploading}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <option value="development">Development</option>
-              <option value="productivity">Productivity</option>
-              <option value="design">Design</option>
-              <option value="integration">Integration</option>
+              <option value="development">{content.categories.development}</option>
+              <option value="productivity">{content.categories.productivity}</option>
+              <option value="design">{content.categories.design}</option>
+              <option value="integration">{content.categories.integration}</option>
             </select>
           </div>
         </CardContent>
@@ -199,9 +202,9 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>技能文件</CardTitle>
+              <CardTitle>{content.files.title}</CardTitle>
               <CardDescription>
-                定义技能的代码和配置文件（至少需要一个 SKILL.md）
+                {content.files.description}
               </CardDescription>
             </div>
             <Button
@@ -212,7 +215,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
               disabled={isUploading}
             >
               <Plus className="h-4 w-4 mr-2" />
-              添加文件
+              {content.files.addButton}
             </Button>
           </div>
         </CardHeader>
@@ -225,7 +228,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
                 <Input
                   value={file.path}
                   onChange={(e) => handleUpdateFilePath(index, e.target.value)}
-                  placeholder="file-path.md"
+                  placeholder={toLocalizedString(content.files.filePlaceholder)}
                   disabled={isUploading}
                   className="flex-1"
                 />
@@ -247,7 +250,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
               <Textarea
                 value={file.content}
                 onChange={(e) => handleUpdateFileContent(index, e.target.value)}
-                placeholder={`File content for ${file.path}...`}
+                placeholder={toLocalizedString(content.files.contentPlaceholder).replace('{path}', file.path)}
                 disabled={isUploading}
                 rows={file.path === 'SKILL.md' ? 15 : 8}
                 className="font-mono text-sm"
@@ -262,9 +265,9 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
 
           {/* Total Size */}
           <div className="text-sm text-muted-foreground">
-            总大小：{(files.reduce((sum, f) => sum + f.content.length, 0) / 1024).toFixed(2)} KB / 10 MB
-            {' • '}
-            文件数：{files.length} / 100
+            {toLocalizedString(content.files.totalSize)
+              .replace('{size}', (files.reduce((sum, f) => sum + f.content.length, 0) / 1024).toFixed(2))
+              .replace('{count}', String(files.length))}
           </div>
         </CardContent>
       </Card>
@@ -284,7 +287,7 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
           onClick={() => navigate({ to: '/agents/skills' })}
           disabled={isUploading}
         >
-          取消
+          {content.buttons.cancel}
         </Button>
         <Button
           type="submit"
@@ -292,11 +295,11 @@ export const SkillUploadForm: FC<SkillUploadFormProps> = ({ onSuccess }) => {
           className="min-w-[120px]"
         >
           {isUploading ? (
-            <>上传中...</>
+            <>{content.buttons.uploading}</>
           ) : (
             <>
               <Upload className="h-4 w-4 mr-2" />
-              上传技能
+              {content.buttons.submit}
             </>
           )}
         </Button>

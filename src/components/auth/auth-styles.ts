@@ -4,6 +4,8 @@ import type {
   AuthLocalization,
   AuthViewClassNames,
 } from '@daveyplate/better-auth-ui';
+import type { DictionaryOutputTypes } from 'intlayer';
+import { toLocalizedString } from '~/lib/utils';
 
 export const formClassNames: AuthFormClassNames = {
   base: 'space-y-4',
@@ -45,31 +47,44 @@ export const authViewClassNames: AuthViewClassNames = {
   form: formClassNames,
 };
 
-export const authLocalizationOverrides: Partial<AuthLocalization> = {
-  SIGN_IN: 'Welcome back',
-  SIGN_UP: 'Create your account',
-  SIGN_IN_DESCRIPTION: 'Enter your credentials to access your account',
-  SIGN_UP_DESCRIPTION: 'Get started with a new account',
-  FORGOT_PASSWORD: 'Forgot password?',
-  FORGOT_PASSWORD_DESCRIPTION: "Enter your email and we'll send you a reset link",
-  RESET_PASSWORD: 'Reset password',
-  RESET_PASSWORD_DESCRIPTION: 'Enter your new password below',
-  DONT_HAVE_AN_ACCOUNT: "Don't have an account?",
-  ALREADY_HAVE_AN_ACCOUNT: 'Already have an account?',
-  MAGIC_LINK: 'Sign in with magic link',
-  MAGIC_LINK_DESCRIPTION:
-    "We'll email you a secure link. Check your inbox and click the link to continue.",
-  MAGIC_LINK_EMAIL: 'Check your email for the magic link.',
-  SIGN_IN_ACTION: 'Sign in',
-  SIGN_UP_ACTION: 'Continue',
-  FORGOT_PASSWORD_ACTION: 'Send reset link',
-  RESET_PASSWORD_ACTION: 'Reset password',
-  TERMS_OF_SERVICE: 'Terms of Service',
-  PRIVACY_POLICY: 'Privacy Policy',
-  REQUEST_FAILED: 'An error occurred. Please try again.',
-  OR_CONTINUE_WITH: 'Or continue with',
-  SIGN_IN_WITH: 'Continue with',
-};
+// Function to create localized auth overrides from Intlayer content.
+// Pass locale (e.g. from useLocale()) so SSR renders the correct language.
+export function createAuthLocalizationOverrides(
+  content: DictionaryOutputTypes<'auth'>,
+  locale?: string
+): Partial<AuthLocalization> {
+  const t = (v: unknown) => toLocalizedString(v, locale);
+  return {
+    SIGN_IN: t(content.signIn.title),
+    SIGN_UP: t(content.signUp.title),
+    SIGN_IN_DESCRIPTION: t(content.signIn.subtitle),
+    SIGN_UP_DESCRIPTION: t(content.signUp.subtitle),
+    FORGOT_PASSWORD: t(content.forgotPassword.title),
+    FORGOT_PASSWORD_DESCRIPTION: t(content.forgotPassword.subtitle),
+    RESET_PASSWORD: t(content.resetPassword.title),
+    RESET_PASSWORD_DESCRIPTION: t(content.resetPassword.subtitle),
+    DONT_HAVE_AN_ACCOUNT: t(content.signIn.noAccount),
+    ALREADY_HAVE_AN_ACCOUNT: t(content.signUp.hasAccount),
+    MAGIC_LINK: 'Sign in with magic link',
+    MAGIC_LINK_DESCRIPTION:
+      "We'll email you a secure link. Check your inbox and click the link to continue.",
+    MAGIC_LINK_EMAIL: 'Check your email for the magic link.',
+    SIGN_IN_ACTION: t(content.signIn.submitButton),
+    SIGN_UP_ACTION: t(content.signUp.submitButton),
+    FORGOT_PASSWORD_ACTION: t(content.forgotPassword.submitButton),
+    RESET_PASSWORD_ACTION: t(content.resetPassword.submitButton),
+    TERMS_OF_SERVICE: t(content.signUp.termsOfService),
+    PRIVACY_POLICY: t(content.signUp.privacyPolicy),
+    REQUEST_FAILED: t(content.errors.invalidCredentials),
+    OR_CONTINUE_WITH: t(content.signIn.orContinueWith),
+    SIGN_IN_WITH: 'Continue with',
+    EMAIL: t(content.signIn.emailLabel),
+    PASSWORD: t(content.signIn.passwordLabel),
+    EMAIL_PLACEHOLDER: t(content.signIn.emailPlaceholder),
+    PASSWORD_PLACEHOLDER: t(content.signIn.passwordPlaceholder),
+    FORGOT_PASSWORD_LINK: t(content.signIn.forgotPassword),
+  };
+}
 
 // Container styling for auth pages
 export const authContainerClassName = authViewClassNames.base!;

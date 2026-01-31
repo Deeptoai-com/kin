@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { Copy, Check } from 'lucide-react';
 import { FullscreenOverlay } from './fullscreen-overlay';
 import { CodeBlock } from '../code-block';
@@ -71,6 +72,7 @@ export function JSONPreviewOverlay({
   title = 'JSON Data',
   error,
 }: JSONPreviewOverlayProps) {
+  const content = useIntlayer('claude-chat');
   const [copied, setCopied] = useState(false);
 
   const formattedJSON = useMemo(() => formatJSON(data), [data]);
@@ -109,12 +111,12 @@ export function JSONPreviewOverlay({
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5 text-green-600" />
-              <span>Copied</span>
+              <span>{content.overlay.copied}</span>
             </>
           ) : (
             <>
               <Copy className="h-3.5 w-3.5" />
-              <span>Copy</span>
+              <span>{content.overlay.copy}</span>
             </>
           )}
         </button>

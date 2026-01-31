@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { useIntlayer } from 'react-intlayer';
 import { Copy, Check } from 'lucide-react';
 import { FullscreenOverlay } from './fullscreen-overlay';
 
@@ -51,6 +52,7 @@ export function TerminalPreviewOverlay({
   description,
   error,
 }: TerminalPreviewOverlayProps) {
+  const content = useIntlayer('claude-chat');
   const [copied, setCopied] = useState(false);
 
   const handleCopyOutput = useCallback(async () => {
@@ -92,12 +94,12 @@ export function TerminalPreviewOverlay({
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5 text-green-500" />
-              <span>Copied</span>
+              <span>{content.overlay.copied}</span>
             </>
           ) : (
             <>
               <Copy className="h-3.5 w-3.5" />
-              <span>Copy</span>
+              <span>{content.overlay.copy}</span>
             </>
           )}
         </button>
@@ -105,7 +107,7 @@ export function TerminalPreviewOverlay({
         <div className="p-4 space-y-4">
           {/* Command section */}
           <div>
-            <div className="mb-1 text-xs font-semibold text-[#9a9893]">Command</div>
+            <div className="mb-1 text-xs font-semibold text-[#9a9893]">{content.overlay.command}</div>
             <div className="rounded bg-[#2a2928] p-3">
               <pre className="whitespace-pre-wrap break-all text-green-400">$ {command}</pre>
             </div>
@@ -114,7 +116,7 @@ export function TerminalPreviewOverlay({
           {/* Output section */}
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold text-[#9a9893]">Output</span>
+              <span className="text-xs font-semibold text-[#9a9893]">{content.overlay.output}</span>
               {exitCode !== undefined && (
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
                   isSuccess

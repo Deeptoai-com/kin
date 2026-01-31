@@ -12,6 +12,8 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, FileText, Loader2, RefreshCw, Trash2, AlertCircle, Book } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { cn } from '~/lib/utils';
 import { DocumentSelectorModal } from './document-selector-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '~/components/ui/dialog';
@@ -39,6 +41,7 @@ interface KnowledgeBase {
 }
 
 export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
+  const content = useIntlayer('claude-chat');
   const queryClient = useQueryClient();
   const [showSelector, setShowSelector] = useState(false);
   const [showKbSelector, setShowKbSelector] = useState(false);
@@ -113,16 +116,16 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
 
       // Show appropriate message based on sync result
       if (result.skipped) {
-        alert(`"${fileName}" 文件未修改，无需同步`);
+        alert(toLocalizedString(content.knowledgeBase.syncUnchanged).replace('{name}', fileName));
       } else {
-        alert(`"${fileName}" 同步成功！`);
+        alert(toLocalizedString(content.knowledgeBase.syncSuccess).replace('{name}', fileName));
       }
 
       // Refresh the list
       queryClient.invalidateQueries({ queryKey: ['session-documents', sessionId] });
     } catch (error) {
       console.error('Failed to sync document:', error);
-      alert('同步失败，请重试');
+      alert(toLocalizedString(content.knowledgeBase.syncFailed));
     } finally {
       setSyncingId(null);
     }
@@ -130,7 +133,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
 
   // Remove document from session
   const handleRemove = async (documentId: string, fileName: string) => {
-    const confirmed = window.confirm(`确定要从知识库中移除 "${fileName}"？\n\n文件不会从文档库中删除。`);
+    const confirmed = window.confirm(toLocalizedString(content.knowledgeBase.removeConfirm).replace(/\{name\}/g, fileName));
     if (!confirmed) return;
 
     setRemovingId(documentId);
@@ -147,7 +150,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
       queryClient.invalidateQueries({ queryKey: ['session-documents', sessionId] });
     } catch (error) {
       console.error('Failed to remove document:', error);
-      alert('移除失败，请重试');
+      alert(toLocalizedString(content.knowledgeBase.removeFailed));
     } finally {
       setRemovingId(null);
     }
@@ -169,14 +172,14 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
 
       const result = await res.json();
       const kb = knowledgeBases.find((k) => k.id === kbId);
-      alert(`成功添加 Knowledge Base "${kb?.name}"，共 ${result.total} 个文档`);
+      alert(toLocalizedString(content.knowledgeBase.addSuccess).replace('{name}', kb?.name || 'Unknown').replace('{count}', String(result.total)));
 
       // Refresh the list
       queryClient.invalidateQueries({ queryKey: ['session-documents', sessionId] });
       setShowKbSelector(false);
     } catch (error) {
       console.error('Failed to add knowledge base:', error);
-      alert('添加 Knowledge Base 失败，请重试');
+      alert(toLocalizedString(content.knowledgeBase.addKbFailed));
     } finally {
       setAddingKbId(null);
     }
@@ -195,15 +198,15 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
 
-    if (diffMins < 1) return '刚刚';
-    if (diffMins < 60) return `${diffMins}分钟前`;
+    if (diffMins < 1) return toLocalizedString(content.knowledgeBase.timeJustNow);
+    if (diffMins < 60) return toLocalizedString(content.knowledgeBase.timeMinutesAgo).replace('{count}', String(diffMins));
 
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}小时前`;
+    if (diffHours < 24) return toLocalizedString(content.knowledgeBase.timeHoursAgo).replace('{count}', String(diffHours));
 
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return '昨天';
-    if (diffDays < 7) return `${diffDays}天前`;
+    if (diffDays === 1) return toLocalizedString(content.knowledgeBase.timeYesterday);
+    if (diffDays < 7) return toLocalizedString(content.knowledgeBase.timeDaysAgo).replace('{count}', String(diffDays));
 
     return date.toLocaleDateString();
   };
@@ -212,7 +215,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
     <div className="flex flex-col gap-3">
       {/* Description */}
       <p className="text-xs text-muted-foreground">
-        从文档库中选择文档添加到当前会话，Claude 可以使用 grep/read 工具搜索和引用这些文档。
+        {content.knowledgeBase.description}
       </p>
 
       {/* Add Buttons */}
@@ -225,7 +228,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
           )}
         >
           <Plus className="h-4 w-4" />
-          <span>添加文档</span>
+          <span>{content.knowledgeBase.addDocuments}</span>
         </button>
         <button
           onClick={() => setShowKbSelector(true)}
@@ -235,7 +238,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
           )}
         >
           <Book className="h-4 w-4" />
-          <span>添加 KB</span>
+          <span>{content.knowledgeBase.addKb}</span>
         </button>
       </div>
 
@@ -247,18 +250,18 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
       ) : error ? (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>加载失败</span>
+          <span>{content.knowledgeBase.loadFailed}</span>
         </div>
       ) : documents.length === 0 ? (
         <div className="rounded-lg border border-dashed p-4 text-center">
           <FileText className="mx-auto h-8 w-8 text-muted-foreground/50" />
-          <p className="mt-2 text-xs text-muted-foreground">暂无文档</p>
-          <p className="mt-1 text-xs text-muted-foreground/70">点击上方按钮添加文档</p>
+          <p className="mt-2 text-xs text-muted-foreground">{content.knowledgeBase.noDocuments}</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">{content.knowledgeBase.clickToAdd}</p>
         </div>
       ) : (
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">
-            已添加 {documents.length} 个文档
+            {toLocalizedString(content.knowledgeBase.added).replace('{count}', String(documents.length))}
           </p>
           <div className="space-y-1.5">
             {documents.map((doc) => (
@@ -272,7 +275,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
                   <div className="mt-0.5 flex items-center gap-2 text-muted-foreground">
                     <span>{formatFileSize(doc.fileSize)}</span>
                     <span>•</span>
-                    <span>同步于 {formatTimeAgo(doc.syncedAt)}</span>
+                    <span>{toLocalizedString(content.knowledgeBase.syncedAt).replace('{time}', formatTimeAgo(doc.syncedAt))}</span>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -284,7 +287,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
                       'rounded p-1 transition-colors hover:bg-background',
                       syncingId === doc.id && 'cursor-not-allowed opacity-50'
                     )}
-                    title="重新同步"
+                    title={toLocalizedString(content.knowledgeBase.sync)}
                   >
                     <RefreshCw
                       className={cn(
@@ -302,7 +305,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
                       'rounded p-1 transition-colors hover:bg-destructive/20',
                       removingId === doc.id && 'cursor-not-allowed opacity-50'
                     )}
-                    title="移除"
+                    title={toLocalizedString(content.knowledgeBase.remove)}
                   >
                     <Trash2
                       className={cn(
@@ -330,20 +333,20 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
       <Dialog open={showKbSelector} onOpenChange={setShowKbSelector}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>添加 Knowledge Base</DialogTitle>
+            <DialogTitle>{content.knowledgeBase.addKbTitle}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              选择一个 Knowledge Base，所有文档将自动添加到当前会话。
+              {content.knowledgeBase.addKbDescription}
             </p>
 
             {knowledgeBases.length === 0 ? (
               <div className="rounded-lg border border-dashed p-8 text-center">
                 <Book className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                <p className="mt-2 text-sm text-muted-foreground">暂无 Knowledge Base</p>
+                <p className="mt-2 text-sm text-muted-foreground">{content.knowledgeBase.noKb}</p>
                 <p className="mt-1 text-xs text-muted-foreground/70">
-                  请先在 Documents 页面创建 Knowledge Base
+                  {content.knowledgeBase.createKbFirst}
                 </p>
               </div>
             ) : (
@@ -368,7 +371,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
                           </p>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {kb.documentCount} 个文档
+                          {toLocalizedString(content.knowledgeBase.kbDocuments).replace('{count}', String(kb.documentCount))}
                         </p>
                       </div>
                       {addingKbId === kb.id && (
@@ -383,7 +386,7 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowKbSelector(false)}>
-              取消
+              {content.knowledgeBase.cancel}
             </Button>
           </DialogFooter>
         </DialogContent>

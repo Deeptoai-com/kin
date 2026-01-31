@@ -10,8 +10,9 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, MessageSquare } from 'lucide-react';
+import { useIntlayer } from 'react-intlayer';
 import { SessionItem, type SessionItemData } from './session-item';
-import { cn } from '~/lib/utils';
+import { cn, toLocalizedString } from '~/lib/utils';
 
 interface SessionListResponse {
   sessions: SessionItemData[];
@@ -38,6 +39,7 @@ export function SessionList({
   isExpanded,
   onToggleExpanded,
 }: SessionListProps) {
+  const content = useIntlayer('claude-chat');
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery<SessionListResponse>({
@@ -122,7 +124,7 @@ export function SessionList({
               )}
             >
               <Plus className="h-4 w-4" />
-              <span>New Chat</span>
+              <span>{content.sessionList.newChat}</span>
             </button>
           </div>
 
@@ -134,16 +136,16 @@ export function SessionList({
               </div>
             ) : error ? (
               <div className="flex h-full items-center justify-center px-3 text-center text-sm text-muted-foreground">
-                Failed to load sessions
+                {content.sessionList.loadError}
               </div>
             ) : sessions.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
                 <MessageSquare className="h-8 w-8 text-muted-foreground/50" />
                 <p className="text-sm text-muted-foreground">
-                  No conversations yet
+                  {content.sessionList.noConversations}
                 </p>
                 <p className="text-xs text-muted-foreground/70">
-                  Start a new chat to begin
+                  {content.sessionList.startNewChat}
                 </p>
               </div>
             ) : (
@@ -166,7 +168,7 @@ export function SessionList({
           {sessions.length > 0 && (
             <div className="shrink-0 border-t px-3 py-2">
               <p className="text-xs text-muted-foreground">
-                {sessions.length} conversation{sessions.length !== 1 ? 's' : ''}
+                {toLocalizedString(content.sessionList.conversations).replace('{count}', String(sessions.length))}
               </p>
             </div>
           )}

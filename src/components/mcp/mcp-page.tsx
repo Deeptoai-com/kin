@@ -1,4 +1,6 @@
 import { FC, useMemo, useState, useCallback } from 'react';
+import { useIntlayer } from 'react-intlayer';
+import { toLocalizedString } from '~/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, Circle, Code, Database, Plug, Search, Plus, User, Globe } from 'lucide-react';
 import { Input } from '~/components/ui/input';
@@ -20,17 +22,18 @@ import { AddCustomMcpDialog } from './add-custom-mcp-dialog';
 
 interface CategoryItem {
   id: string;
-  label: string;
+  labelKey: string;
   icon: FC<{ className?: string }>;
 }
 
-const CATEGORIES: CategoryItem[] = [
-  { id: 'all', label: 'All MCPs', icon: Plug },
-  { id: 'development', label: 'Development', icon: Code },
-  { id: 'data', label: 'Data', icon: Database },
-  { id: 'installed', label: 'Enabled', icon: CheckCircle },
-  { id: 'system', label: 'System MCPs', icon: Globe },
-  { id: 'custom', label: 'My MCPs', icon: User },
+// Define categories with label keys for i18n
+const CATEGORIES_BASE: Omit<CategoryItem, 'label'>[] = [
+  { id: 'all', labelKey: 'categories.all', icon: Plug },
+  { id: 'development', labelKey: 'categories.development', icon: Code },
+  { id: 'data', labelKey: 'categories.data', icon: Database },
+  { id: 'installed', labelKey: 'categories.installed', icon: CheckCircle },
+  { id: 'system', labelKey: 'categories.system', icon: Globe },
+  { id: 'custom', labelKey: 'categories.custom', icon: User },
 ];
 
 export const McpPageComponent: FC<{
@@ -39,11 +42,21 @@ export const McpPageComponent: FC<{
   userMcps: ExtendedMcpInfo[];
   enabledMcps: string[];
 }> = ({ mcps: initialMcps, systemMcps: initialSystemMcps, userMcps: initialUserMcps, enabledMcps: initialEnabled }) => {
+  const content = useIntlayer('mcp');
   const queryClient = useQueryClient();
   const enableMcp = useServerFn(enableMcpServerFn);
   const disableMcp = useServerFn(disableMcpServerFn);
   const verifyMcp = useServerFn(verifyMcpServerFn);
   const deleteCustomMcp = useServerFn(deleteCustomMcpFn);
+
+  // Build categories with translated labels
+  const CATEGORIES = useMemo(() => {
+    return CATEGORIES_BASE.map((cat) => ({
+      ...cat,
+      // Access nested property like content.sidebar.categories.all
+      label: (content.sidebar.categories as Record<string, string>)[cat.id] || cat.id,
+    }));
+  }, [content]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
@@ -100,17 +113,17 @@ export const McpPageComponent: FC<{
       setVerifyingSlug(slug);
       const result = await verifyMcp({ data: { slug } });
       if (result.ok) {
-        alert('MCP verified successfully.');
+        alert(toLocalizedString(content.verify.success));
       } else {
         const detail = result.message
           || (result.details ? JSON.stringify(result.details, null, 2) : '')
           || result.stderr
           || '';
-        alert(`MCP verification failed. ${detail}`.trim());
+        alert(`${toLocalizedString(content.verify.failed)} ${detail}`.trim());
       }
     } catch (error) {
       console.error('Failed to verify MCP:', error);
-      alert('MCP verification failed.');
+      alert(toLocalizedString(content.verify.genericFailed));
     } finally {
       setVerifyingSlug(null);
     }
@@ -123,8 +136,8 @@ export const McpPageComponent: FC<{
     const isSystemMcp = storeType === 'system';
 
     const confirmMsg = isSystemMcp
-      ? `Are you sure you want to delete system MCP "${slug}"? This will affect all users. This action cannot be undone.`
-      : `Are you sure you want to delete "${slug}"? This action cannot be undone.`;
+      ? toLocalizedString(content.deleteConfirm.system).replace('{slug}', slug)
+      : toLocalizedString(content.deleteConfirm.personal).replace('{slug}', slug);
 
     if (!confirm(confirmMsg)) {
       return;
@@ -141,11 +154,11 @@ export const McpPageComponent: FC<{
         }
         setEnabledMcps((prev) => prev.filter((s) => s !== slug));
       } else {
-        alert(result.error || 'Failed to delete MCP.');
+        alert(result.error || toLocalizedString(content.delete.failed));
       }
     } catch (error) {
       console.error('Failed to delete MCP:', error);
-      alert('Failed to delete MCP.');
+      alert(toLocalizedString(content.delete.failed));
     } finally {
       setDeletingSlug(null);
     }
@@ -209,8 +222,8 @@ export const McpPageComponent: FC<{
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h2 className="text-lg font-semibold">
             {activeFilter === 'all'
-              ? 'All MCPs'
-              : CATEGORIES.find((c) => c.id === activeFilter)?.label || 'MCPs'}
+              ? content.sidebar.categories.all
+              : (content.sidebar.categories as Record<string, string>)[activeFilter] || 'MCPs'}
             <span className="ml-2 text-muted-foreground">• {filteredMcps.length}</span>
           </h2>
           <div className="flex items-center gap-2">
@@ -219,13 +232,13 @@ export const McpPageComponent: FC<{
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search MCPs..."
+                placeholder={toLocalizedString(content.page.searchPlaceholder)}
                 className="w-64 pl-9"
               />
             </div>
             <Button onClick={() => setIsAddDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Add MCP
+              {content.page.addMcpButton}
             </Button>
           </div>
         </div>
@@ -235,9 +248,9 @@ export const McpPageComponent: FC<{
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <Circle className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                <p className="mt-4 text-muted-foreground">No MCP servers found</p>
+                <p className="mt-4 text-muted-foreground">{content.page.noResults}</p>
                 <p className="text-sm text-muted-foreground/70">
-                  Try adjusting your search or filter
+                  {content.page.noResultsHint}
                 </p>
               </div>
             </div>
