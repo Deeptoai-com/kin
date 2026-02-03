@@ -31,7 +31,7 @@ type McpServerStatus = {
 
 // Local SDKMessage type for this adapter (content is always an array from streaming)
 type SDKMessage = {
-  type: 'system' | 'assistant' | 'user' | 'result' | 'error' | 'stream_event' | 'tool_progress';
+  type: 'system' | 'assistant' | 'user' | 'result' | 'error' | 'stream_event' | 'tool_progress' | 'text_delta' | 'text_complete';
   subtype?: string;
   uuid?: string;
   session_id?: string;
@@ -69,6 +69,11 @@ type SDKMessage = {
   structured_output?: unknown;
   // Stream event fields (from includePartialMessages)
   event?: StreamEvent;
+  // Text event fields (Craft-aligned)
+  text?: string;
+  isIntermediate?: boolean;
+  turnId?: string;
+  parentToolUseId?: string | null;
   // Tool progress fields
   tool_use_id?: string;
   tool_name?: string;
@@ -115,6 +120,10 @@ type OutboundMessage =
 type TextPart = {
   readonly type: 'text';
   readonly text: string;
+  readonly isIntermediate?: boolean;
+  readonly isPending?: boolean;
+  readonly turnId?: string;
+  readonly parentToolUseId?: string | null;
 };
 
 type ReasoningPart = {
@@ -728,6 +737,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
 
       // Track accumulated text length for proper streaming
       let accumulatedTextLength = 0;
+      let hasTextEvents = false;
 
       // Streaming throttle: buffer text updates to reduce render frequency
       const STREAMING_THROTTLE_MS = 100;
@@ -754,6 +764,30 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
         }
 
         return updated;
+      };
+
+      const findPendingTextIndex = (): number => {
+        for (let i = content.length - 1; i >= 0; i--) {
+          const part = content[i];
+          if (part.type === 'text' && part.isPending) {
+            return i;
+          }
+        }
+        return -1;
+      };
+
+      const ensurePendingTextPart = (turnId?: string, parentToolUseId?: string | null): number => {
+        const existingIndex = findPendingTextIndex();
+        if (existingIndex !== -1) return existingIndex;
+
+        content.push({
+          type: 'text',
+          text: '',
+          isPending: true,
+          ...(turnId && { turnId }),
+          ...(parentToolUseId !== undefined && { parentToolUseId }),
+        });
+        return content.length - 1;
       };
 
       try {
@@ -806,6 +840,76 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                 // our workspaceSessionId (from session_init), not the SDK's session_id
                 break;
 
+              case 'text_delta': {
+                hasTextEvents = true;
+                const deltaText = event.text || '';
+                if (!deltaText) break;
+
+                const idx = ensurePendingTextPart(event.turnId, event.parentToolUseId ?? null);
+                const existing = content[idx] as TextPart;
+                content[idx] = {
+                  ...existing,
+                  text: (existing.text || '') + deltaText,
+                  isPending: true,
+                  ...(event.turnId && { turnId: event.turnId }),
+                  ...(event.parentToolUseId !== undefined && { parentToolUseId: event.parentToolUseId }),
+                };
+
+                // Update agent status to streaming when text is coming in
+                useChatSessionStore.getState().setAgentStatus('streaming');
+
+                // Throttled yield for text streaming
+                const now = Date.now();
+                if (now - lastTextYieldTime >= STREAMING_THROTTLE_MS) {
+                  pendingTextYield = false;
+                  lastTextYieldTime = now;
+                  yield {
+                    content: [...content] as ChatModelRunResult['content'],
+                    status: { type: 'running' },
+                  } satisfies ChatModelRunResult;
+                } else {
+                  pendingTextYield = true;
+                }
+                break;
+              }
+
+              case 'text_complete': {
+                hasTextEvents = true;
+                const completedText = event.text || '';
+                const isIntermediate = Boolean(event.isIntermediate);
+                const idx = findPendingTextIndex();
+
+                if (idx === -1) {
+                  // No pending part - create a completed segment
+                  content.push({
+                    type: 'text',
+                    text: completedText,
+                    isIntermediate,
+                    isPending: false,
+                    ...(event.turnId && { turnId: event.turnId }),
+                    ...(event.parentToolUseId !== undefined && { parentToolUseId: event.parentToolUseId }),
+                  });
+                } else {
+                  const existing = content[idx] as TextPart;
+                  content[idx] = {
+                    ...existing,
+                    text: completedText || existing.text,
+                    isIntermediate,
+                    isPending: false,
+                    ...(event.turnId && { turnId: event.turnId }),
+                    ...(event.parentToolUseId !== undefined && { parentToolUseId: event.parentToolUseId }),
+                  };
+                }
+
+                pendingTextYield = false;
+                lastTextYieldTime = Date.now();
+                yield {
+                  content: [...content] as ChatModelRunResult['content'],
+                  status: { type: 'running' },
+                } satisfies ChatModelRunResult;
+                break;
+              }
+
               case 'assistant':
                 if (event.message?.content) {
                   // Track what types of content changed
@@ -815,6 +919,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                   for (const block of event.message.content) {
                     switch (block.type) {
                       case 'text':
+                        if (hasTextEvents) {
+                          break;
+                        }
                         if (block.text) {
                           // Check if this is new text content
                           const newTextLength = block.text.length;
@@ -1140,6 +1247,9 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
                     case 'content_block_delta':
                       // Incremental content update
                       if (streamEvent.delta?.type === 'text_delta' && streamEvent.delta.text) {
+                        if (hasTextEvents) {
+                          break;
+                        }
                         // Accumulate text delta
                         let existingText = content.find(
                           (p): p is TextPart => p.type === 'text'

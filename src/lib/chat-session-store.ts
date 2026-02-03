@@ -17,6 +17,10 @@ import type { SessionMetadata } from '~/components/claude-chat/session-info-pane
 export type TextContentPart = {
   readonly type: 'text';
   readonly text: string;
+  readonly isIntermediate?: boolean;
+  readonly isPending?: boolean;
+  readonly turnId?: string;
+  readonly parentToolUseId?: string | null;
 };
 
 export type ReasoningContentPart = {
@@ -230,10 +234,16 @@ function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
     const parts: ContentPart[] = [];
     // Track tool calls to merge with results
     const toolCalls = new Map<string, ToolCallContentPart>();
+    const hasToolUse = content.some((b) => b.type === 'tool_use');
 
     for (const block of content) {
       if (block.type === 'text' && block.text) {
-        parts.push({ type: 'text', text: block.text });
+        parts.push({
+          type: 'text',
+          text: block.text,
+          isIntermediate: hasToolUse ? true : false,
+          isPending: false,
+        });
       } else if (block.type === 'thinking' && block.thinking) {
         parts.push({ type: 'reasoning', text: block.thinking });
       } else if (block.type === 'tool_use') {
@@ -243,6 +253,7 @@ function convertSDKMessage(sdkMessage: SDKMessage): ThreadMessage | null {
           toolName: block.name,
           args: block.input as Record<string, unknown>,
           argsText: JSON.stringify(block.input, null, 2),
+          toolStatus: 'executing',
         };
         toolCalls.set(block.id, toolPart);
         parts.push(toolPart);

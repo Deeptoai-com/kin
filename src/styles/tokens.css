@@ -1,0 +1,25 @@
+:root {
+  --assistant-accent: #ae5630;
+  --assistant-accent-soft: rgba(174, 86, 48, 0.16);
+  --assistant-step-bg: var(--background);
+  --assistant-step-border: var(--border);
+  --assistant-step-muted: var(--muted);
+  --assistant-tag-bg: var(--muted);
+  --assistant-tag-border: var(--border);
+  --assistant-tag-text: var(--muted-foreground);
+  --assistant-source-bg: var(--card);
+  --assistant-source-border: var(--border);
+}
+
+.dark {
+  --assistant-accent: #e07a53;
+  --assistant-accent-soft: rgba(224, 122, 83, 0.18);
+  --assistant-step-bg: var(--background);
+  --assistant-step-border: var(--border);
+  --assistant-step-muted: var(--muted);
+  --assistant-tag-bg: var(--muted);
+  --assistant-tag-border: var(--border);
+  --assistant-tag-text: var(--muted-foreground);
+  --assistant-source-bg: var(--card);
+  --assistant-source-border: var(--border);
+}

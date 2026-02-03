@@ -425,6 +425,10 @@ Example bad operations:
 
     console.error('[Worker] Query stream created, starting event iteration...');
     let eventCount = 0;
+    // Track text waiting for stop_reason from message_delta
+    let pendingTextForStopReason = null;
+    // Track current turn ID from message_start (correlation ID for grouping events)
+    let currentTurnId = null;
 
     for await (const event of stream) {
       eventCount++;
@@ -435,12 +439,88 @@ Example bad operations:
         console.error('[Worker] Terminating, stopping event processing');
         break;
       }
+      const parentToolUseId = event && typeof event === 'object' && 'parent_tool_use_id' in event
+        ? event.parent_tool_use_id
+        : null;
+
+      if (event.type === 'assistant' && event.message?.content) {
+        let textContent = '';
+        const blocks = Array.isArray(event.message.content) ? event.message.content : [];
+        for (const block of blocks) {
+          if (block?.type === 'text' && typeof block.text === 'string') {
+            textContent += block.text;
+          }
+        }
+        if (textContent) {
+          pendingTextForStopReason = textContent;
+        }
+      }
+
+      if (event.type === 'stream_event' && event.event) {
+        const streamEvent = event.event;
+
+        // Capture turn ID from message_start (arrives before any content events)
+        if (streamEvent.type === 'message_start') {
+          const messageId = streamEvent.message?.id;
+          if (messageId) {
+            currentTurnId = messageId;
+          }
+        }
+
+        // Emit text_delta events for streaming UI updates
+        if (streamEvent.type === 'content_block_delta'
+          && streamEvent.delta?.type === 'text_delta'
+          && typeof streamEvent.delta.text === 'string') {
+          process.stdout.write(JSON.stringify({
+            type: 'event',
+            event: {
+              type: 'text_delta',
+              text: streamEvent.delta.text,
+              turnId: currentTurnId ?? undefined,
+              parentToolUseId: parentToolUseId ?? undefined,
+            },
+          }) + '\n');
+        }
+
+        // message_delta contains the actual stop_reason - emit pending text now
+        if (streamEvent.type === 'message_delta') {
+          const stopReason = streamEvent.delta?.stop_reason;
+          if (pendingTextForStopReason) {
+            const isIntermediate = stopReason === 'tool_use';
+            process.stdout.write(JSON.stringify({
+              type: 'event',
+              event: {
+                type: 'text_complete',
+                text: pendingTextForStopReason,
+                isIntermediate,
+                turnId: currentTurnId ?? undefined,
+                parentToolUseId: parentToolUseId ?? undefined,
+              },
+            }) + '\n');
+            pendingTextForStopReason = null;
+          }
+        }
+      }
+
       // Send each event as a JSON line
       process.stdout.write(JSON.stringify({ type: 'event', event }) + '\n');
     }
 
     // Signal completion (only if not terminating)
     if (!isTerminating) {
+      // Defensive: flush any pending text that wasn't emitted
+      if (pendingTextForStopReason) {
+        process.stdout.write(JSON.stringify({
+          type: 'event',
+          event: {
+            type: 'text_complete',
+            text: pendingTextForStopReason,
+            isIntermediate: false,
+            turnId: currentTurnId ?? undefined,
+          },
+        }) + '\n');
+        pendingTextForStopReason = null;
+      }
       process.stdout.write(JSON.stringify({ type: 'done' }) + '\n');
     }
     process.exit(0);
