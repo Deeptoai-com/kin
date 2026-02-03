@@ -702,3 +702,81 @@ TanStack Start + Nitro 已提供的能力，**不要重新实现**：
 - 没有框架内置功能可用
 - 已查阅相关文档
 - 已在原始脚手架验证
+
+---
+
+## Dokploy 部署规则
+
+### Docker 镜像构建与推送
+
+项目使用 **GHCR (GitHub Container Registry)** 存储 Docker 镜像，Dokploy 从 GHCR 拉取镜像部署。
+
+#### 构建方式优先级
+
+1. **GitHub Actions（推荐）**：推送到 `main` 分支时自动构建
+2. **本地构建（备选）**：当 GitHub Actions 不可用时使用
+
+#### 本地构建命令（重要！）
+
+**⚠️ 架构要求**：Dokploy 服务器运行在 **AMD64 (x86_64)** 架构，本地 Mac (Apple Silicon) 是 **ARM64**。
+
+```bash
+# ✅ 正确：指定目标平台为 linux/amd64
+docker buildx build --platform linux/amd64 \
+  -t ghcr.io/foreveryh/constructa-starter/app:latest \
+  --push .
+
+# ❌ 错误：不指定平台（会构建本机架构 arm64）
+docker build -t ghcr.io/foreveryh/constructa-starter/app:latest .
+docker push ghcr.io/foreveryh/constructa-starter/app:latest
+```
+
+#### 推送前认证
+
+```bash
+# 确保有 write:packages 权限
+gh auth refresh -h github.com -s write:packages
+
+# 登录 GHCR
+echo $(gh auth token) | docker login ghcr.io -u USERNAME --password-stdin
+```
+
+#### 验证镜像架构
+
+```bash
+# 拉取并检查架构
+docker pull ghcr.io/foreveryh/constructa-starter/app:latest
+docker inspect ghcr.io/foreveryh/constructa-starter/app:latest | jq '.[0].Architecture'
+# 应输出: "amd64"
+```
+
+### Dokploy 镜像拉取策略
+
+**问题背景**：Docker Compose 默认 `pull_policy: missing`，只在镜像不存在时拉取。导致更新镜像后 Dokploy 仍使用旧的本地缓存。
+
+**解决方案**：在 `docker-compose.dokploy.yml` 中为所有使用应用镜像的服务添加：
+
+```yaml
+services:
+  app:
+    image: *app_image
+    pull_policy: always  # 强制每次拉取最新镜像
+
+  migrate:
+    image: *app_image
+    pull_policy: always
+
+  worker:
+    image: *app_image
+    pull_policy: always
+```
+
+**注意**：多个服务使用同一镜像时，Docker 只会拉取一次，后续服务复用已拉取的镜像。
+
+### 部署检查清单
+
+1. ✅ 确认代码已推送到 GitHub
+2. ✅ 确认镜像架构为 `linux/amd64`
+3. ✅ 确认 `docker-compose.dokploy.yml` 包含 `pull_policy: always`
+4. ✅ 在 Dokploy 触发重新部署
+5. ✅ 检查部署日志确认拉取了新镜像（看 digest 是否变化）
