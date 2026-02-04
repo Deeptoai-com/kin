@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-We take security seriously. If you discover a security vulnerability in constructa-starter, please report it responsibly.
+We take security seriously. If you discover a security vulnerability in OxyGenie, please report it responsibly.
 
 ### How to Report
 
@@ -25,8 +25,8 @@ Include the following information:
 ### Scope
 
 This policy applies to:
-- The constructa-starter application
-- Official constructa-starter repositories
+- The OxyGenie application
+- Official OxyGenie repositories
 
 ### Out of Scope
 
@@ -45,7 +45,7 @@ We only provide security updates for the latest version. Please keep your instal
 
 ## Security Best Practices
 
-When using constructa-starter:
+When using OxyGenie:
 
 1. **Keep credentials secure**: Never commit `.env` files or credentials
 2. **Use environment variables**: Store secrets in environment variables

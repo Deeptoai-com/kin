@@ -147,4 +147,4 @@ const handleSelectWorkflow = (workflowId: string) => {
 - Mastra Agents: `src/mastra/agents/`
 - Mastra Workflows: `src/mastra/workflows/`
 - Workflow API: `src/routes/api/workflow/[workflow-id]/`
-- 主项目 CLAUDE.md: `/constructa-starter/CLAUDE.md`
+- 主项目 CLAUDE.md: 项目根目录 `CLAUDE.md`

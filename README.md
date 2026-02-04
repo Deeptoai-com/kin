@@ -35,6 +35,7 @@ Built with Claude Agent SDK and TanStack Start, OxyGenie provides a web-first al
 
 ### Technical Features
 
+- **🌐 Multi-language (i18n)**: Built-in internationalization with Intlayer (EN, 简体中文, 繁體中文, and more)
 - **⚡ Real-time Streaming**: WebSocket-based bidirectional communication for complex state management
 - **🔧 Tool Visualization**: See tool calls, arguments, and results in real-time
 - **🎨 Beautiful UI**: Built with shadcn/ui components, Tailwind CSS v4, dark mode

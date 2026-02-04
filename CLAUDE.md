@@ -47,7 +47,7 @@
 **禁止在以下目录开发**:
 - 父目录（仅用于文档和参考）
 - 其他项目目录（原始参考代码等）
-- 任何 `constructa-phase*` 目录（临时开发目录，已清理）
+- 任何临时开发目录（如历史 phase 目录，已清理）
 
 ## 项目结构
 
@@ -723,12 +723,12 @@ TanStack Start + Nitro 已提供的能力，**不要重新实现**：
 ```bash
 # ✅ 正确：指定目标平台为 linux/amd64
 docker buildx build --platform linux/amd64 \
-  -t ghcr.io/foreveryh/constructa-starter/app:latest \
+  -t ghcr.io/Deeptoai-com/OxyGenie/app:latest \
   --push .
 
 # ❌ 错误：不指定平台（会构建本机架构 arm64）
-docker build -t ghcr.io/foreveryh/constructa-starter/app:latest .
-docker push ghcr.io/foreveryh/constructa-starter/app:latest
+docker build -t ghcr.io/Deeptoai-com/OxyGenie/app:latest .
+docker push ghcr.io/Deeptoai-com/OxyGenie/app:latest
 ```
 
 #### 推送前认证
@@ -745,8 +745,8 @@ echo $(gh auth token) | docker login ghcr.io -u USERNAME --password-stdin
 
 ```bash
 # 拉取并检查架构
-docker pull ghcr.io/foreveryh/constructa-starter/app:latest
-docker inspect ghcr.io/foreveryh/constructa-starter/app:latest | jq '.[0].Architecture'
+docker pull ghcr.io/Deeptoai-com/OxyGenie/app:latest
+docker inspect ghcr.io/Deeptoai-com/OxyGenie/app:latest | jq '.[0].Architecture'
 # 应输出: "amd64"
 ```
 
