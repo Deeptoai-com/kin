@@ -101,7 +101,7 @@ type StreamEvent = {
 type InboundMessage =
   | { type: 'create_session' }
   | { type: 'init_session'; sessionId: string }
-  | { type: 'chat'; content: string; sessionId?: string }
+  | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
   | { type: 'ping' };
@@ -167,6 +167,11 @@ type AttachmentDescriptor = {
 type AttachmentHint = {
   label: string;
   action: string;
+};
+
+type SkillSelection = {
+  slug: string;
+  name?: string;
 };
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'svg']);
@@ -293,6 +298,23 @@ function extractRunConfigAttachments(runConfig?: ChatModelRunOptions['runConfig'
       };
     })
     .filter((item): item is AttachmentDescriptor => Boolean(item));
+}
+
+function extractRunConfigSkill(runConfig?: ChatModelRunOptions['runConfig']): SkillSelection | null {
+  const custom = runConfig?.custom;
+  if (!custom || typeof custom !== 'object') return null;
+  const raw = (custom as { skill?: unknown; skillSlug?: unknown }).skill;
+  if (raw && typeof raw === 'object') {
+    const candidate = raw as Partial<SkillSelection>;
+    if (typeof candidate.slug === 'string' && candidate.slug.trim()) {
+      return { slug: candidate.slug.trim(), name: typeof candidate.name === 'string' ? candidate.name : undefined };
+    }
+  }
+  const slug = (custom as { skillSlug?: unknown }).skillSlug;
+  if (typeof slug === 'string' && slug.trim()) {
+    return { slug: slug.trim() };
+  }
+  return null;
 }
 
 function buildAttachmentsBlock(attachments: AttachmentDescriptor[]): string {
@@ -680,6 +702,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
       );
       const prompt = textParts.map((p) => p.text).join('\n');
       const attachments = extractRunConfigAttachments(runConfig);
+      const selectedSkill = extractRunConfigSkill(runConfig);
       const attachmentsBlock = buildAttachmentsBlock(attachments);
       const fullPrompt = attachmentsBlock ? `${prompt}\n\n${attachmentsBlock}` : prompt;
 
@@ -724,6 +747,7 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
           type: 'chat',
           content: fullPrompt,
           sessionId: currentSessionId,
+          skillSlug: selectedSkill?.slug,
         });
         console.log('[WS Adapter] ✅ Message sent successfully');
       } catch (connectError) {

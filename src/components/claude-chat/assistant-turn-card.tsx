@@ -13,11 +13,14 @@ import { Tag } from '~/components/foundation/tag';
 import { Kicker } from '~/components/foundation/kicker';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { CodeBlock } from '~/components/claude-chat/code-block';
+import { ImageArtifact } from '~/components/claude-chat/artifact-image';
 import { DiffView } from '~/components/agent-chat/diff-view';
 import { cn } from '~/lib/utils';
 import { parseSearchResult, type SearchSource } from '~/lib/search-results';
 import { buildAssistantTurn, formatArgsSummary, stripMarkdown, truncate, type RenderItem, type SearchGroup, type StepActivity, type StepActivityStatus } from '~/lib/turn-builder';
-import type { ContentPart } from '~/lib/chat-session-store';
+import { useChatSessionStore, type ContentPart } from '~/lib/chat-session-store';
+import { readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
+import { extractImagePaths } from '~/lib/artifacts/image-utils';
 
 export interface AssistantTurnCardProps {
   content: ContentPart[] | undefined;
@@ -160,6 +163,10 @@ function ActivityDetailDrawer({
   onUrlClick?: (url: string) => void;
 }) {
   const isMobile = useIsMobile();
+  const sessionId = useChatSessionStore((state) => state.currentSessionId);
+  const [imageFiles, setImageFiles] = useState<Array<{ filePath: string; content: string; mimeType?: string }>>([]);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const detail = useMemo(() => {
     if (!target) return null;
@@ -184,6 +191,15 @@ function ActivityDetailDrawer({
 
     const toolName = target.toolName.toLowerCase();
     const resultText = formatToolResultText(target.result);
+    const imagePaths = extractImagePaths(target.args, target.result);
+
+    if (!toolName.includes('search') && imagePaths.length > 0) {
+      return {
+        type: 'images',
+        title: target.displayName,
+        imagePaths,
+      } as const;
+    }
 
     if (toolName.includes('search')) {
       const searchResult = parseSearchResult(target.result);
@@ -248,6 +264,60 @@ function ActivityDetailDrawer({
       content: resultText || formatArgsSummary(target.args) || '',
     } as const;
   }, [target]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (!open || !detail || detail.type !== 'images') {
+      setImageFiles([]);
+      setImageError(null);
+      setImageLoading(false);
+      return undefined;
+    }
+    if (!sessionId) {
+      setImageFiles([]);
+      setImageError('会话不可用');
+      setImageLoading(false);
+      return undefined;
+    }
+
+    const run = async () => {
+      setImageLoading(true);
+      setImageError(null);
+      try {
+        const files = (await Promise.all(
+          detail.imagePaths.map(async (filePath) => {
+            const mimeType = getMimeType(filePath);
+            const content = await readWorkspaceBinaryFile(sessionId, filePath, mimeType);
+            if (!content) return null;
+            return { filePath, content, mimeType };
+          })
+        ))
+          .filter(Boolean) as Array<{ filePath: string; content: string; mimeType?: string }>;
+
+        if (!isCancelled) {
+          setImageFiles(files);
+          if (files.length === 0) {
+            setImageError('未找到可预览的图片');
+          }
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setImageError(error instanceof Error ? error.message : '图片加载失败');
+          setImageFiles([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setImageLoading(false);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [detail, open, sessionId]);
 
   if (!detail) return null;
 
@@ -338,6 +408,41 @@ function ActivityDetailDrawer({
               <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm font-mono whitespace-pre-wrap">
                 {detail.output || '(no output)'}
               </div>
+            </div>
+          )}
+
+          {detail.type === 'images' && (
+            <div className="space-y-3">
+              {imageLoading && (
+                <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在加载图片…
+                </div>
+              )}
+              {!imageLoading && imageError && (
+                <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+                  {imageError}
+                </div>
+              )}
+              {!imageLoading && !imageError && imageFiles.length > 0 && (
+                <div className="h-[60vh] rounded-md border border-border/60 bg-background/80">
+                  <ImageArtifact
+                    content={imageFiles[0].content}
+                    title={detail.title}
+                    mimeType={imageFiles[0].mimeType}
+                    images={imageFiles}
+                  />
+                </div>
+              )}
+              {!imageLoading && imageFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {imageFiles.map((file) => (
+                    <Tag key={file.filePath} tone="ghost" className="text-xs">
+                      {file.filePath.split('/').pop() || file.filePath}
+                    </Tag>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -435,7 +540,7 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
   onUrlClick,
 }) => {
   const isRunning = status?.type === 'running';
-  const { activities, responseText, responseIsStreaming, hasPendingText, previewText, runningLabel, renderItems } = useMemo(
+  const { activities, responseText, responseIsStreaming, hasPendingText, previewText, renderItems } = useMemo(
     () => buildAssistantTurn(content, isRunning),
     [content, isRunning]
   );
@@ -443,32 +548,9 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
   const hasResponse = Boolean(responseText);
   const hasActivities = activities.length > 0;
 
-  const startTimeRef = useRef<number | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
   const [isExpanded, setIsExpanded] = useState(hasActivities && isRunning);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<DetailTarget | null>(null);
-
-  useEffect(() => {
-    if (!isRunning) {
-      startTimeRef.current = null;
-      setElapsedSeconds(0);
-      return;
-    }
-
-    if (!startTimeRef.current) {
-      startTimeRef.current = Date.now();
-      setElapsedSeconds(0);
-    }
-
-    const timer = setInterval(() => {
-      if (!startTimeRef.current) return;
-      setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isRunning]);
 
   useEffect(() => {
     if (isRunning && hasActivities) {
@@ -481,13 +563,6 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
     setDetailOpen(true);
   };
 
-  const phaseLabel = useMemo(() => {
-    if (!isRunning || !runningLabel) return null;
-    if (runningLabel === 'Thinking' && elapsedSeconds >= 4) return 'Processing';
-    if (runningLabel === 'Processing' && elapsedSeconds >= 10) return 'Zooming';
-    if (runningLabel === 'Reviewing sources' && elapsedSeconds >= 10) return 'Zooming';
-    return runningLabel;
-  }, [isRunning, runningLabel, elapsedSeconds]);
 
   return (
     <div className="space-y-2">
@@ -507,11 +582,6 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
               {renderItems.length}
             </Tag>
             <span className="truncate flex-1">{previewText}</span>
-            {isRunning && phaseLabel && (
-              <Tag tone="accent" className="tabular-nums">
-                {phaseLabel} · {elapsedSeconds}s
-              </Tag>
-            )}
           </button>
 
           {isExpanded && (

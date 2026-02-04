@@ -29,7 +29,7 @@ import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery } from '@tanstack/react-query';
 import { ThumbsDown, ThumbsUp, Layers, Paperclip, FolderOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
-import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type FC, type MutableRefObject } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { MarkdownText } from '~/components/assistant-ui/markdown-text';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { AssistantTurnCard } from '~/components/claude-chat/assistant-turn-card';
@@ -40,20 +40,25 @@ import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
 import { InlineStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
 import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
+import { ImagePreviewOverlay } from '~/components/claude-chat/overlay/image-preview-overlay';
 import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
+import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
+import { parseSkillMarker } from '~/lib/skills/skill-marker';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
-import { useArtifactsStore } from '~/lib/stores/artifacts-store';
+import { useArtifactsStore, type ArtifactImageFile } from '~/lib/stores/artifacts-store';
 import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
+import { isImageFilePath } from '~/lib/artifacts/image-utils';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
 import type { MessageAttachment } from '~/db/schema/message-attachment.schema';
 import { getPermissionInfo } from '~/server/permissions.server';
 // Use WebSocket adapter for more reliable real-time communication
 import {
   ClaudeAgentWSAdapter,
+  abort,
   getSessionId,
   resumeSession,
   newSession,
@@ -72,6 +77,64 @@ import {
   type ContentPart,
 } from '~/lib/chat-session-store';
 import { disableUserSkillsFn } from '~/server/function/skills.server';
+
+const MIN_ARTIFACT_SPLIT = 1 / 3;
+const MAX_ARTIFACT_SPLIT = 2 / 3;
+
+const clampSplitRatio = (value: number) =>
+  Math.min(MAX_ARTIFACT_SPLIT, Math.max(MIN_ARTIFACT_SPLIT, value));
+
+const useArtifactSplitRatio = () => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [ratio, setRatio] = useState(0.5);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const startResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsResizing(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing || typeof window === 'undefined') return;
+
+    const handleMove = (event: PointerEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const nextRatio = (event.clientX - rect.left) / rect.width;
+      setRatio(clampSplitRatio(nextRatio));
+    };
+
+    const handleUp = () => {
+      setIsResizing(false);
+    };
+
+    const body = document.body;
+    const prevUserSelect = body.style.userSelect;
+    const prevCursor = body.style.cursor;
+    body.style.userSelect = 'none';
+    body.style.cursor = 'col-resize';
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      body.style.userSelect = prevUserSelect;
+      body.style.cursor = prevCursor;
+    };
+  }, [isResizing]);
+
+  return {
+    containerRef,
+    ratio,
+    isResizing,
+    startResize,
+  };
+};
 
 // Context for sharing file/URL click handlers across message components
 type FileHandlersContextType = {
@@ -156,6 +219,12 @@ function RouteComponent() {
   // Artifacts state - controls layout behavior
   const activeArtifactId = useArtifactsStore((state) => state.activeArtifactId);
   const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
+  const {
+    containerRef: artifactSplitRef,
+    ratio: artifactSplitRatio,
+    isResizing: isArtifactSplitResizing,
+    startResize: handleArtifactSplitResize,
+  } = useArtifactSplitRatio();
 
   // Listen for messages loaded events from WebSocket
   // Note: We do NOT increment chatKey here because that would cause
@@ -279,8 +348,15 @@ function RouteComponent() {
     // Check both route state and adapter state for current session
     // This prevents abort during active query when user clicks on current session
     const adapterSessionId = getSessionId();
-    if (sdkSessionId === currentSessionId || sdkSessionId === adapterSessionId) {
-      console.log('[Route] Session already active, skipping:', sdkSessionId);
+    const isSameSession = sdkSessionId === currentSessionId || sdkSessionId === adapterSessionId;
+    if (isSameSession) {
+      const hasMessages = useChatSessionStore.getState().messages.length > 0;
+      if (!hasMessages) {
+        console.log('[Route] Session active but empty, forcing resume:', sdkSessionId);
+        await performSessionSwitch(sdkSessionId, false);
+      } else {
+        console.log('[Route] Session already active, skipping:', sdkSessionId);
+      }
       return;
     }
 
@@ -309,6 +385,22 @@ function RouteComponent() {
     console.log('[Route] User cancelled session switch');
     setPendingSessionSwitch(null);
   }, []);
+
+  const handleInterruptSwitch = useCallback(async () => {
+    if (!pendingSessionSwitch) {
+      return;
+    }
+    const { targetSessionId, isNewSession } = pendingSessionSwitch;
+    console.log('[Route] User chose to interrupt and switch', { targetSessionId, isNewSession });
+    setPendingSessionSwitch(null);
+    notifyUserAbort();
+    try {
+      await abort();
+    } catch (error) {
+      console.warn('[Route] Failed to send abort signal:', error);
+    }
+    await performSessionSwitch(targetSessionId, isNewSession);
+  }, [pendingSessionSwitch, performSessionSwitch]);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -353,9 +445,50 @@ function RouteComponent() {
 
   // Dev mode: skip client-side auth check
   if (isDev) {
+    const chatPanel = (
+      <>
+        {/* Floating action buttons - only show when no artifact */}
+        {!activeArtifactId && (
+          <div className="absolute top-4 left-4 z-10 flex gap-2">
+            {hasAnySessions && (
+              <button
+                type="button"
+                onClick={() => setSessionListExpanded(!sessionListExpanded)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
+                aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+                title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+              >
+                <FolderOpen className="h-4 w-4" />
+              </button>
+            )}
+            {!sessionListExpanded && (
+              <button
+                type="button"
+                onClick={handleNewSession}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                aria-label={toLocalizedString(content.header.newChat)}
+                title={toLocalizedString(content.header.newChat)}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+        <ClaudeChatSurface
+          key={chatKey}
+          permissionInfo={permissionInfo}
+          hasSession={!!currentSessionId}
+          isInitializingSession={isInitializingSession}
+          onStartSession={handleNewSession}
+          isCreatingSession={isCreatingSession}
+          hideScrollbars={Boolean(activeArtifactId)}
+        />
+      </>
+    );
+
     return (
       <div className="h-full">
-        <div className="flex h-full">
+        <div className={cn('flex h-full', activeArtifactId && 'group')} ref={artifactSplitRef}>
           {/* Session List - only show when no artifact AND user has sessions */}
           {!activeArtifactId && hasAnySessions && (
             <SessionList
@@ -368,53 +501,42 @@ function RouteComponent() {
           )}
 
           {/* Chat Surface - always mounted, width changes based on artifact state */}
-          <div className={activeArtifactId ? "w-1/3 h-full shrink-0" : "flex-1 h-full relative"}>
-            {/* Floating action buttons - only show when no artifact */}
-            {!activeArtifactId && (
-              <div className="absolute top-4 left-4 z-10 flex gap-2">
-                {hasAnySessions && (
-                  <button
-                    type="button"
-                    onClick={() => setSessionListExpanded(!sessionListExpanded)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-                    aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-                    title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                  </button>
-                )}
-                {!sessionListExpanded && (
-                  <button
-                    type="button"
-                    onClick={handleNewSession}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                    aria-label={toLocalizedString(content.header.newChat)}
-                    title={toLocalizedString(content.header.newChat)}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            )}
-            <ClaudeChatSurface
-              key={chatKey}
-              permissionInfo={permissionInfo}
-              hasSession={!!currentSessionId}
-              isInitializingSession={isInitializingSession}
-              onStartSession={handleNewSession}
-              isCreatingSession={isCreatingSession}
-            />
+          <div
+            className="h-full shrink-0 relative"
+            style={{ flexBasis: 0, flexGrow: activeArtifactId ? artifactSplitRatio : 1 }}
+          >
+            {chatPanel}
           </div>
-
-          {/* Artifacts Panel - only show when artifact exists */}
-          {activeArtifactId && (
-            <div className="w-2/3 h-full shrink-0 border-l">
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={handleArtifactSplitResize}
+            className={cn(
+              'relative z-10 w-2 shrink-0 cursor-col-resize touch-none transition-opacity',
+              activeArtifactId
+                ? isArtifactSplitResizing
+                  ? 'opacity-100 pointer-events-auto'
+                  : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
+                : 'opacity-0 pointer-events-none'
+            )}
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+          </div>
+          <div
+            className={cn('h-full shrink-0 overflow-hidden', activeArtifactId && 'border-l')}
+            style={{
+              flexBasis: 0,
+              flexGrow: activeArtifactId ? 1 - artifactSplitRatio : 0,
+              maxWidth: activeArtifactId ? 'none' : 0,
+            }}
+          >
+            {activeArtifactId && (
               <ArtifactsPanel
                 artifactId={activeArtifactId}
                 onClose={() => setActiveArtifact(null)}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {pendingSessionSwitch && (
@@ -426,13 +548,20 @@ function RouteComponent() {
               <p className="mb-6 text-muted-foreground">
                 {content.sessionSwitch.message}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleInterruptSwitch}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  {content.sessionSwitch.interrupt}
+                </button>
                 <button
                   type="button"
                   onClick={handleCancelSwitch}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                 >
-                  {content.sessionSwitch.confirm}
+                  {content.sessionSwitch.cancel}
                 </button>
               </div>
             </div>
@@ -464,6 +593,10 @@ function RouteComponent() {
           <>
             <MainContent
               activeArtifactId={activeArtifactId}
+              artifactSplitRef={artifactSplitRef}
+              artifactSplitRatio={artifactSplitRatio}
+              isArtifactSplitResizing={isArtifactSplitResizing}
+              onArtifactSplitResize={handleArtifactSplitResize}
               hasAnySessions={hasAnySessions}
               sessionListExpanded={sessionListExpanded}
               currentSessionId={currentSessionId}
@@ -477,6 +610,7 @@ function RouteComponent() {
               isCreatingSession={isCreatingSession}
               pendingSessionSwitch={pendingSessionSwitch}
               handleCancelSwitch={handleCancelSwitch}
+              handleInterruptSwitch={handleInterruptSwitch}
             />
           </>
         )}
@@ -537,6 +671,10 @@ const EmptyStateContent: FC<{
  */
 const MainContent: FC<{
   activeArtifactId: string | null;
+  artifactSplitRef: MutableRefObject<HTMLDivElement | null>;
+  artifactSplitRatio: number;
+  isArtifactSplitResizing: boolean;
+  onArtifactSplitResize: (event: ReactPointerEvent<HTMLDivElement>) => void;
   hasAnySessions: boolean;
   sessionListExpanded: boolean;
   currentSessionId: string | null;
@@ -553,8 +691,13 @@ const MainContent: FC<{
     isNewSession: boolean;
   } | null;
   handleCancelSwitch: () => void;
+  handleInterruptSwitch: () => void;
 }> = ({
   activeArtifactId,
+  artifactSplitRef,
+  artifactSplitRatio,
+  isArtifactSplitResizing,
+  onArtifactSplitResize,
   hasAnySessions,
   sessionListExpanded,
   currentSessionId,
@@ -568,12 +711,53 @@ const MainContent: FC<{
   isCreatingSession,
   pendingSessionSwitch,
   handleCancelSwitch,
+  handleInterruptSwitch,
 }) => {
   const content = useIntlayer('claude-chat');
+  const chatPanel = (
+    <>
+      {/* Floating action buttons - only show when no artifact */}
+      {!activeArtifactId && (
+        <div className="absolute top-4 left-4 z-10 flex gap-2">
+          {hasAnySessions && (
+            <button
+              type="button"
+              onClick={() => setSessionListExpanded(!sessionListExpanded)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
+              aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+              title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
+            >
+              <FolderOpen className="h-4 w-4" />
+            </button>
+          )}
+          {!sessionListExpanded && (
+            <button
+              type="button"
+              onClick={handleNewSession}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              aria-label={toLocalizedString(content.header.newChat)}
+              title={toLocalizedString(content.header.newChat)}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
+      <ClaudeChatSurface
+        key={chatKey}
+        permissionInfo={permissionInfo}
+        hasSession={true}
+        isInitializingSession={isInitializingSession}
+        onStartSession={handleNewSession}
+        isCreatingSession={isCreatingSession}
+        hideScrollbars={Boolean(activeArtifactId)}
+      />
+    </>
+  );
 
   return (
     <>
-      <div className="flex h-full">
+      <div className={cn('flex h-full', activeArtifactId && 'group')} ref={artifactSplitRef}>
         {/* Session List - only show when no artifact AND user has sessions */}
         {!activeArtifactId && hasAnySessions && (
           <SessionList
@@ -586,53 +770,42 @@ const MainContent: FC<{
         )}
 
         {/* Chat Surface - always mounted, width changes based on artifact state */}
-        <div className={activeArtifactId ? "w-1/3 h-full shrink-0" : "flex-1 h-full relative"}>
-          {/* Floating action buttons - only show when no artifact */}
-          {!activeArtifactId && (
-            <div className="absolute top-4 left-4 z-10 flex gap-2">
-              {hasAnySessions && (
-                <button
-                  type="button"
-                  onClick={() => setSessionListExpanded(!sessionListExpanded)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-                  aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-                  title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-              )}
-              {!sessionListExpanded && (
-                <button
-                  type="button"
-                  onClick={handleNewSession}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                  aria-label={toLocalizedString(content.header.newChat)}
-                  title={toLocalizedString(content.header.newChat)}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          )}
-          <ClaudeChatSurface
-            key={chatKey}
-            permissionInfo={permissionInfo}
-            hasSession={true}
-            isInitializingSession={isInitializingSession}
-            onStartSession={handleNewSession}
-            isCreatingSession={isCreatingSession}
-          />
+        <div
+          className="h-full shrink-0 relative"
+          style={{ flexBasis: 0, flexGrow: activeArtifactId ? artifactSplitRatio : 1 }}
+        >
+          {chatPanel}
         </div>
-
-        {/* Artifacts Panel - only show when artifact exists */}
-        {activeArtifactId && (
-          <div className="w-2/3 h-full shrink-0 border-l">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={onArtifactSplitResize}
+          className={cn(
+            'relative z-10 w-2 shrink-0 cursor-col-resize touch-none transition-opacity',
+            activeArtifactId
+              ? isArtifactSplitResizing
+                ? 'opacity-100 pointer-events-auto'
+                : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
+              : 'opacity-0 pointer-events-none'
+          )}
+        >
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+        </div>
+        <div
+          className={cn('h-full shrink-0 overflow-hidden', activeArtifactId && 'border-l')}
+          style={{
+            flexBasis: 0,
+            flexGrow: activeArtifactId ? 1 - artifactSplitRatio : 0,
+            maxWidth: activeArtifactId ? 'none' : 0,
+          }}
+        >
+          {activeArtifactId && (
             <ArtifactsPanel
               artifactId={activeArtifactId}
               onClose={() => setActiveArtifact(null)}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {pendingSessionSwitch && (
@@ -644,13 +817,20 @@ const MainContent: FC<{
             <p className="mb-6 text-muted-foreground">
               {content.sessionSwitch.message}
             </p>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleInterruptSwitch}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                {content.sessionSwitch.interrupt}
+              </button>
               <button
                 type="button"
                 onClick={handleCancelSwitch}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
-                {content.sessionSwitch.confirm}
+                {content.sessionSwitch.cancel}
               </button>
             </div>
           </div>
@@ -672,7 +852,81 @@ async function hydrateArtifactsFromRegistry(sessionId: string) {
     getArtifactByFilePath,
   } = useArtifactsStore.getState();
 
-  for (const entry of registry) {
+  const imageEntries = registry.filter((entry) => entry.type === 'image');
+  const otherEntries = registry.filter((entry) => entry.type !== 'image');
+
+  if (imageEntries.length > 0) {
+    const grouped = new Map<string, typeof imageEntries>();
+
+    for (const entry of imageEntries) {
+      const key = entry.toolCallId
+        ? `tool:${entry.toolCallId}`
+        : entry.messageId
+          ? `msg:${entry.messageId}`
+          : `file:${entry.filePath}`;
+      const existing = grouped.get(key) ?? [];
+      existing.push(entry);
+      grouped.set(key, existing);
+    }
+
+    for (const groupEntries of grouped.values()) {
+      const imageFiles = (await Promise.all(
+        groupEntries.map(async (entry) => {
+          const mimeType = getMimeType(entry.filePath);
+          const content = await readWorkspaceBinaryFile(sessionId, entry.filePath, mimeType);
+          if (!content) return null;
+          return { filePath: entry.filePath, content, mimeType };
+        })
+      ))
+        .filter(Boolean) as Array<{ filePath: string; content: string; mimeType?: string }>;
+
+      if (imageFiles.length === 0) {
+        continue;
+      }
+
+      const primary = imageFiles[0];
+      const existing = getArtifactByFilePath(sessionId, primary.filePath);
+      const fileName = groupEntries[0]?.fileName || primary.filePath.split('/').pop() || primary.filePath;
+      const lineageData = {
+        toolCallId: groupEntries[0]?.toolCallId,
+        toolName: groupEntries[0]?.toolName,
+      };
+
+      if (existing) {
+        updateArtifact(existing.id, {
+          content: primary.content,
+          type: 'image',
+          title: groupEntries[0]?.title,
+          description: groupEntries[0]?.description,
+          fileName,
+          messageId: groupEntries[0]?.messageId,
+          sourceFilePath: primary.filePath,
+          sessionId,
+          isTemporary: false,
+          mimeType: primary.mimeType,
+          imageFiles,
+          ...lineageData,
+        });
+      } else {
+        createArtifact({
+          sessionId,
+          sourceFilePath: primary.filePath,
+          messageId: groupEntries[0]?.messageId,
+          type: 'image',
+          title: groupEntries[0]?.title,
+          description: groupEntries[0]?.description,
+          fileName,
+          content: primary.content,
+          isTemporary: false,
+          mimeType: primary.mimeType,
+          imageFiles,
+          ...lineageData,
+        });
+      }
+    }
+  }
+
+  for (const entry of otherEntries) {
     // P15 fix: Use binary reading for images to avoid corruption
     let content: string | null = null;
     let mimeType: string | undefined;
@@ -735,12 +989,14 @@ function ClaudeChatSurface({
   isInitializingSession,
   onStartSession,
   isCreatingSession,
+  hideScrollbars = false,
 }: {
   permissionInfo: PermissionInfo;
   hasSession: boolean;
   isInitializingSession: boolean;
   onStartSession?: () => void;
   isCreatingSession?: boolean;
+  hideScrollbars?: boolean;
 }) {
   const content = useIntlayer('claude-chat');
   const runtime = useLocalRuntime(ClaudeAgentWSAdapter);
@@ -768,6 +1024,13 @@ function ClaudeChatSurface({
     error?: string;
     isLoading: boolean;
   }>({ isOpen: false, content: '', filePath: '', isLoading: false });
+  const [imagePreview, setImagePreview] = useState<{
+    isOpen: boolean;
+    isLoading: boolean;
+    title?: string;
+    error?: string;
+    images: ArtifactImageFile[];
+  }>({ isOpen: false, isLoading: false, images: [] });
 
   useEffect(() => {
     let isCancelled = false;
@@ -788,6 +1051,115 @@ function ClaudeChatSurface({
     };
   }, [currentSessionId, loadSessionAttachments]);
 
+  const openWorkspaceImagePreview = useCallback(async (paths: string[], title?: string) => {
+    if (!currentSessionId) {
+      setImagePreview({
+        isOpen: true,
+        isLoading: false,
+        images: [],
+        title,
+        error: content.errors.noSession,
+      });
+      return;
+    }
+
+    setFilePreview((prev) => ({ ...prev, isOpen: false }));
+    setImagePreview({
+      isOpen: true,
+      isLoading: true,
+      images: [],
+      title,
+    });
+
+    try {
+      const images = (await Promise.all(
+        paths.map(async (path) => {
+          const mimeType = getMimeType(path);
+          const content = await readWorkspaceBinaryFile(currentSessionId, path, mimeType);
+          if (!content) return null;
+          return { filePath: path, content, mimeType };
+        })
+      ))
+        .filter(Boolean) as ArtifactImageFile[];
+
+      setImagePreview({
+        isOpen: true,
+        isLoading: false,
+        images,
+        title,
+        error: images.length === 0
+          ? toLocalizedString(content.errors.fileNotFound).replace('{path}', paths[0] || '')
+          : undefined,
+      });
+    } catch (error) {
+      setImagePreview({
+        isOpen: true,
+        isLoading: false,
+        images: [],
+        title,
+        error: error instanceof Error ? error.message : content.errors.readFailed,
+      });
+    }
+  }, [content, currentSessionId]);
+
+  const openSessionImagePreview = useCallback(async (path: string, title?: string) => {
+    if (!currentSessionId) {
+      setImagePreview({
+        isOpen: true,
+        isLoading: false,
+        images: [],
+        title,
+        error: content.errors.noSession,
+      });
+      return;
+    }
+
+    setFilePreview((prev) => ({ ...prev, isOpen: false }));
+    setImagePreview({
+      isOpen: true,
+      isLoading: true,
+      images: [],
+      title,
+    });
+
+    try {
+      const encodedPath = path.split('/').map((s) => encodeURIComponent(s)).join('/');
+      const response = await fetch(`/api/session/${currentSessionId}/file/${encodedPath}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const contentValue = typeof data.content === 'string' ? data.content : '';
+      const mimeType = typeof data.mimeType === 'string' ? data.mimeType : getMimeType(path);
+
+      if (!contentValue) {
+        setImagePreview({
+          isOpen: true,
+          isLoading: false,
+          images: [],
+          title,
+          error: toLocalizedString(content.errors.fileNotFound).replace('{path}', path),
+        });
+        return;
+      }
+
+      setImagePreview({
+        isOpen: true,
+        isLoading: false,
+        images: [{ filePath: path, content: contentValue, mimeType }],
+        title,
+      });
+    } catch (error) {
+      setImagePreview({
+        isOpen: true,
+        isLoading: false,
+        images: [],
+        title,
+        error: error instanceof Error ? error.message : content.errors.readFailed,
+      });
+    }
+  }, [content, currentSessionId]);
+
   // Handler for file path clicks - fetches file content and opens overlay
   const handleFileClick = useCallback(async (path: string) => {
     if (!currentSessionId) {
@@ -799,6 +1171,11 @@ function ClaudeChatSurface({
         error: content.errors.noSession,
         isLoading: false,
       });
+      return;
+    }
+
+    if (isImageFilePath(path)) {
+      await openWorkspaceImagePreview([path], path.split('/').pop() || path);
       return;
     }
 
@@ -839,7 +1216,7 @@ function ClaudeChatSurface({
         isLoading: false,
       });
     }
-  }, [currentSessionId, content]);
+  }, [currentSessionId, content, openWorkspaceImagePreview]);
 
   // Handler for session file clicks - uses session API (for files in session root, not just workspace/)
   // P12 fix: Session files panel uses this for browsing entire session directory
@@ -853,6 +1230,11 @@ function ClaudeChatSurface({
         error: content.errors.noSession,
         isLoading: false,
       });
+      return;
+    }
+
+    if (isImageFilePath(path)) {
+      await openSessionImagePreview(path, path.split('/').pop() || path);
       return;
     }
 
@@ -873,9 +1255,10 @@ function ClaudeChatSurface({
         throw new Error(`Failed to read file: ${response.statusText}`);
       }
       const data = await response.json();
+      const contentValue = typeof data.content === 'string' ? data.content : '';
       setFilePreview({
         isOpen: true,
-        content: data.content || '',
+        content: contentValue,
         filePath: path,
         isLoading: false,
       });
@@ -889,7 +1272,7 @@ function ClaudeChatSurface({
         isLoading: false,
       });
     }
-  }, [currentSessionId, content]);
+  }, [currentSessionId, content, openSessionImagePreview]);
 
   // Handler for URL clicks
   const handleUrlClick = useCallback((url: string) => {
@@ -907,6 +1290,7 @@ function ClaudeChatSurface({
   const [composerText, setComposerText] = useState('');
   const [isA2ComposerOpen, setIsA2ComposerOpen] = useState(false);
   const [isSkillsPanelOpen, setIsSkillsPanelOpen] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<{ slug: string; name?: string } | null>(null);
 
   // A2ComposerPanel reset handler
   const [a2ComposerKey, setA2ComposerKey] = useState(0);
@@ -918,6 +1302,14 @@ function ClaudeChatSurface({
   const handleSetComposerText = useCallback((text: string) => {
     composerRef.current?.setText(text);
     composerRef.current?.focus();
+  }, []);
+
+  const handleSelectSkill = useCallback((skill: { slug: string; name?: string }) => {
+    setSelectedSkill(skill);
+  }, []);
+
+  const handleClearSelectedSkill = useCallback(() => {
+    setSelectedSkill(null);
   }, []);
 
   // Handle message send - reset A2ComposerPanel
@@ -937,6 +1329,10 @@ function ClaudeChatSurface({
     setIsSkillsPanelOpen(open);
   }, []);
 
+  useEffect(() => {
+    setSelectedSkill(null);
+  }, [currentSessionId]);
+
 
   return (
     <FileHandlersContext.Provider value={{ onFileClick: handleFileClick, onSessionFileClick: handleSessionFileClick, onUrlClick: handleUrlClick }}>
@@ -948,7 +1344,12 @@ function ClaudeChatSurface({
             escTimeoutRef={escTimeoutRef}
           />
           <ThreadPrimitive.Root className="flex h-full flex-col items-stretch bg-background p-4 pt-16 font-sans">
-            <ThreadPrimitive.Viewport className="flex-1 min-h-0 overflow-y-auto">
+            <ThreadPrimitive.Viewport
+              className={cn(
+                'flex-1 min-h-0 overflow-y-auto',
+                hideScrollbars && 'scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]'
+              )}
+            >
               {/* Show empty state only when no historical messages and not initializing */}
               {!hasHistoricalMessages && !isInitializingSession && (
                 <ThreadPrimitive.Empty>
@@ -1021,6 +1422,7 @@ function ClaudeChatSurface({
                     onSetComposerText={handleSetComposerText}
                     onReset={handleA2ComposerReset}
                     onOpenChange={handleA2ComposerOpenChange}
+                    onSkillSelect={handleSelectSkill}
                   />
                 </div>
 
@@ -1041,6 +1443,9 @@ function ClaudeChatSurface({
                   onSend={handleComposerSend}
                   hideSkillsTrigger={isA2ComposerOpen}
                   onSkillsOpenChange={handleSkillsOpenChange}
+                  selectedSkill={selectedSkill}
+                  onClearSelectedSkill={handleClearSelectedSkill}
+                  onSkillSelect={handleSelectSkill}
                 />
               </>
             )}
@@ -1054,6 +1459,14 @@ function ClaudeChatSurface({
           content={filePreview.isLoading ? content.buttons.loading : filePreview.content}
           filePath={filePreview.filePath}
           error={filePreview.error}
+        />
+        <ImagePreviewOverlay
+          isOpen={imagePreview.isOpen}
+          onClose={() => setImagePreview(prev => ({ ...prev, isOpen: false }))}
+          images={imagePreview.images}
+          isLoading={imagePreview.isLoading}
+          error={imagePreview.error}
+          title={imagePreview.title}
         />
 
         {/* Esc interrupt overlay */}
@@ -1486,6 +1899,11 @@ const ChatMessage: FC = () => {
       .map((p) => p.text)
       .join('\n');
   }, [isUser, message]);
+  const userSkillMarker = useMemo(() => {
+    if (!isUser) return null;
+    const parsed = parseSkillMarker(userTextContent);
+    return { marker: parsed.marker, text: parsed.strippedText };
+  }, [isUser, userTextContent]);
 
   if (isUser) {
     return (
@@ -1504,9 +1922,14 @@ const ChatMessage: FC = () => {
                     <MessagePrimitive.Attachments components={{ Attachment: ClaudeMessageAttachment }} />
                   </div>
                 )}
+                {userSkillMarker?.marker && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SkillChip label={userSkillMarker.marker.name ?? userSkillMarker.marker.slug} />
+                  </div>
+                )}
                 <div className="wrap-break-word whitespace-normal">
                   <StreamingMarkdown
-                    content={userTextContent}
+                    content={userSkillMarker?.text ?? userTextContent}
                     isStreaming={false}
                     mode="minimal"
                     onUrlClick={onUrlClick}
@@ -1572,6 +1995,7 @@ const HistoricalMessage: FC<{
     .filter((p): p is TextContentPart => p.type === 'text')
     .map((p) => p.text)
     .join('\n');
+  const parsedSkill = useMemo(() => parseSkillMarker(textContent), [textContent]);
 
   // Artifact detection for assistant messages - pass full content array to support both text and tool-call detection
   const artifact = useArtifactDetection(message.id, isAssistant ? message.content : undefined);
@@ -1612,9 +2036,14 @@ const HistoricalMessage: FC<{
                     onFileClick={onFileClick}
                   />
                 )}
+                {parsedSkill.marker && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SkillChip label={parsedSkill.marker.name ?? parsedSkill.marker.slug} />
+                  </div>
+                )}
                 <div className="wrap-break-word whitespace-normal">
                   <StreamingMarkdown
-                    content={textContent}
+                    content={parsedSkill.strippedText}
                     isStreaming={false}
                     mode="minimal"
                     onUrlClick={onUrlClick}
@@ -1628,14 +2057,14 @@ const HistoricalMessage: FC<{
           <div className="pointer-events-none absolute right-2 bottom-0">
             <div className="pointer-events-auto min-w-max translate-x-1 translate-y-4 rounded-lg border bg-card/80 p-0.5 opacity-0 shadow-sm backdrop-blur-sm transition group-hover/user:translate-x-0.5 group-hover/user:opacity-100">
               <div className="flex items-center text-muted-foreground">
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(textContent)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-accent active:scale-95"
-                  aria-label={toLocalizedString(content.message.copy)}
-                >
-                  <ClipboardIcon width={20} height={20} />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(parsedSkill.strippedText)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-accent active:scale-95"
+                    aria-label={toLocalizedString(content.message.copy)}
+                  >
+                    <ClipboardIcon width={20} height={20} />
+                  </button>
               </div>
             </div>
           </div>

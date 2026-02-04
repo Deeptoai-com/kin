@@ -39,6 +39,7 @@ import { FolderOpen, FolderTree, Plus, ArrowUpIcon } from 'lucide-react';
 import { useCallback, useEffect, useState, useRef, useImperativeHandle } from 'react';
 import type { ChangeEvent, FormEvent, MutableRefObject } from 'react';
 import { ContextBadges } from './context-badges';
+import { SkillChip } from './skill-chip';
 import { KnowledgeBasePanel } from './knowledge-base-panel';
 import { SessionFilesPanel } from './session-files-panel';
 import { SessionInfoPanel, type SessionMetadata } from './session-info-panel';
@@ -50,6 +51,7 @@ import { toLocalizedString } from '~/lib/utils';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
 import { useChatSessionStore } from '~/lib/chat-session-store';
 import { useDraftAutoSave } from '~/lib/hooks/use-session-protection';
+import { buildSkillMarker, injectSkillMarker } from '~/lib/skills/skill-marker';
 
 /**
  * Uploaded workspace file status
@@ -97,6 +99,12 @@ export interface ChatComposerProps {
   onTextChange?: (text: string) => void;
   /** Called when user sends a message */
   onSend?: () => void;
+  /** Selected skill for explicit use */
+  selectedSkill?: { slug: string; name?: string } | null;
+  /** Clear selected skill */
+  onClearSelectedSkill?: () => void;
+  /** Select a skill from composer UI */
+  onSkillSelect?: (skill: { slug: string; name: string }) => void;
 }
 
 /**
@@ -159,6 +167,9 @@ export function ChatComposer({
   onSend,
   hideSkillsTrigger,
   onSkillsOpenChange,
+  selectedSkill,
+  onClearSelectedSkill,
+  onSkillSelect,
 }: ChatComposerProps) {
   const content = useIntlayer('claude-chat');
   const api = useAssistantApi();
@@ -339,27 +350,44 @@ export function ChatComposer({
     pendingAttachmentsRef.current = pendingAttachments.length > 0 ? pendingAttachments : null;
     const baseRunConfig = composerRunConfig ?? {};
     const baseCustom = (baseRunConfig.custom ?? {}) as Record<string, unknown>;
+    const { attachments: _ignoredAttachments, skill: _ignoredSkill, ...restCustom } = baseCustom;
+    const skillMarker = selectedSkill?.slug
+      ? buildSkillMarker(selectedSkill.slug, selectedSkill.name)
+      : null;
     const nextRunConfig = {
       ...baseRunConfig,
       custom: {
-        ...baseCustom,
+        ...restCustom,
         attachments: pendingAttachments,
+        ...(selectedSkill?.slug ? { skill: { slug: selectedSkill.slug, name: selectedSkill.name } } : {}),
       },
     };
     api.composer().setRunConfig(nextRunConfig);
-    // Notify parent before sending (for auto-collapse A2ComposerPanel)
-    onSend?.();
-    api.composer().send();
-    if (Object.prototype.hasOwnProperty.call(baseCustom, 'attachments')) {
-      const { attachments: _ignored, ...restCustom } = baseCustom;
-      api.composer().setRunConfig({
-        ...baseRunConfig,
-        custom: restCustom,
-      });
-    } else {
-      api.composer().setRunConfig(baseRunConfig);
+    const sendNow = () => {
+      // Notify parent before sending (for auto-collapse A2ComposerPanel)
+      onSend?.();
+      api.composer().send();
+      if (Object.prototype.hasOwnProperty.call(baseCustom, 'attachments') || Object.prototype.hasOwnProperty.call(baseCustom, 'skill')) {
+        api.composer().setRunConfig({
+          ...baseRunConfig,
+          custom: restCustom,
+        });
+      } else {
+        api.composer().setRunConfig(baseRunConfig);
+      }
+    };
+
+    if (skillMarker) {
+      const nextText = injectSkillMarker(composerText, skillMarker);
+      if (nextText !== composerText) {
+        api.composer().setText(nextText);
+        queueMicrotask(sendNow);
+        return;
+      }
     }
-  }, [api, canSend, composerHasText, isRunning, uploadedFiles, onSend, composerRunConfig]);
+
+    sendNow();
+  }, [api, canSend, composerHasText, isRunning, uploadedFiles, onSend, composerRunConfig, composerText, selectedSkill]);
 
   return (
     <ComposerPrimitive.Root
@@ -375,7 +403,17 @@ export function ChatComposer({
             onExampleSelect={handleExampleSelect}
             onSkillsOpenChange={onSkillsOpenChange}
             hideSkillsTrigger={hideSkillsTrigger}
+            onSkillSelect={onSkillSelect}
           />
+        )}
+        {selectedSkill?.slug && (
+          <div className="flex flex-wrap items-center gap-2">
+            <SkillChip
+              label={selectedSkill.name ?? selectedSkill.slug}
+              onRemove={onClearSelectedSkill}
+              className="bg-foreground/90 text-background"
+            />
+          </div>
         )}
         <div className="relative z-10">
           <div className="wrap-break-word max-h-96 w-full overflow-y-auto">

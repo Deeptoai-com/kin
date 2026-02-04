@@ -84,9 +84,21 @@ async function downloadImage(url, outputPath) {
   return outputPath;
 }
 
+function formatTimestamp(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}${month}${day}-${hours}${minutes}${seconds}`;
+}
+
 function normalizeOutputPath(imagePath, cwd) {
   if (!imagePath) {
-    return path.join(cwd, 'generated.png');
+    const timestamp = formatTimestamp(new Date());
+    return path.join(cwd, `generated-${timestamp}.png`);
   }
 
   // If absolute path, use as-is

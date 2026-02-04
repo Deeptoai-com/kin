@@ -35,6 +35,7 @@ interface ContextBadgesProps {
   onExampleSelect?: (prompt: string) => void;
   onSkillsOpenChange?: (open: boolean) => void;
   hideSkillsTrigger?: boolean;
+  onSkillSelect?: (skill: { slug: string; name: string }) => void;
 }
 
 type SkillExample = { title?: string; prompt: string };
@@ -61,6 +62,7 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
   onExampleSelect,
   onSkillsOpenChange,
   hideSkillsTrigger,
+  onSkillSelect,
 }) => {
   const content = useIntlayer('claude-chat');
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -196,7 +198,21 @@ export const ContextBadges: FC<ContextBadgesProps> = ({
               )}
               {skillEntries.map((skill) => (
                 <div key={skill.slug} className="px-1 py-2">
-                  <div className="px-2 text-xs font-medium text-foreground">{skill.name}</div>
+                  <div className="flex items-center justify-between px-2">
+                    <div className="text-xs font-medium text-foreground">{skill.name}</div>
+                    {onSkillSelect && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSkillSelect({ slug: skill.slug, name: skill.name });
+                          setSkillsOpen(false);
+                        }}
+                        className="rounded-full border border-border/50 px-2 py-0.5 text-[10px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                      >
+                        使用
+                      </button>
+                    )}
+                  </div>
                   {skill.examples.length > 0 ? (
                     <div className="mt-1 space-y-1">
                       {skill.examples.map((example, index) => (

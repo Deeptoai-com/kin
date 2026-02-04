@@ -76,6 +76,27 @@ const ACTION_WORDS = [
 // Spinner animation characters
 const SPINNERS = ['✻', '✹', '✸', '✶'];
 
+type ToolNameVariant = 'full' | 'compact';
+
+const formatToolName = (toolName: string, variant: ToolNameVariant = 'full') => {
+  if (toolName.startsWith('mcp__')) {
+    const parts = toolName.split('__');
+    const server = parts[1] || 'mcp';
+    const tool = parts.length > 2 ? parts.slice(2).join('__') : '';
+    if (variant === 'full' && tool) {
+      return `MCP · ${server} · ${tool}`;
+    }
+    return `MCP · ${server}`;
+  }
+  return toolName;
+};
+
+const truncateLabel = (value: string, maxLength: number) => {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 3) return value.slice(0, maxLength);
+  return value.slice(0, maxLength - 3) + '...';
+};
+
 export const ClaudeStatus: FC<ClaudeStatusProps> = ({
   status,
   toolName,
@@ -121,7 +142,7 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
   // Compute display text
   const getStatusText = () => {
     if (status === 'toolUse' && toolName) {
-      return `${toolName}`;
+      return formatToolName(toolName, 'full');
     }
     if (status === 'thinking') {
       // Cycle through action words every 3 seconds
@@ -175,7 +196,7 @@ export const ClaudeStatus: FC<ClaudeStatusProps> = ({
           {/* Tool name badge */}
           {status === 'toolUse' && toolName && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-              {toolName}
+              {formatToolName(toolName, 'compact')}
             </span>
           )}
         </div>
@@ -209,7 +230,7 @@ export const InlineStatus: FC<{
   if (status === 'idle') return null;
 
   const text = status === 'toolUse' && toolName
-    ? `工具执行中：${toolName}`
+    ? `工具执行中：${formatToolName(toolName, 'compact')}`
     : `${config.baseText}...`;
 
   return (
@@ -270,9 +291,8 @@ export const ToolbarStatus: FC<{
   // Compute display text
   const getStatusText = () => {
     if (status === 'toolUse' && toolName) {
-      // Truncate long tool names
-      const name = toolName.length > 12 ? toolName.slice(0, 12) + '...' : toolName;
-      return name;
+      const name = formatToolName(toolName, 'compact');
+      return truncateLabel(name, 16);
     }
     if (status === 'thinking') {
       const actionIndex = Math.floor(elapsedTime / 3) % ACTION_WORDS.length;

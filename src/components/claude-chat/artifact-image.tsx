@@ -6,14 +6,16 @@
  */
 
 import type { FC } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Button } from '~/components/ui/button';
+import type { ArtifactImageFile } from '~/lib/stores/artifacts-store';
 
 interface ImageArtifactProps {
   content: string;
   title?: string;
   mimeType?: string;
+  images?: ArtifactImageFile[];
 }
 
 /**
@@ -40,15 +42,33 @@ export const ImageArtifact: FC<ImageArtifactProps> = ({
   content,
   title,
   mimeType,
+  images,
 }) => {
+  const imageList = (images && images.length > 0)
+    ? images
+    : [{ filePath: title || 'image', content, mimeType }];
+  const [activeIndex, setActiveIndex] = useState(0);
   const [scale, setScale] = useState(1);
   const [error, setError] = useState(false);
 
-  const imageSrc = getImageSrc(content, mimeType);
+  const activeImage = imageList[Math.min(activeIndex, imageList.length - 1)];
+  const imageSrc = getImageSrc(activeImage?.content || content, activeImage?.mimeType || mimeType);
 
   const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 3));
   const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.25));
   const handleReset = () => setScale(1);
+  const handlePrev = () => setActiveIndex((idx) => Math.max(idx - 1, 0));
+  const handleNext = () => setActiveIndex((idx) => Math.min(idx + 1, imageList.length - 1));
+  const hasMultiple = imageList.length > 1;
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [imageList.length]);
+
+  useEffect(() => {
+    setScale(1);
+    setError(false);
+  }, [activeIndex, imageList.length]);
 
   if (error) {
     return (
@@ -96,6 +116,32 @@ export const ImageArtifact: FC<ImageArtifactProps> = ({
         >
           <RotateCcw className="h-4 w-4" />
         </Button>
+        {hasMultiple && (
+          <>
+            <div className="mx-2 h-4 w-px bg-border" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePrev}
+              disabled={activeIndex === 0}
+              className="h-8 px-2 text-xs"
+            >
+              上一张
+            </Button>
+            <span className="min-w-[4rem] text-center text-xs text-muted-foreground">
+              {activeIndex + 1}/{imageList.length}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNext}
+              disabled={activeIndex >= imageList.length - 1}
+              className="h-8 px-2 text-xs"
+            >
+              下一张
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Image container */}

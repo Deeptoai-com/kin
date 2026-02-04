@@ -1,5 +1,5 @@
-import { FC, useState, useEffect, useMemo } from 'react';
-import { X, File, Folder, FolderOpen, ChevronRight, ChevronDown, Copy, Check, Download } from 'lucide-react';
+import { FC, useState, useEffect, useMemo, useRef } from 'react';
+import { X, File, Folder, FolderOpen, ChevronRight, ChevronDown, Copy, Check, Download, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -68,12 +68,15 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
   const [selectedFile, setSelectedFile] = useState<SkillFile | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['/']));
   const [copied, setCopied] = useState(false);
+  const [isExpandedView, setIsExpandedView] = useState(false);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Reset state when skill changes
   useEffect(() => {
     if (skill) {
       setSelectedFile(null);
       setExpandedDirs(new Set(['/']));
+      setIsExpandedView(false);
     }
   }, [skill?.slug]);
 
@@ -89,6 +92,12 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
       }
     }
   }, [skill, selectedFile]);
+
+  useEffect(() => {
+    if (contentScrollRef.current) {
+      contentScrollRef.current.scrollTop = 0;
+    }
+  }, [selectedFile?.path]);
 
   // Parse SKILL.md frontmatter for title/description
   const skillMdParsed = useMemo(() => {
@@ -141,68 +150,74 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
         className="flex h-[85vh] w-[92vw] max-w-7xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header - Skill Info with Large Icon */}
-        <div className="flex items-stretch border-b">
-          {/* Large Icon Area - matches header height, no background */}
-          <div className="flex items-center justify-center p-6">
-            {skill.iconUrl ? (
-              <img
-                src={skill.iconUrl}
-                alt={displayName}
-                className="w-32 h-32 object-contain"
-                onError={(e) => {
-                  // Fallback to letter avatar on error
-                  e.currentTarget.style.display = 'none';
-                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                }}
-              />
-            ) : null}
-            <div
-              className={cn(
-                "w-32 h-32 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-4xl font-bold text-primary",
-                skill.iconUrl && "hidden"
-              )}
-            >
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-          </div>
-
-          {/* Title & Description */}
-          <div className="flex-1 flex flex-col justify-center px-8 py-6">
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-2xl font-bold tracking-tight">{displayName}</h2>
-              {skill.store === 'user' && (
-                <Badge variant="outline" className="text-xs">
-                  {content.card.custom}
-                </Badge>
-              )}
-            </div>
-            {displayDescription && (
-              <p className="text-base text-muted-foreground max-w-2xl leading-relaxed">
-                {displayDescription}
-              </p>
-            )}
-            {skill.category && (
-              <div className="flex items-center gap-2 mt-3">
-                <Badge variant="secondary" className="text-xs font-normal">
-                  {skill.category}
-                </Badge>
+        {!isExpandedView && (
+          <div className="flex items-stretch border-b">
+            {/* Large Icon Area - matches header height, no background */}
+            <div className="flex items-center justify-center p-6">
+              {skill.iconUrl ? (
+                <img
+                  src={skill.iconUrl}
+                  alt={displayName}
+                  className="w-32 h-32 object-contain"
+                  onError={(e) => {
+                    // Fallback to letter avatar on error
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div
+                className={cn(
+                  "w-32 h-32 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-4xl font-bold text-primary",
+                  skill.iconUrl && "hidden"
+                )}
+              >
+                {displayName.charAt(0).toUpperCase()}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Close Button */}
-          <div className="p-4">
-            <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
-              <X className="h-5 w-5" />
-            </Button>
+            {/* Title & Description */}
+            <div className="flex-1 flex flex-col justify-center px-8 py-6">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-2xl font-bold tracking-tight">{displayName}</h2>
+                {skill.store === 'user' && (
+                  <Badge variant="outline" className="text-xs">
+                    {content.card.custom}
+                  </Badge>
+                )}
+              </div>
+              {displayDescription && (
+                <p className="text-base text-muted-foreground max-w-2xl leading-relaxed">
+                  {displayDescription}
+                </p>
+              )}
+              {skill.category && (
+                <div className="flex items-center gap-2 mt-3">
+                  <Badge variant="secondary" className="text-xs font-normal">
+                    {skill.category}
+                  </Badge>
+                </div>
+              )}
+            </div>
+
+            {/* Close Button */}
+            <div className="p-4">
+              <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Content Area */}
         <div className="flex flex-1 overflow-hidden">
           {/* File Tree Sidebar */}
-          <div className="w-64 border-r bg-muted/30 overflow-y-auto">
+          <div
+            className={cn(
+              'w-[13rem] shrink-0 border-r bg-muted/30 overflow-y-auto',
+              isExpandedView && 'hidden'
+            )}
+          >
             <div className="p-4">
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {content.detail.filesLabel}
@@ -253,11 +268,30 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
                         )}
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsExpandedView((prev) => !prev)}
+                      className="h-8 w-8"
+                      aria-label={isExpandedView ? '退出全屏' : '全屏查看'}
+                      title={isExpandedView ? '退出全屏' : '全屏查看'}
+                    >
+                      {isExpandedView ? (
+                        <Minimize2 className="h-4 w-4" />
+                      ) : (
+                        <Maximize2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                    {isExpandedView && (
+                      <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 
                 {/* File Content */}
-                <div className="flex-1 overflow-y-auto">
+                <div ref={contentScrollRef} className="flex-1 overflow-y-auto">
                   <FileContent file={selectedFile} />
                 </div>
               </>
@@ -269,20 +303,21 @@ export const SkillDetailDialog: FC<SkillDetailDialogProps> = ({
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 border-t px-6 py-4 bg-muted/20">
-          {onToggleInstall && (
-            <Button
-              variant={isInstalled ? 'outline' : 'default'}
-              onClick={onToggleInstall}
-              className={cn(
-                isInstalled && 'text-destructive hover:text-destructive hover:bg-destructive/10'
-              )}
-            >
-              {isInstalled ? content.detail.uninstall : content.detail.install}
-            </Button>
-          )}
-        </div>
+        {!isExpandedView && (
+          <div className="flex items-center justify-end gap-3 border-t px-6 py-4 bg-muted/20">
+            {onToggleInstall && (
+              <Button
+                variant={isInstalled ? 'outline' : 'default'}
+                onClick={onToggleInstall}
+                className={cn(
+                  isInstalled && 'text-destructive hover:text-destructive hover:bg-destructive/10'
+                )}
+              >
+                {isInstalled ? content.detail.uninstall : content.detail.install}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -385,6 +385,17 @@ function generateSessionId() {
   return crypto.randomUUID();
 }
 
+function stripSkillMarker(prompt) {
+  if (typeof prompt !== 'string' || prompt.length === 0) return '';
+  const lines = prompt.split(/\r?\n/);
+  if (!lines.length) return prompt;
+  const first = lines[0].trim();
+  if (first.startsWith('[[skill:') && first.endsWith(']]')) {
+    return lines.slice(1).join('\n').trim();
+  }
+  return prompt.trim();
+}
+
 /**
  * Sanitize userId/sessionId to prevent path traversal attacks
  */
@@ -645,7 +656,7 @@ async function handleCreateSession(ws) {
  * Note: Thinking/reasoning is handled by SDK's claude_code preset automatically
  */
 async function handleChat(ws, prompt, resumeSessionId, options = {}) {
-  const { silentInit = false } = options;
+  const { silentInit = false, skillSlug = null } = options;
   // Kill any existing worker for this connection
   if (ws.workerProcess) {
     console.log('[WS Server] Killing existing worker process');
@@ -679,9 +690,10 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       !existingSession.title ||
       defaultTitles.includes(existingSession.title)
     );
+    const cleanedPromptForTitle = stripSkillMarker(prompt);
     const sessionTitle = silentInit
       ? null
-      : ((!resumeSessionId || hasPlaceholderTitle) ? prompt.slice(0, 50).trim() : null);
+      : ((!resumeSessionId || hasPlaceholderTitle) ? cleanedPromptForTitle.slice(0, 50).trim() : null);
 
     if (hasPlaceholderTitle) {
       console.log(`[WS Server] Updating placeholder title to: "${sessionTitle}"`);
@@ -766,6 +778,7 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // Pass sdkResumeId for SDK conversation resume
     const request = JSON.stringify({
       prompt,
+      skillSlug,
       sdkResumeId,
       permissionMode,
       disallowedTools,
@@ -970,7 +983,7 @@ async function handleMessage(ws, msg) {
         });
         return;
       }
-      await handleChat(ws, message.content, message.sessionId);
+      await handleChat(ws, message.content, message.sessionId, { skillSlug: message.skillSlug });
       break;
 
     case 'resume':

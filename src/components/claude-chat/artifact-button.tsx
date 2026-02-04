@@ -7,7 +7,9 @@
 
 import { Eye, FileCode, FileImage, FileText, Braces, Table } from 'lucide-react'
 import type { FC } from 'react'
+import { useIntlayer } from 'react-intlayer'
 import { Button } from '~/components/ui/button'
+import { toLocalizedString } from '~/lib/utils'
 
 export interface ArtifactButtonProps {
   onClick: () => void
@@ -46,10 +48,18 @@ export const ArtifactButton: FC<ArtifactButtonProps> = ({
   filePath,
   isTemporary,
 }) => {
-  const label = labelMap[type]
+  const content = useIntlayer('claude-chat')
+  const typeLabels = (content.artifacts?.typeLabels ?? {}) as Record<string, unknown>
+  const label = toLocalizedString(typeLabels[type] ?? labelMap[type])
   const Icon = iconMap[type]
-  const displayName = title || fileName || filePath?.split('/').pop() || `${label} Artifact`
+  const fallbackNameTemplate = toLocalizedString(content.artifacts?.fallbackName)
+  const displayName = title
+    || fileName
+    || filePath?.split('/').pop()
+    || (fallbackNameTemplate ? fallbackNameTemplate.replace('{type}', label) : `${label} Artifact`)
   const meta = fileName || filePath?.split('/').pop()
+  const openArtifactLabel = toLocalizedString(content.artifacts?.openArtifact)
+  const previewBadge = toLocalizedString(content.artifacts?.previewBadge)
 
   return (
     <div className="mt-4 rounded-xl border bg-card/70 p-3 shadow-sm">
@@ -63,14 +73,14 @@ export const ArtifactButton: FC<ArtifactButtonProps> = ({
           <div className="text-xs text-muted-foreground">
             {label}
             {meta ? ` · ${meta}` : ''}
-            {isTemporary ? ' · preview' : ''}
+            {isTemporary && previewBadge ? ` · ${previewBadge}` : ''}
           </div>
         </div>
 
         <div className="ml-auto">
           <Button size="sm" onClick={onClick} className="gap-2">
             <Eye className="h-4 w-4" />
-            Open Artifact
+            {openArtifactLabel || 'Open Artifact'}
           </Button>
         </div>
       </div>

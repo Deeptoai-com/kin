@@ -7,6 +7,8 @@
  */
 
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createPathSecurity } from './src/claude/path-security.js';
@@ -68,6 +70,37 @@ function resolveDisallowedTools(permissionMode, requestedDisallowedTools, allowB
     return [];
   }
   return ['Bash'];
+}
+
+function normalizeSkillSlug(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/[^A-Za-z0-9-_]/g, '_');
+}
+
+async function loadSkillContext(skillSlug, workspaceCwd) {
+  const normalized = normalizeSkillSlug(skillSlug);
+  if (!normalized) return null;
+  const candidates = [
+    path.join(workspaceCwd, '.claude', 'skills', normalized, 'SKILL.md'),
+    path.join(workspaceCwd, '.claude', 'skills', 'user', normalized, 'SKILL.md'),
+  ];
+
+  for (const filePath of candidates) {
+    try {
+      const content = await readFile(filePath, 'utf8');
+      if (content && content.trim()) {
+        console.error(`[Worker] Loaded SKILL.md (${content.length} chars) from ${filePath}`);
+        return { slug: normalized, content };
+      }
+    } catch (error) {
+      if (error && error.code !== 'ENOENT') {
+        console.error(`[Worker] Failed to read SKILL.md at ${filePath}:`, error.message || error);
+      }
+    }
+  }
+
+  console.error(`[Worker] SKILL.md not found for ${normalized}`);
+  return null;
 }
 
 // Define Artifact Schema for Structured Outputs
@@ -139,6 +172,7 @@ process.stdin.on('end', async () => {
     const request = JSON.parse(inputData);
     const {
       prompt,
+      skillSlug,
       sdkResumeId,
       permissionMode: requestedPermissionMode,
       disallowedTools: requestedDisallowedTools,
@@ -172,6 +206,9 @@ process.stdin.on('end', async () => {
     console.error(`[Worker]   Prompt length: ${prompt.length} chars`);
     if (sdkResumeId) {
       console.error(`[Worker]   SDK Resume ID: ${sdkResumeId}`);
+    }
+    if (skillSlug) {
+      console.error(`[Worker]   Selected Skill: ${skillSlug}`);
     }
 
     const useStructuredOutputs = process.env.ENABLE_STRUCTURED_OUTPUTS === 'true';
@@ -382,6 +419,11 @@ Example bad operations:
 - Read("/etc/passwd")                ← DON'T access system files
 - Write(".claude/skills/my-skill/SKILL.md", "...")  ← DON'T write to skills`;
 
+    const skillContext = await loadSkillContext(skillSlug, config.cwd);
+    const skillAppend = skillContext
+      ? `\n\n[Explicit Skill Selected: ${skillContext.slug}]\n${skillContext.content}\n[End Skill]\n`
+      : '';
+
     const stream = query({
       prompt,
       options: {
@@ -409,7 +451,7 @@ Example bad operations:
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
-          append: workspaceInstructions,
+          append: `${workspaceInstructions}${skillAppend}`,
         },
         // Enable Structured Outputs for artifact metadata (optional, controlled by env var)
         // IMPORTANT: Use 'outputFormat' parameter (not 'structuredOutput')

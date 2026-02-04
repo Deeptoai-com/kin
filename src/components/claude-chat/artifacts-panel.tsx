@@ -431,6 +431,7 @@ export const ArtifactsPanel: FC<ArtifactsPanelProps> = ({ artifactId, onClose })
             content={artifact.content}
             title={artifact.title}
             mimeType={artifact.mimeType}
+            images={artifact.imageFiles}
           />
         )}
         {artifact.type === 'json' && (

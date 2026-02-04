@@ -20,6 +20,7 @@ import {
   writeWorkspaceFile,
   type ArtifactRegistryEntry,
 } from '~/lib/artifacts/artifact-registry'
+import { extractImagePaths } from '~/lib/artifacts/image-utils'
 
 // Import the proper type from chat-session-store
 import type { ContentPart } from '~/lib/chat-session-store'
@@ -37,6 +38,12 @@ type ArtifactTarget = {
   toolCallId: string
   toolName: string
   content?: string
+}
+
+type ImageTargetGroup = {
+  toolCallId: string
+  toolName: string
+  filePaths: string[]
 }
 
 const ARTIFACT_EXTENSIONS: Array<{ ext: string; type: ArtifactType }> = [
@@ -111,6 +118,31 @@ function extractArtifactTargets(
   }
 
   return targets
+}
+
+function extractImageGroupsFromToolResults(
+  content: ContentPart[],
+  options: { requireResult?: boolean } = {}
+): ImageTargetGroup[] {
+  const requireResult = options.requireResult ?? true
+  const groups: ImageTargetGroup[] = []
+
+  for (const part of content) {
+    if (part.type !== 'tool-call') continue
+    if (requireResult && part.result === undefined) continue
+    const toolName = part.toolName.toLowerCase()
+    if (toolName === 'write' || toolName === 'edit') continue
+    const filePaths = extractImagePaths(part.args, part.result)
+      .filter((path) => Boolean(path))
+    if (filePaths.length === 0) continue
+    groups.push({
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      filePaths: Array.from(new Set(filePaths)),
+    })
+  }
+
+  return groups
 }
 
 /**
@@ -189,6 +221,10 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             // P15: Add mimeType for images
             const mimeType = target.type === 'image' ? getMimeType(target.filePath) : undefined
 
+            const imageFiles = target.type === 'image'
+              ? [{ filePath: target.filePath, content: contentToUse, mimeType }]
+              : undefined
+
             if (existing) {
               updateArtifact(existing.id, {
                 content: contentToUse,
@@ -197,6 +233,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 messageId,
                 isTemporary: false,
                 mimeType,
+                imageFiles,
                 // P14: Tool-to-Artifact Lineage
                 toolCallId: target.toolCallId,
                 toolName: target.toolName,
@@ -212,6 +249,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 fileName: target.fileName,
                 isTemporary: false,
                 mimeType,
+                imageFiles,
                 // P14: Tool-to-Artifact Lineage
                 toolCallId: target.toolCallId,
                 toolName: target.toolName,
@@ -251,6 +289,103 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
       }
     }
 
+    // Handle tool results that create images without Write/Edit (e.g., MCP image generation)
+    const imageGroups = extractImageGroupsFromToolResults(content, { requireResult: true })
+    if (imageGroups.length > 0) {
+      const pendingGroups = imageGroups.filter((group) => {
+        if (processedToolCallsRef.current.has(group.toolCallId)) return false
+        if (processingToolCallsRef.current.has(group.toolCallId)) return false
+        return true
+      })
+
+      if (pendingGroups.length === 0) {
+        return
+      }
+
+      let isCancelled = false
+      const runImages = async () => {
+        for (const group of pendingGroups) {
+          processingToolCallsRef.current.add(group.toolCallId)
+          try {
+            if (!sessionId) continue
+            const imageFiles = (await Promise.all(
+              group.filePaths.map(async (filePath) => {
+                const mimeType = getMimeType(filePath)
+                const content = await readWorkspaceBinaryFile(sessionId, filePath, mimeType)
+                if (!content) return null
+                return { filePath, content, mimeType }
+              })
+            ))
+              .filter(Boolean) as Array<{ filePath: string; content: string; mimeType?: string }>
+
+            if (isCancelled || imageFiles.length === 0) {
+              continue
+            }
+
+            const primary = imageFiles[0]
+            const existing = getArtifactByFilePath(sessionId, primary.filePath)
+            const fileName = primary.filePath.split('/').pop() || primary.filePath
+
+            if (existing) {
+              updateArtifact(existing.id, {
+                content: primary.content,
+                type: 'image',
+                fileName,
+                messageId,
+                isTemporary: false,
+                mimeType: primary.mimeType,
+                imageFiles,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: group.toolCallId,
+                toolName: group.toolName,
+              })
+              setActiveArtifact(existing.id)
+            } else {
+              const artifactId = createArtifact({
+                sessionId,
+                sourceFilePath: primary.filePath,
+                messageId,
+                type: 'image',
+                content: primary.content,
+                fileName,
+                isTemporary: false,
+                mimeType: primary.mimeType,
+                imageFiles,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: group.toolCallId,
+                toolName: group.toolName,
+              })
+              setActiveArtifact(artifactId)
+            }
+
+            processedToolCallsRef.current.add(group.toolCallId)
+
+            for (const image of imageFiles) {
+              await saveArtifactRegistryEntry(sessionId, {
+                filePath: image.filePath,
+                type: 'image',
+                fileName: image.filePath.split('/').pop() || image.filePath,
+                messageId,
+                updatedAt: Date.now(),
+                toolCallId: group.toolCallId,
+                toolName: group.toolName,
+              }, image.content)
+            }
+          } catch (error) {
+            console.error('[Artifact Detection] Failed to process image tool result:', error)
+          } finally {
+            processingToolCallsRef.current.delete(group.toolCallId)
+          }
+        }
+      }
+
+      runImages()
+
+      return () => {
+        isCancelled = true
+      }
+    }
+
     // Map existing artifacts to this message using file path (for historical sessions)
     const linkTargets = extractArtifactTargets(content, { requireResult: false })
     if (linkTargets.length > 0 && sessionId) {
@@ -284,6 +419,10 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
 
           const mimeType = target.type === 'image' ? getMimeType(target.filePath) : undefined
 
+          const imageFiles = target.type === 'image'
+            ? [{ filePath: target.filePath, content: fileContent, mimeType }]
+            : undefined
+
           createArtifact({
             sessionId,
             sourceFilePath: target.filePath,
@@ -293,6 +432,7 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             fileName: target.fileName,
             isTemporary: false,
             mimeType,
+            imageFiles,
             // P14: Tool-to-Artifact Lineage
             toolCallId: target.toolCallId,
             toolName: target.toolName,

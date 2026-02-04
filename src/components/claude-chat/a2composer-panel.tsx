@@ -29,9 +29,11 @@ interface A2ComposerPanelProps {
   onReset?: () => void;
   /** Notify parent when panel open state changes (expanded vs minimized) */
   onOpenChange?: (open: boolean) => void;
+  /** Explicitly select a skill for this message */
+  onSkillSelect?: (skill: { slug: string; name: string }) => void;
 }
 
-export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOpenChange }: A2ComposerPanelProps) {
+export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOpenChange, onSkillSelect }: A2ComposerPanelProps) {
   // Panel state
   const [isMinimized, setIsMinimized] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<string>('');
@@ -195,6 +197,8 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOp
         if (result?.enabledNow) {
           addTemporarySkill(result.skillName ?? template.skillId);
         }
+        const matchedSkill = skills.find((skill) => skill.slug === template.skillId);
+        onSkillSelect?.({ slug: template.skillId, name: matchedSkill?.name ?? template.skillId });
       } catch (error) {
         console.error('[A2Composer] Failed to auto-enable skill:', error);
       }

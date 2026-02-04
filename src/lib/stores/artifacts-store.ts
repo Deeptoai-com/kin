@@ -7,6 +7,12 @@
 
 import { create } from 'zustand'
 
+export type ArtifactImageFile = {
+  filePath: string
+  content: string
+  mimeType?: string
+}
+
 export interface Artifact {
   id: string
   sessionId: string
@@ -18,6 +24,7 @@ export interface Artifact {
   fileName?: string // File name for React artifacts (e.g., "App.jsx")
   content: string // Complete HTML, SVG, Markdown, or React code
   mimeType?: string // MIME type for images (e.g., "image/png")
+  imageFiles?: ArtifactImageFile[] // For multi-image artifacts
   isTemporary?: boolean // True if created by heuristic detection, false if from Structured Outputs
   // P14: Tool-to-Artifact Lineage
   toolCallId?: string // ID of the tool call that produced this artifact
@@ -153,7 +160,13 @@ export const useArtifactsStore = create<ArtifactsState>((set, get) => ({
    */
   getArtifactByFilePath: (sessionId, filePath) => {
     return Array.from(get().artifacts.values()).find(
-      (artifact) => artifact.sessionId === sessionId && artifact.sourceFilePath === filePath
+      (artifact) => {
+        if (artifact.sessionId !== sessionId) return false
+        if (artifact.sourceFilePath === filePath) return true
+        return Array.isArray(artifact.imageFiles)
+          ? artifact.imageFiles.some((image) => image.filePath === filePath)
+          : false
+      }
     )
   },
 
