@@ -4,7 +4,7 @@
  * AI SDK Chat Surface with Mastra Memory Support
  *
  * Implementation based on ui-dojo (Mastra + Vercel AI SDK + UI Elements)
- * Adapted for OxyGenie with TanStack Router and GLM-4.7
+ * Adapted for OxyGenie with TanStack Router and GLM-5.0
  * Now supports:
  * - Multiple agents with thread-based conversations
  * - Session sidebar for managing threads

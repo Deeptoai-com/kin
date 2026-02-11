@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
-OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。它替代通用型 GPT 产品（ChatGPT、豆包、DeepSeek），提供 Skills Store、MCP 集成、Artifacts 生成和 Python 代码执行等高级能力 - 支持私有化部署，兼容 GLM 4.7 等性价比高的模型。
+OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。它替代通用型 GPT 产品（ChatGPT、豆包、DeepSeek），提供 Skills Store、MCP 集成、Artifacts 生成和 Python 代码执行等高级能力 - 支持私有化部署，兼容 GLM 5.0 等性价比高的模型。
 
 基于 Claude Agent SDK 和 TanStack Start 构建，OxyGenie 提供 Web 优先的 AI 工具替代方案，具备一键式 Skills 和 MCP 集成、实时流式传输、会话持久化，以及美观流畅的 UI。
 
@@ -12,7 +12,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
 - 🔌 **一键式 Skills & MCP**：即时扩展能力，无需复杂配置
 - 🎨 **Artifacts 系统**：生成网页、文档和可视化内容
 - 🐍 **Python 代码执行**：完整的沙盒代码执行环境
-- 💰 **性价比模型**：支持 GLM 4.7 等经济实惠的模型
+- 💰 **性价比模型**：支持 GLM 5.0 等经济实惠的模型
 - 🚀 **生产就绪**：基于现代全栈原则，SSR、类型安全路由
 
 ## ✨ 功能特性
@@ -23,7 +23,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
 - **🎨 Artifacts 系统**：生成和预览网页、文档（HTML、Markdown、React、SVG），支持实时编辑
 - **🐍 Python 代码执行**：完整的沙盒 Python 执行环境，用于代码生成、数据分析和自动化
 - **🏢 私有化部署**：在自有基础设施中部署，保障数据安全和合规性
-- **💰 多模型支持**：支持 GLM 4.7 等性价比高的模型，以及 Claude 和其他提供商
+- **💰 多模型支持**：支持 GLM 5.0 等性价比高的模型，以及 Claude 和其他提供商
 
 ### 企业功能
 
@@ -98,7 +98,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
 | **Skills & MCP** | 有限或没有 | ✅ 一键式 Skills Store & MCP 集成 |
 | **Artifacts** | 基础文本输出 | ✅ 丰富的 Artifacts：网页、文档、可视化 |
 | **代码执行** | 有限或没有 | ✅ 完整的 Python 沙盒执行 |
-| **模型选择** | 固定模型 | ✅ 支持 GLM 4.7 等性价比高的模型 |
+| **模型选择** | 固定模型 | ✅ 支持 GLM 5.0 等性价比高的模型 |
 | **团队功能** | 有限的协作 | ✅ 多用户、知识库、会话共享 |
 | **定制化** | 固定功能 | ✅ 通过 Skills 和 MCP 可扩展 |
 
@@ -207,7 +207,7 @@ OxyGenie 是一个**面向中小团队的可扩展企业级 AI Agent 平台**。
 |------|------|
 | **运行时** | Node.js 22.12+ |
 | **AI（主要）** | [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) - Claude 模型 |
-| **AI（替代）** | [Mastra](https://mastra.ai) - GLM 4.7、GLM 4.6 等性价比高的模型 |
+| **AI（替代）** | [Mastra](https://mastra.ai) - GLM 5.0、GLM 4.6 等性价比高的模型 |
 | **框架** | [TanStack Start](https://tanstack.com/start) - 全栈 React 框架 |
 | **路由** | [TanStack Router](https://tanstack.com/router) - 类型安全的文件路由 |
 | **UI** | [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS v4 |
@@ -235,8 +235,8 @@ BETTER_AUTH_URL="http://localhost:3000"
 VITE_WS_URL="wss://your-domain.com/ws/agent"
 
 # 多模型支持（性价比高的模型）
-# 通过 Mastra 使用 GLM 4.7 等模型
-ZHIPU_API_KEY="your-zhipu-api-key"  # 用于 GLM 4.7、GLM 4.6、GLM 4.5
+# 通过 Mastra 使用 GLM 5.0 等模型
+ZHIPU_API_KEY="your-zhipu-api-key"  # 用于 GLM 5.0、GLM 4.6、GLM 4.5
 
 # OAuth 提供商
 GITHUB_CLIENT_ID="your-github-client-id"
@@ -257,14 +257,14 @@ OxyGenie 支持多种 AI 模型以优化成本：
 - Claude 3 Haiku
 
 **GLM 模型**（通过 Mastra，性价比高）：
-- GLM 4.7（205K 上下文）
+- GLM 5.0（205K 上下文）
 - GLM 4.6（205K 上下文）
 - GLM 4.5（131K 上下文）
 - GLM 4 Air/Flash（轻量版本）
 
 **配置**：
 - Claude 模型：在 `.env` 中设置 `ANTHROPIC_API_KEY`
-- GLM 模型：在 `.env` 中设置 `ZHIPU_API_KEY`，在 Mastra agents 中使用 `zhipuai/glm-4.7`
+- GLM 模型：在 `.env` 中设置 `ZHIPU_API_KEY`，在 Mastra agents 中使用 `zhipuai/glm-5.0`
 
 ### 私有化部署
 
@@ -273,7 +273,7 @@ OxyGenie 专为私有化部署设计，让您完全控制数据：
 **优势**：
 - ✅ **数据安全**：所有数据保留在自有基础设施中
 - ✅ **合规性**：满足企业安全和隐私要求
-- ✅ **成本控制**：使用 GLM 4.7 等性价比高的模型
+- ✅ **成本控制**：使用 GLM 5.0 等性价比高的模型
 - ✅ **定制化**：完全控制 Skills、MCP 服务器和配置
 
 **部署选项**：

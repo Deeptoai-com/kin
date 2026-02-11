@@ -272,7 +272,7 @@ API 返回的 Server-Sent Events (SSE) 格式：
 - `{"type":"tool-input-start",...}` - 工具调用开始
 - `{"type":"finish"}` - 完成
 
-### GLM-4.7 模型配置
+### GLM-5.0 模型配置
 
 Mastra v1 内置智谱 AI 支持，使用 `zhipuai/` 前缀：
 
@@ -283,7 +283,7 @@ import { Agent } from '@mastra/core/agent';
 export const chatAgent = new Agent({
   name: 'chat-agent',
   instructions: '...',
-  model: 'zhipuai/glm-4.7',  // Mastra 内置 model gateway
+  model: 'zhipuai/glm-5.0',  // Mastra 内置 model gateway
   tools: { /* ... */ },
 });
 ```
@@ -297,7 +297,7 @@ ZHIPU_API_KEY=your_api_key_here
 **可用模型**：
 - `zhipuai/glm-4.5` (131K context)
 - `zhipuai/glm-4.6` (205K context)
-- `zhipuai/glm-4.7` (205K context)
+- `zhipuai/glm-5.0` (205K context)
 - 以及 air、flash 等轻量版本
 
 ---

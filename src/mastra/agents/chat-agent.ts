@@ -53,7 +53,7 @@ export const chatAgent = new Agent({
   ].join(' '),
   // Mastra v1 uses model router with provider/model format
   // Requires ZHIPU_API_KEY environment variable
-  model: 'zhipuai/glm-4.7',
+  model: 'zhipuai/glm-5.0',
   tools: {
     getFileFromObjectStore,
   },
@@ -99,7 +99,7 @@ export async function createChatAgentWithMcp(userId: string): Promise<{
     id: 'chat-agent-mcp',
     name: 'Chat Agent (MCP)',
     instructions: AGENT_INSTRUCTIONS,
-    model: 'zhipuai/glm-4.7',
+    model: 'zhipuai/glm-5.0',
     tools: {
       ...BASE_TOOLS,
       ...mcpTools,

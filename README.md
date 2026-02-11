@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
-OxyGenie is an **extensible, enterprise-ready AI agent platform for small and medium teams**. It replaces generic GPT products (ChatGPT, 豆包, DeepSeek) with advanced capabilities like Skills Store, MCP integration, Artifacts generation, and Python code execution - all deployable on-premises with support for cost-effective models like GLM 4.7.
+OxyGenie is an **extensible, enterprise-ready AI agent platform for small and medium teams**. It replaces generic GPT products (ChatGPT, 豆包, DeepSeek) with advanced capabilities like Skills Store, MCP integration, Artifacts generation, and Python code execution - all deployable on-premises with support for cost-effective models like GLM 5.0.
 
 Built with Claude Agent SDK and TanStack Start, OxyGenie provides a web-first alternative to desktop AI tools, featuring one-click Skills and MCP integration, real-time streaming, session persistence, and a beautiful, fluid UI.
 
@@ -12,7 +12,7 @@ Built with Claude Agent SDK and TanStack Start, OxyGenie provides a web-first al
 - 🔌 **One-Click Skills & MCP**: Extend capabilities instantly, no complex setup
 - 🎨 **Artifacts System**: Generate web pages, documents, and visualizations
 - 🐍 **Python Code Execution**: Full sandboxed code execution environment
-- 💰 **Cost-Effective Models**: Support for GLM 4.7 and other affordable models
+- 💰 **Cost-Effective Models**: Support for GLM 5.0 and other affordable models
 - 🚀 **Production-Ready**: Built with modern full-stack principles, SSR, type-safe routing
 
 ## Features
@@ -23,7 +23,7 @@ Built with Claude Agent SDK and TanStack Start, OxyGenie provides a web-first al
 - **🎨 Artifacts System**: Generate and preview web pages, documents (HTML, Markdown, React, SVG) with live editing capabilities
 - **🐍 Python Code Execution**: Full sandboxed Python execution environment for code generation, data analysis, and automation
 - **🏢 On-Premises Deployment**: Deploy in your own infrastructure for data security and compliance
-- **💰 Multi-Model Support**: Support for cost-effective models like GLM 4.7, in addition to Claude and other providers
+- **💰 Multi-Model Support**: Support for cost-effective models like GLM 5.0, in addition to Claude and other providers
 
 ### Enterprise Features
 
@@ -156,7 +156,7 @@ pnpm install
 | **Skills & MCP** | Limited or none | ✅ One-click Skills Store & MCP integration |
 | **Artifacts** | Basic text output | ✅ Rich Artifacts: web pages, documents, visualizations |
 | **Code Execution** | Limited or none | ✅ Full Python sandbox execution |
-| **Model Choice** | Fixed models | ✅ Support for GLM 4.7 and other cost-effective models |
+| **Model Choice** | Fixed models | ✅ Support for GLM 5.0 and other cost-effective models |
 | **Team Features** | Limited collaboration | ✅ Multi-user, knowledge base, session sharing |
 | **Customization** | Fixed features | ✅ Extensible with Skills and MCP |
 
@@ -265,7 +265,7 @@ This project features **two independent chat systems**:
 |-------|------------|
 | **Runtime** | Node.js 22.12+ |
 | **AI (Primary)** | [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) - Claude models |
-| **AI (Alternative)** | [Mastra](https://mastra.ai) - GLM 4.7, GLM 4.6, and other cost-effective models |
+| **AI (Alternative)** | [Mastra](https://mastra.ai) - GLM 5.0, GLM 4.6, and other cost-effective models |
 | **Framework** | [TanStack Start](https://tanstack.com/start) - Full-stack React framework |
 | **Routing** | [TanStack Router](https://tanstack.com/router) - Type-safe file-based routing |
 | **UI** | [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS v4 |
@@ -295,7 +295,7 @@ Use `.env` plus [.env.docker](.env.docker). Set `POSTGRES_USER` / `POSTGRES_PASS
 # WebSocket URL — local dev: not needed; Docker: .env.docker sets ws://localhost:3051/ws/agent
 VITE_WS_URL="wss://your-domain.com/ws/agent"
 
-# Multi-Model Support (GLM 4.7, etc. via Mastra)
+# Multi-Model Support (GLM 5.0, etc. via Mastra)
 ZHIPU_API_KEY="your-zhipu-api-key"
 
 # OAuth Providers
@@ -315,14 +315,14 @@ OxyGenie supports multiple AI models for cost optimization:
 - Claude 3 Haiku
 
 **GLM Models** (via Mastra, cost-effective):
-- GLM 4.7 (205K context)
+- GLM 5.0 (205K context)
 - GLM 4.6 (205K context)
 - GLM 4.5 (131K context)
 - GLM 4 Air/Flash (lightweight versions)
 
 **Configuration**:
 - Claude models: Set `ANTHROPIC_API_KEY` in `.env`
-- GLM models: Set `ZHIPU_API_KEY` in `.env`, use `zhipuai/glm-4.7` in Mastra agents
+- GLM models: Set `ZHIPU_API_KEY` in `.env`, use `zhipuai/glm-5.0` in Mastra agents
 
 ### On-Premises Deployment
 
@@ -331,7 +331,7 @@ OxyGenie is designed for on-premises deployment, giving you full control over yo
 **Benefits**:
 - ✅ **Data Security**: All data stays in your infrastructure
 - ✅ **Compliance**: Meet enterprise security and privacy requirements
-- ✅ **Cost Control**: Use cost-effective models like GLM 4.7
+- ✅ **Cost Control**: Use cost-effective models like GLM 5.0
 - ✅ **Customization**: Full control over Skills, MCP servers, and configurations
 
 **Deployment Options**:

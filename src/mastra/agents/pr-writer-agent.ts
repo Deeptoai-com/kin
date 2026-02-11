@@ -40,5 +40,5 @@ export const prWriterAgent = new Agent({
 === 唯一准则 ===
 克制是最大的力量。
 你留白的，比你填满的更加有力。`,
-  model: 'zhipuai/glm-4.7',
+  model: 'zhipuai/glm-5.0',
 });

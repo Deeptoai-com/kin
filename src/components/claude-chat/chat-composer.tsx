@@ -459,7 +459,7 @@ export function ChatComposer({
                 className="flex h-8 min-w-16 items-center justify-center rounded-md px-2 text-xs text-muted-foreground"
                 title="当前模型"
               >
-                <span className="font-serif text-[14px] text-foreground">GLM 4.7</span>
+                <span className="font-serif text-[14px] text-foreground">GLM 5.0</span>
               </div>
             )}
 
