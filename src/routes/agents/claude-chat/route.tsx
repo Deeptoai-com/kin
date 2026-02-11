@@ -38,6 +38,7 @@ import { UsageCard } from '~/components/claude-chat/usage-card';
 import { type SessionMetadata } from '~/components/claude-chat/session-info-panel';
 import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
+import { InlineImagePreview } from '~/components/claude-chat/inline-image-preview';
 import { InlineStatus, type AgentStatusType } from '~/components/claude-chat/claude-status';
 import { MultiDiffPreviewOverlay, CodePreviewOverlay, type FileChange } from '~/components/claude-chat/overlay';
 import { ImagePreviewOverlay } from '~/components/claude-chat/overlay/image-preview-overlay';
@@ -49,7 +50,7 @@ import { cn, toLocalizedString } from '~/lib/utils';
 import { parseSkillMarker } from '~/lib/skills/skill-marker';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
 import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
-import { useArtifactsStore, type ArtifactImageFile } from '~/lib/stores/artifacts-store';
+import { useArtifactsStore, type Artifact, type ArtifactImageFile } from '~/lib/stores/artifacts-store';
 import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
 import { isImageFilePath } from '~/lib/artifacts/image-utils';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
@@ -1579,7 +1580,7 @@ const ThreadArtifactCallout: FC = () => {
     return matches.sort((a, b) => b.updatedAt - a.updatedAt)[0];
   }, [messages, artifacts]);
 
-  if (!artifact) return null;
+  if (!artifact || artifact.type === 'image') return null;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-2 pb-2">
@@ -1593,6 +1594,14 @@ const ThreadArtifactCallout: FC = () => {
       />
     </div>
   );
+};
+
+const getInlineImageFiles = (artifact: Artifact | null | undefined): ArtifactImageFile[] => {
+  if (!artifact || artifact.type !== 'image') return [];
+  if (artifact.imageFiles && artifact.imageFiles.length > 0) return artifact.imageFiles;
+  if (!artifact.content) return [];
+  const filePath = artifact.sourceFilePath || artifact.fileName || 'image';
+  return [{ filePath, content: artifact.content, mimeType: artifact.mimeType }];
 };
 
 
@@ -1769,7 +1778,8 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
   const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
 
   // Artifact detection - pass full content array to support both text and tool-call detection
-  useArtifactDetection(message.id, messageContent);
+  const artifact = useArtifactDetection(message.id, messageContent);
+  const inlineImageFiles = useMemo(() => getInlineImageFiles(artifact), [artifact]);
 
   // Extract file changes for multi-diff overlay
   const fileChanges = useMemo(() => {
@@ -1800,6 +1810,13 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                   status={messageStatus}
                   onUrlClick={onUrlClick}
                   onFileClick={onFileClick}
+                />
+              )}
+
+              {inlineImageFiles.length > 0 && (
+                <InlineImagePreview
+                  images={inlineImageFiles}
+                  title={artifact?.fileName || artifact?.title}
                 />
               )}
 
@@ -2000,6 +2017,7 @@ const HistoricalMessage: FC<{
   // Artifact detection for assistant messages - pass full content array to support both text and tool-call detection
   const artifact = useArtifactDetection(message.id, isAssistant ? message.content : undefined);
   const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
+  const inlineImageFiles = useMemo(() => getInlineImageFiles(artifact), [artifact]);
 
   // Extract file changes for multi-diff overlay (only for assistant messages)
   const fileChanges = useMemo(() => {
@@ -2088,8 +2106,15 @@ const HistoricalMessage: FC<{
                   onFileClick={onFileClick}
                 />
 
+                {inlineImageFiles.length > 0 && (
+                  <InlineImagePreview
+                    images={inlineImageFiles}
+                    title={artifact?.fileName || artifact?.title}
+                  />
+                )}
+
                 {/* Artifact Button */}
-                {artifact && (
+                {artifact && artifact.type !== 'image' && (
                   <div className="mt-3">
                     <ArtifactButton
                       type={artifact.type}
