@@ -8,6 +8,7 @@ import * as React from 'react';
 import { Outlet, useNavigate, Link, useLocation } from '@tanstack/react-router';
 import RiLogoutBoxLine from '~icons/ri/logout-box-line';
 import RiArrowLeftLine from '~icons/ri/arrow-left-line';
+import { usePostHog } from '@posthog/react';
 import { adminNavItems, type AdminSection } from './admin-nav';
 import { authClient } from '~/lib/auth-client';
 import { Button } from '~/components/ui/button';
@@ -20,6 +21,7 @@ interface AdminLayoutProps {
 export function AdminLayout({ activeSection }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const posthog = usePostHog();
 
   // Determine active section from current route path
   const getActiveSectionFromPath = (): AdminSection => {
@@ -37,6 +39,7 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
 
   const handleLogout = async () => {
     try {
+      posthog?.reset();
       await authClient.signOut();
       navigate({ to: '/auth/$pathname', params: { pathname: 'sign-in' } });
     } catch (error) {

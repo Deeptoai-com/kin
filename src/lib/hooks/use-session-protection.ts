@@ -5,10 +5,12 @@
  * 1. beforeunload warning - Prevents accidental page close during active query
  * 2. Draft auto-save - Saves unsent input to localStorage
  * 3. Reconnection state recovery - Restores state after WebSocket reconnection
+ * 4. Session summary on leave - PostHog session summary when leaving page/session
  */
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useChatSessionStore } from '~/lib/chat-session-store';
+import { trackClaudeAgentSessionSummary } from '~/lib/observability/posthog-events';
 
 // Storage keys
 const DRAFT_STORAGE_KEY = 'claude-chat-draft';
@@ -188,6 +190,56 @@ export function useReconnectionRecovery(
     };
   }, []);
 }
+
+/**
+ * Fire PostHog session summary from store state.
+ * Used when switching session or leaving page.
+ */
+function fireSessionSummaryIfNeeded() {
+  const state = useChatSessionStore.getState();
+  if (!state.currentSessionId) return;
+  const { usage } = state.usageData ?? {};
+  trackClaudeAgentSessionSummary({
+    sessionId: state.currentSessionId,
+    inputTokens: usage?.input_tokens,
+    outputTokens: usage?.output_tokens,
+    numTurns: state.usageData?.num_turns,
+    durationMs: state.usageData?.duration_ms,
+    totalCostUsd: state.usageData?.total_cost_usd,
+  });
+}
+
+/**
+ * Hook: Fire session summary when leaving Claude Chat page
+ * (beforeunload = tab close/refresh, cleanup = SPA navigation)
+ */
+export function useSessionSummaryOnLeave() {
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    firedRef.current = false;
+
+    const handleBeforeUnload = () => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      fireSessionSummaryIfNeeded();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (!firedRef.current) {
+        fireSessionSummaryIfNeeded();
+      }
+    };
+  }, []);
+}
+
+/**
+ * Export for use in performSessionSwitch (fire before clearing state)
+ */
+export { fireSessionSummaryIfNeeded };
 
 /**
  * Combined hook for all session protection features

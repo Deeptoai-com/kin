@@ -18,6 +18,7 @@ import {
   generateSkillIconFn,
 } from '~/server/function/skills.server';
 import type { ExtendedSkillInfo } from '~/claude/skills';
+import { trackSkillDisabled, trackSkillEnabled } from '~/lib/observability/posthog-events';
 import { SkillListItem } from './skill-list-item';
 import { SkillDetailDialog } from './skill-detail-dialog';
 import { SchemaManageDialog } from './schema-manage-dialog';
@@ -126,6 +127,12 @@ export const SkillsPageComponent: FC<{
       setEnabledSkills((prev) =>
         isEnabled ? prev.filter((s) => s !== skillSlug) : [...prev, skillSlug]
       );
+      const source = skill.store === 'official' ? 'official' : skill.store === 'user' ? 'user' : undefined;
+      if (isEnabled) {
+        trackSkillDisabled({ skillSlug, skillName: skill.name, source });
+      } else {
+        trackSkillEnabled({ skillSlug, skillName: skill.name, source });
+      }
     } catch (error) {
       console.error('Failed to toggle skill:', error);
       const message = error instanceof Error ? error.message : toLocalizedString(content.toast.toggleFailed);

@@ -20,6 +20,7 @@ if (import.meta.env.SSR) {
 } else {
   // Client init (captures console + network)
   await import('~/lib/observability/sentry.client')
+  await import('~/lib/observability/posthog.client')
 }
 
 export const startInstance = createStart(() => ({

@@ -52,6 +52,7 @@ import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/messa
 import { useChatSessionStore } from '~/lib/chat-session-store';
 import { useDraftAutoSave } from '~/lib/hooks/use-session-protection';
 import { buildSkillMarker, injectSkillMarker } from '~/lib/skills/skill-marker';
+import { trackClaudeAgentQuerySent } from '~/lib/observability/posthog-events';
 
 /**
  * Uploaded workspace file status
@@ -364,6 +365,14 @@ export function ChatComposer({
     };
     api.composer().setRunConfig(nextRunConfig);
     const sendNow = () => {
+      trackClaudeAgentQuerySent({
+        queryLength: composerText.trim().length,
+        hasAttachments: pendingAttachments.length > 0,
+        attachmentCount: pendingAttachments.length,
+        skillSlug: selectedSkill?.slug ?? undefined,
+        skillName: selectedSkill?.name ?? undefined,
+        sessionId: currentSessionId ?? undefined,
+      });
       // Notify parent before sending (for auto-collapse A2ComposerPanel)
       onSend?.();
       api.composer().send();

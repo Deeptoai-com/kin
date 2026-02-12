@@ -11,6 +11,7 @@ import RiLogoutBox from '~icons/ri/logout-box-line';
 import RiUser from '~icons/ri/user-line';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
+import { usePostHog } from '@posthog/react';
 import { authClient } from '~/lib/auth-client';
 
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
@@ -43,6 +44,7 @@ export function NavUser({
 }) {
   const content = useIntlayer('app');
   const { isMobile } = useSidebar();
+  const posthog = usePostHog();
   const router = useRouter();
   const location = useRouterState({ select: (state) => state.location });
   const search = location.search as Record<string, unknown>;
@@ -78,13 +80,13 @@ export function NavUser({
 
   const handleLogout = useCallback(async () => {
     try {
+      posthog?.reset();
       await authClient.signOut();
-      // Navigate to the home page or sign-in page after logout
       router.navigate({ to: '/' });
     } catch (error) {
       console.error('Logout failed:', error);
     }
-  }, [router]);
+  }, [router, posthog]);
 
   return (
     <>

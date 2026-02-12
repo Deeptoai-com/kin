@@ -29,6 +29,9 @@ import '../styles/app.css';
 import '../styles/custom.css';
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { PostHogProviderWrapper } from '~/components/posthog-provider';
+import { PostHogIdentify } from '~/components/posthog-identify';
+import { PostHogPageviewTracker } from '~/components/posthog-pageview-tracker';
 
 // Global error handler for debugging
 if (typeof window !== 'undefined') {
@@ -165,6 +168,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body className="">
         <AuthQueryProvider>
           <ThemeProvider initial={theme}>
+            <PostHogProviderWrapper>
+            <PostHogIdentify />
+            <PostHogPageviewTracker />
             <IntlayerProvider locale={activeLocale} setLocale={handleLocaleChange}>
               <AuthUIProviderTanstack
               authClient={authClient}
@@ -182,6 +188,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               <Toaster />
             </AuthUIProviderTanstack>
             </IntlayerProvider>
+            </PostHogProviderWrapper>
           </ThemeProvider>
         </AuthQueryProvider>
 

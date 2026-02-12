@@ -18,6 +18,9 @@ x-app-build: &app_build
     args:
       # WebSocket URL for sidecar deployment (port 3001 inside container, mapped to 3051)
       VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3051/ws/agent}
+      # PostHog product analytics (from .env)
+      VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
+      VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-https://eu.i.posthog.com}
 
 services:
   db:

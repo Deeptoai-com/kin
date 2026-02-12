@@ -49,7 +49,7 @@ import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
 import { parseSkillMarker } from '~/lib/skills/skill-marker';
 import { useArtifactDetection } from '~/lib/hooks/use-artifact-detection';
-import { useBeforeUnloadProtection, useReconnectionRecovery } from '~/lib/hooks/use-session-protection';
+import { useBeforeUnloadProtection, useReconnectionRecovery, useSessionSummaryOnLeave, fireSessionSummaryIfNeeded } from '~/lib/hooks/use-session-protection';
 import { useArtifactsStore, type Artifact, type ArtifactImageFile } from '~/lib/stores/artifacts-store';
 import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getMimeType } from '~/lib/artifacts/artifact-registry';
 import { isImageFilePath } from '~/lib/artifacts/image-utils';
@@ -78,6 +78,11 @@ import {
   type ContentPart,
 } from '~/lib/chat-session-store';
 import { disableUserSkillsFn } from '~/server/function/skills.server';
+import {
+  trackClaudeAgentSessionCreated,
+  trackClaudeAgentSessionSwitched,
+  trackClaudeChatViewChanged,
+} from '~/lib/observability/posthog-events';
 
 const MIN_ARTIFACT_SPLIT = 1 / 3;
 const MAX_ARTIFACT_SPLIT = 2 / 3;
@@ -305,6 +310,7 @@ function RouteComponent() {
 
   // Perform the actual session switch (after confirmation or if no query running)
   const performSessionSwitch = useCallback(async (sdkSessionId: string | null, isNewSession: boolean) => {
+    fireSessionSummaryIfNeeded();
     if (temporarySkills.length > 0) {
       try {
         await disableUserSkills({ data: { skillNames: temporarySkills } });
@@ -327,6 +333,7 @@ function RouteComponent() {
         setSessionId(newSessionId);
         setChatKey((k) => k + 1);
         await initSession(newSessionId);
+        trackClaudeAgentSessionCreated({ sessionId: newSessionId });
       } catch (error) {
         console.error('[Route] Failed to create session:', error);
       } finally {
@@ -342,6 +349,7 @@ function RouteComponent() {
       setChatKey((k) => k + 1);
       await new Promise((resolve) => setTimeout(resolve, 50));
       await resumeSession(sdkSessionId);
+      trackClaudeAgentSessionSwitched({ sessionId: sdkSessionId, isResume: true });
     }
   }, [setSessionId, clearMessages, temporarySkills, clearTemporarySkills, disableUserSkills]);
 
@@ -1283,6 +1291,8 @@ function ClaudeChatSurface({
 
   // Session protection: warn before closing page during active query
   useBeforeUnloadProtection();
+  // PostHog: 离开页面时上报 session 汇总
+  useSessionSummaryOnLeave();
 
   // Esc interrupt state
   const [escPressedOnce, setEscPressedOnce] = useState(false);
@@ -1329,6 +1339,28 @@ function ClaudeChatSurface({
   const handleSkillsOpenChange = useCallback((open: boolean) => {
     setIsSkillsPanelOpen(open);
   }, []);
+
+  // PostHog: 主视图变化埋点
+  const viewRef = useRef<string>('chat');
+  useEffect(() => {
+    const view = showWorkspace
+      ? 'workspace'
+      : showSessionFiles
+        ? 'documents'
+        : showSessionInfo
+          ? 'session_info'
+          : isSkillsPanelOpen
+            ? 'skills'
+            : 'chat';
+    if (view !== viewRef.current) {
+      trackClaudeChatViewChanged({
+        view,
+        previousView: viewRef.current,
+        sessionId: currentSessionId ?? undefined,
+      });
+      viewRef.current = view;
+    }
+  }, [showWorkspace, showSessionFiles, showSessionInfo, isSkillsPanelOpen, currentSessionId]);
 
   useEffect(() => {
     setSelectedSkill(null);
