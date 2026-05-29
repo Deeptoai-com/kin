@@ -51,3 +51,8 @@ jobs:
         env:
           # Minimal env vars for tests (if needed)
           NODE_ENV: test
+
+      - name: Build
+        run: pnpm build
+        env:
+          NODE_ENV: production
