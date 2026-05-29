@@ -1,23 +1,27 @@
 # OxyGenie — Status (Living Memory)
 
 > **This is the living memory of the project. Update it whenever state changes.**
-> Last updated: **2026-05-29**
+> Last updated: **2026-05-30**
 
 ## Current position (one-paragraph snapshot)
 
-We have finished the **research phase** (an adversarial architecture review +
-Deep Agents comparison — see [`research/`](./research/2026-05-architecture-review.md))
-and are now in **Phase 0: Foundation**. We are *laying the groundwork* (repo
-split, CI gates, dev environment) **before** starting the actual tuning/hardening
-work. No production tuning or security fixes have started yet — that begins in
-Phase 1 once the foundation is solid.
+Research is done — the adversarial architecture review + Deep Agents comparison
+([`research/2026-05-architecture-review.md`](./research/2026-05-architecture-review.md))
+**and** a scalability / execution-runtime study
+([`research/2026-05-scalability-and-runtime.md`](./research/2026-05-scalability-and-runtime.md)).
+We are in **Phase 0: Foundation**, laying groundwork (repo split, CI gates, dev env)
+**before** real tuning. The runtime study added **Phase 0.5** (execution-runtime + sandbox
+decision) ahead of Phase 1: adopt Anthropic's `srt` for sandboxing + a TS `ExecutionRuntime`
+abstraction, then a 100→1000-concurrency bake-off (serverless vs self-hosted sandboxes).
+No production tuning / security fixes have started yet.
 
 ## Phase tracker
 
 | Phase | State |
 |---|---|
-| Research (architecture review + Deep Agents comparison) | ✅ Done |
+| Research (architecture review, Deep Agents comparison, scalability/runtime) | ✅ Done |
 | **Phase 0 — Foundation** | 🔵 In progress |
+| Phase 0.5 — Execution-runtime & sandbox decision | ⬜ Not started (defined) |
 | Phase 1 — Security hardening | ⬜ Not started |
 | Phase 2 — Observability & accounting | ⬜ Not started |
 | Phase 3 — Catch up to Deep Agents | ⬜ Not started |
@@ -25,6 +29,12 @@ Phase 1 once the foundation is solid.
 
 ## Done (most recent first)
 
+- ✅ **Scalability / runtime research** (deep-read of hermes-agent, deer-flow, ruflo,
+  Anthropic `srt`) → target architecture + Plan A/B + **Phase 0.5** added to ROADMAP.
+  Key find: adopt `@anthropic-ai/sandbox-runtime` (TS, Apache-2.0) for exec isolation.
+  See `research/2026-05-scalability-and-runtime.md`. *(2026-05-30)*
+- ✅ **References filled + indexed**: shallow-cloned 5 new agent repos, updated key ones,
+  created tracked `references/INDEX.md` (query-first memory) + this repo's `WORKLOG.md`. *(2026-05-30)*
 - ✅ **main branch protection** on `oxygenie` (required checks: `Quality Checks (22.12)`
   + `gitleaks`; 1 review + CODEOWNER required; no direct/force push). *(2026-05-29)*
 - ✅ Repo made **public** (it's an open-source product; history was already public via
@@ -61,7 +71,7 @@ Phase 1 once the foundation is solid.
 | Migrate 15 REST routes → Server Functions | M | Overlaps cross-tenant security fixes (Risks #3/#4) |
 | Make tests CI-runnable (unit/e2e split + services) | M | Then make `test` a hard gate |
 | Fix TS errors | S–M | Good starter task; then make `typecheck` a hard gate |
-| Sandbox Python/Bash exec (bubblewrap) + env allowlist | M–L | **Critical** (Risk #1); highest security priority |
+| Sandbox Python/Bash exec — adopt `srt` + env allowlist | M | **Critical** (Risk #1); via Phase 0.5 `ExecutionRuntime` + Anthropic `srt` |
 | `changedoc` (ai-pr-docs) needs `OPENAI_API_KEY` secret | S (chore) | Deferred by decision; or disable the AI workflows |
 | Archive old public repo `constructa-starter` | S (chore) | Avoid two-public-repo confusion |
 | Bump gitleaks/checkout actions off Node 20 | S (chore) | Deprecation forced ~2026-06-16 |
@@ -74,6 +84,14 @@ Phase 1 once the foundation is solid.
 
 ## Decision log
 
+- **2026-05-30** — Execution layer: insert **Phase 0.5** (runtime + sandbox) before Phase 1.
+  Adopt **`@anthropic-ai/sandbox-runtime` (srt)** as the exec sandbox primitive; define a TS
+  **`ExecutionRuntime`** abstraction (pattern from hermes-agent `BaseEnvironment` + deer-flow
+  `SandboxProvider`); then bake-off serverless (Modal/Daytona/E2B) vs self-hosted container pool
+  at 100→1000 concurrency. Rationale: per-message-spawn + single ws-server can't scale; srt is
+  TS/Apache-2.0 and fixes Risk #1. (See `research/2026-05-scalability-and-runtime.md`.)
+- **2026-05-30** — Reference mgmt: shallow-clone repos, keep tracked `references/INDEX.md`,
+  query-first / record-on-deep-contact. ruflo judged out-of-scope (local CC augmentation, not server scaling).
 - **2026-05-29** — Strategy: **harden + borrow from Deep Agents; do not migrate/integrate.**
   Rationale: Deep Agents is a single-process library with divergent goals; our
   platform/isolation/SDK investment is the asset. (See VISION §5.)
