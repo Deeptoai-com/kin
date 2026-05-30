@@ -127,6 +127,13 @@
       "when": 1768260119216,
       "tag": "0017_late_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780181052742,
+      "tag": "0018_acoustic_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }
