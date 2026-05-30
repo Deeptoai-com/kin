@@ -315,6 +315,47 @@ async function persistSession(cookie, workspaceSessionId, realSdkSessionId, clau
 }
 
 /**
+ * P2-1: Record per-run usage (observation-only, does NOT charge credits).
+ *
+ * Extracts token/turn/cost data from the SDK `result` event and posts it to
+ * /api/usage. Fire-and-forget — usage logging must never block or break a run.
+ *
+ * @param {string} cookie - Auth cookie for the run's user
+ * @param {string} workspaceSessionId - Our workspace session id
+ * @param {object} event - The SDK `result` event
+ */
+async function recordUsage(cookie, workspaceSessionId, event) {
+  try {
+    const response = await fetch(`${APP_URL}/api/usage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        cookie,
+      },
+      body: JSON.stringify({
+        sessionId: workspaceSessionId ?? null,
+        usage: event.usage ?? null,
+        numTurns: event.num_turns ?? 0,
+        totalCostUsd: event.total_cost_usd ?? 0,
+        modelUsage: event.modelUsage ?? null,
+        // result is_error, or any non-success subtype, counts as an errored run
+        isError: event.is_error === true || (event.subtype && event.subtype !== 'success'),
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[WS Server] Failed to record usage:', response.status, await response.text());
+      return;
+    }
+
+    const result = await response.json();
+    console.log(`[WS Server] Usage recorded: run ${result.runId} (${result.recorded} model rows)`);
+  } catch (error) {
+    console.error('[WS Server] Error recording usage:', error);
+  }
+}
+
+/**
  * Load session data from database
  * Returns full session info including realSdkSessionId and claudeHomePath
  */
@@ -972,6 +1013,11 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
                 userId: ws.userId,  // Include userId for Skills isolation
               });
             }
+          }
+          // P2-1: record per-run usage on the terminal `result` event. Fire-and-
+          // forget; applies to silent runs too (they still consume tokens).
+          if (event.type === 'result') {
+            recordUsage(ws.cookie, ws.workspaceSessionId, event);
           }
           if (!silentInit) {
             applyBackpressure(sendMessage(ws, { type: 'message', event }));
