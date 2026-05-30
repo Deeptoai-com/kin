@@ -21,6 +21,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Semaphore } from './src/server/concurrency/semaphore.js';
+import { shouldReapIdle } from './src/server/concurrency/idle-reaper.js';
 
 // Get directory of current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -243,6 +244,31 @@ process.on('SIGHUP', () => {
 });
 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+
+// S3 — idle-connection reaper. The heartbeat above terminates *dead* sockets
+// (no pong); this reaps *alive-but-idle* ones (tab left open, laptop asleep)
+// that hold a connection slot without doing work. Only genuine business
+// messages refresh activity (a keepalive ping must not, or a zombie tab that
+// auto-pings would never time out); a connection with an active worker is never
+// reaped (a long query can stream for minutes with no inbound message). Checked
+// on the heartbeat cadence. Default 15 min; set to 0 to disable reaping.
+const rawWsIdleTimeoutMs = parseInt(process.env.WS_IDLE_TIMEOUT_MS ?? '', 10);
+const WS_IDLE_TIMEOUT_MS = Number.isFinite(rawWsIdleTimeoutMs)
+  ? Math.max(0, rawWsIdleTimeoutMs)
+  : 15 * 60 * 1000;
+console.log(
+  `[WS Server] WS idle timeout: ${WS_IDLE_TIMEOUT_MS ? Math.round(WS_IDLE_TIMEOUT_MS / 1000) + 's' : 'disabled'}`,
+);
+
+// Inbound message types that count as real user activity (refresh idle timer).
+// Excludes the keepalive 'ping' control frame and any unknown/invalid type.
+const BUSINESS_MESSAGE_TYPES = new Set([
+  'create_session',
+  'init_session',
+  'chat',
+  'resume',
+  'abort',
+]);
 
 // Track initialized directories
 const initializedDirs = new Set();
@@ -1076,6 +1102,12 @@ async function handleMessage(ws, msg) {
     const message = JSON.parse(msg);
     console.log(`[WS Server] Parsed message type: ${message.type}`);
 
+  // S3 — refresh idle timer only for genuine business messages (not keepalive
+  // 'ping' or unknown types), so an abandoned tab that auto-pings still times out.
+  if (BUSINESS_MESSAGE_TYPES.has(message.type)) {
+    ws.lastActivityAt = Date.now();
+  }
+
   switch (message.type) {
     case 'create_session':
       // Explicitly create a new empty session (without user message)
@@ -1377,6 +1409,7 @@ wss.on('connection', async (ws, request) => {
   ws.userId = user.id;
   ws.cookie = request.headers.cookie || '';  // Store cookie for API calls
   ws.isAlive = true;
+  ws.lastActivityAt = Date.now();  // S3 — seed idle timer at connect (post-auth)
   isAuthenticated = true;
   console.log(`[WS Server] Client connected: ${ws.userId}`);
 
@@ -1399,9 +1432,37 @@ wss.on('connection', async (ws, request) => {
   }
 });
 
-// Heartbeat
+// Heartbeat (+ S3 idle reaping)
 const heartbeat = setInterval(() => {
+  const now = Date.now();
   wss.clients.forEach((ws) => {
+    // S3 — close alive-but-idle connections before the liveness ping. Guards
+    // (active worker / never-stamped / disabled) live in shouldReapIdle().
+    if (
+      shouldReapIdle({
+        now,
+        lastActivityAt: ws.lastActivityAt,
+        hasActiveWorker: !!ws.workerProcess,
+        idleTimeoutMs: WS_IDLE_TIMEOUT_MS,
+      })
+    ) {
+      const idleS = Math.round((now - ws.lastActivityAt) / 1000);
+      console.log(`[WS Server] Reaping idle connection: ${ws.userId || 'unknown'} (idle ${idleS}s)`);
+      // Send a business frame first so the client can distinguish an idle
+      // disconnect (auto-reconnect / inform user) from a real error — some
+      // browsers don't surface the close reason. Then close gracefully; worker
+      // cleanup (if any) happens in ws.on('close'). The heartbeat terminate()
+      // below is the backstop if the peer never completes the close handshake.
+      try {
+        sendMessage(ws, {
+          type: 'idle_timeout',
+          message: 'Disconnected due to inactivity. Reconnect to continue.',
+        });
+      } catch { /* socket may already be closing; close() still applies */ }
+      ws.close(4002, 'idle timeout');
+      return;  // don't also ping a socket we're closing
+    }
+
     if (ws.isAlive === false) {
       return ws.terminate();
     }
