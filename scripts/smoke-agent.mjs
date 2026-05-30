@@ -21,7 +21,9 @@ import { config as loadDotenv } from 'dotenv';
 // Resolve .env relative to the repo root (this file is in <root>/scripts/), NOT cwd,
 // so the script works regardless of where it is invoked from.
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-loadDotenv({ path: path.join(repoRoot, '.env') });
+// override:true so .env wins even if the shell exports an empty ANTHROPIC_API_KEY
+// (some shells/CI pre-set it blank; dotenv otherwise keeps the blank value).
+loadDotenv({ path: path.join(repoRoot, '.env'), override: true });
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
