@@ -380,6 +380,23 @@ OxyGenie is designed for on-premises deployment, giving you full control over yo
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed deployment instructions.
 
+### Sizing & Concurrency
+
+OxyGenie runs each chat turn in an isolated Claude Agent SDK worker process (per-message
+spawn, sandboxed). What consumes resources is the number of **simultaneously executing**
+workers (~150–300 MB each), not the number of open sessions — most sessions sit idle or
+await the model.
+
+| | Status |
+|---|---|
+| **Today** | Runs well for individuals / small teams on a single host. ⚠️ **No built-in concurrency cap yet** — a burst of many simultaneous active workers can exhaust RAM (OOM risk under heavy load). |
+| **Target (in progress)** | A single **16 GB / 8-core** VPS sustaining **~50 concurrent sessions**, via a bounded worker pool (≈ cores in parallel, the rest queued), per-worker memory/CPU caps, idle reaping, and WebSocket backpressure. See [ROADMAP](docs/project/ROADMAP.md) Phase 0.5 (S1–S5) and [research/2026-05-single-host-50-concurrency.md](docs/project/research/2026-05-single-host-50-concurrency.md). |
+| **Future** | Multi-machine horizontal scale (stateless gateway + queue-driven worker pool + shared storage) for hundreds–thousands of sessions. Design in [research/2026-05-tier-decoupling-design.md](docs/project/research/2026-05-tier-decoupling-design.md); not required for the single-host target. |
+
+> **Heads-up for operators:** until the worker cap (S1) lands, size your host for your
+> expected *peak simultaneous* active chats (budget ~300 MB per active worker on top of
+> Postgres/Redis/MinIO/Meilisearch), or limit how many users chat at once.
+
 ## Development
 
 ```bash
