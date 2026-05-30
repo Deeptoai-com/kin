@@ -3,6 +3,30 @@
 Running log of problems hit and techniques learned while developing OxyGenie, so we
 (and future contributors / agents) don't repeat them. Append newest at the top.
 
+## Long-running / Docker / parallelism rules (non-negotiable) — added 2026-05-30
+
+Lesson (cost ~1 hour, multiple failed builds): I burned a long stretch trying to rebuild the
+5.8GB Docker image — by opening **multiple concurrent `docker build`s, then `pkill`-ing them**,
+which destroyed the shared buildkit cache layer the live build depended on (`ERROR: ... not found`
+/ `Canceled: context canceled`). I also mis-judged the Dockerfile as "corrupted" because `cat -A`
+isn't supported on macOS — it was fine. Rules so I never repeat this:
+
+- **Never run more than ONE `docker build` at a time.** They share the buildkit cache; killing one
+  can corrupt another. If a build is stuck, kill it, `docker builder prune -af`, then start exactly one.
+- **Heavy/slow builds (>5 min) belong in CI, not this local terminal.** The full image build
+  (Vite SSR + apt 1.6GB + `npx playwright install chromium` 1.2GB) is slow and the chromium
+  download hangs with no progress output. Let `build.yml` (GitHub Actions, cross-arch) do it.
+  Locally: only fast, single-threaded, immediately-readable steps.
+- **Don't `pkill -f 'docker build'` while a build you care about is running.** It's a blunt
+  instrument that hits all builds.
+- **macOS shell reality**: `cat -A` is invalid (use `cat -v` or `cat -e`); avoid asserting a file
+  is "broken" based on a tool error — re-read it with the Read tool first.
+- **Before claiming a build/result, read the real terminal exit + log tail.** Several times I
+  reported progress while the build had actually been cancelled. Same root cause as the integrity
+  rules below: verify, don't predict.
+- **`docker history <img> --format '{{.Size}}|{{.CreatedBy}}'`** is the right way to find what
+  bloats an image (here: node_modules 2.4GB, apt+LibreOffice 1.6GB, chromium 1.2GB).
+
 ## Integrity rules (non-negotiable)
 
 - **NEVER write a metric (counts, pass/fail, timings) you have not read from real output.**
