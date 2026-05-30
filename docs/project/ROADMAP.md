@@ -35,15 +35,16 @@ full stack locally in one command without touching real secrets.
 
 ## Phase 0.5 — Execution-runtime architecture & sandbox (decision + re-platform)
 
-**Goal:** decide and stand up the execution model the rest of the product depends on,
-**before** pouring effort into a single-node design that can't scale. Grounded by
-[`research/2026-05-scalability-and-runtime.md`](./research/2026-05-scalability-and-runtime.md).
+**Goal:** stand up a safe, *bounded* execution model so the product runs reliably on a
+single modest VPS — explicitly targeting **one 16GB / 8-core host, ~50 concurrent
+sessions** — before any multi-machine work. Grounded by
+[`research/2026-05-scalability-and-runtime.md`](./research/2026-05-scalability-and-runtime.md)
+and [`research/2026-05-single-host-50-concurrency.md`](./research/2026-05-single-host-50-concurrency.md).
 
-Why now: the current model — a per-**message** Node child spawn behind a single
-stateful `ws-server`, with local-disk + in-memory session state — cannot reach
-hundreds/thousands of concurrent sessions, and it gates sandboxing (Risk #1),
-checkpointing, and cost. Deep-read of hermes-agent, deer-flow, ruflo, and Anthropic's
-`sandbox-runtime` validated a clear path.
+Why now: the current model spawns a Node child **per message with no concurrency cap**,
+so a burst of concurrent users can OOM the box. The sandbox primitive (srt) and the
+pluggable `ExecutionRuntime` are done; what remains for the single-host target is
+concurrency governance (cap + queue + resource limits), not multi-machine distribution.
 
 - [x] **Adopt `@anthropic-ai/sandbox-runtime` (srt)** (TS, Apache-2.0) as the exec
       sandbox primitive — deny-network + workspace-fenced FS per tool-call. This *is*
@@ -55,22 +56,32 @@ checkpointing, and cost. Deep-read of hermes-agent, deer-flow, ruflo, and Anthro
 - [x] **Second backend `DockerBackend`** — per-exec locked-down container (network none,
       non-root, read-only rootfs + workspace mount, cpu/mem/pids caps, host env not
       inherited). Container-grade isolation on any host incl. macOS. `EXEC_RUNTIME=docker`. *(PR #41, PR-2)*
-- [ ] **Move execution off per-message spawn** → per-session sandbox (warm pool,
-      reused across messages) behind that interface. *(needs design + the scale-backend decision)*
-- [ ] **Decouple tiers**: stateless web/WS gateway · shared session state
-      (Postgres/Redis) · object-store workspaces · queue-driven worker pool. *(large; human checkpoint)*
-- [ ] **Pick the scale backend** (spike): serverless sandboxes (Modal/Daytona/E2B,
-      hibernate-on-idle, Node SDKs) vs self-managed container pool (Docker → K8s
-      provisioner, à la deer-flow). Decide **Plan A (integrate)** vs **B (self-build)**. *(needs budget/account — HUMAN)*
-- [ ] **Concurrency spike**: memory/latency curve at 100 → 1000 concurrent sessions. *(after a scale backend exists)*
+**Single-host target work (S1–S5) — directly hits "50 on one 16G/8-core box":**
+- [ ] **S1 — Bounded worker concurrency + queue** (`MAX_CONCURRENT_WORKERS`, default = cores):
+      cap simultaneously-active workers, queue the rest, signal "queued" to the client. This is
+      the direct OOM fix (≤8 parallel × ~250MB ≈ 2GB vs 50 × 250MB ≈ 12.5GB). Reference deep-read
+      (claude-agent-server, hermes-agent) confirms the mature pattern is one isolation unit per
+      session, never multiplexing many sessions in one process.
+- [ ] **S2 — Per-worker resource caps** (mem/CPU; reuse `EXEC_DOCKER_MEMORY`/`--max-old-space-size`).
+- [ ] **S3 — Idle WS connection / worker reaping.**
+- [ ] **S5 — Capacity bench** on a 16G/8-core box; calibrate the default cap; document in README.
+
+**Deferred to a future multi-machine goal (design stored, not executed for single-host 50):**
+- [~] **Move execution off per-message spawn** → per-session warm pool. Not needed for single-host 50.
+- [~] **Decouple tiers**: stateless gateway · shared state (Postgres/Redis) · object-store
+      workspaces · queue-driven worker pool. Design in `research/2026-05-tier-decoupling-design.md`.
+- [~] **Pick the scale backend** (Modal/Daytona/E2B vs self-managed pool) — multi-machine only.
+- [~] **Concurrency spike 100 → 1000** — future multi-machine target.
 - [x] **(folded from Phase 1) Unify path guards**: the 5 routes' duplicated
       `validateFilePath` → one shared `validateRelativePath` module (+ hardening, unit tests). (B3) *(PR #42)*
 - [x] **(folded from Phase 1) Backpressure**: worker awaits stdout `drain`; ws-server pauses
       `worker.stdout` on high `ws.bufferedAmount` — a fast stream + slow client can't OOM. (C4) *(PR #43)*
 
-**Exit criteria:** a TS `ExecutionRuntime` abstraction with srt sandboxing live; a
-documented A-vs-B decision + a 1000-concurrent-session benchmark; execution no longer
-pinned to a single box.
+**Exit criteria (revised):** `ExecutionRuntime` + srt sandbox live (✅); **bounded worker
+concurrency + queue + per-worker resource caps**, with a capacity bench showing a single
+16GB/8-core host sustains ~50 concurrent sessions without OOM. (Multi-machine tier
+decoupling + the 1000-session benchmark are a *separate future goal*, design stored in
+`research/2026-05-tier-decoupling-design.md`.)
 
 ---
 
