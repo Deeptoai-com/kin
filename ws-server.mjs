@@ -25,6 +25,17 @@ import { WebSocketServer, WebSocket } from 'ws';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKER_PATH = path.join(__dirname, 'ws-query-worker.mjs');
 
+// Privacy: user messages contain prompts (PII). By default log only a safe summary
+// (type + byte length), never raw content. Set DEBUG_WS_MESSAGES=true to see previews.
+const DEBUG_WS_MESSAGES = process.env.DEBUG_WS_MESSAGES === 'true';
+function summarizeMessage(msg) {
+  const raw = typeof msg === 'string' ? msg : msg?.toString?.() ?? '';
+  if (DEBUG_WS_MESSAGES) return raw.substring(0, 500);
+  let type = 'unknown';
+  try { type = JSON.parse(raw)?.type ?? 'unknown'; } catch { type = 'unparseable'; }
+  return `<${raw.length} bytes, type=${type}>`;
+}
+
 // Configuration
 const WS_PORT = parseInt(process.env.WS_PORT || '3001', 10);
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
