@@ -193,7 +193,17 @@ process.stdin.on('end', async () => {
       requestedDisallowedTools,
       requestedAllowBash
     );
-    const allowDangerouslySkipPermissions = permissionMode === 'bypassPermissions';
+    // Risk #2 fix: the SDK's bypassPermissions mode auto-allows every tool and
+    // never consults canUseTool, which disables our cross-user/path-security guard.
+    // So we DON'T pass raw bypassPermissions to the SDK — we run in 'default' mode
+    // where canUseTool IS consulted (it's a programmatic allow/deny callback, so the
+    // worker stays non-interactive). Bash allowance is still governed by
+    // disallowedTools. Set CLAUDE_DANGEROUS_DISABLE_GUARD=true to restore the old
+    // (unsafe) behavior for debugging only.
+    const dangerousDisableGuard =
+      permissionMode === 'bypassPermissions' &&
+      process.env.CLAUDE_DANGEROUS_DISABLE_GUARD === 'true';
+    const sdkPermissionMode = dangerousDisableGuard ? 'bypassPermissions' : 'default';
     const { canUseTool, debugInfo } = createPathSecurity({
       workspace: config.cwd,
       userId,
@@ -438,10 +448,12 @@ Example bad operations:
         cwd: config.cwd,
         model: config.model,
         includePartialMessages: true, // Enable streaming events for real-time UI updates
-        permissionMode,
+        permissionMode: sdkPermissionMode,
         disallowedTools,
-        ...(allowDangerouslySkipPermissions && { allowDangerouslySkipPermissions: true }),
-        ...(permissionMode !== 'bypassPermissions' && { canUseTool }),
+        // Risk #2: keep the path-security guard active in ALL modes except the
+        // explicit dangerous-debug escape hatch.
+        ...(dangerousDisableGuard && { allowDangerouslySkipPermissions: true }),
+        ...(!dangerousDisableGuard && { canUseTool }),
         // Note: maxThinkingTokens is handled by SDK's claude_code preset automatically
         // Enable skills loading from project (.claude/skills in cwd)
         // Note: We use symlink to share user's skills across sessions, so only 'project' is needed
