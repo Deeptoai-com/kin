@@ -15,8 +15,13 @@
  * (loads .env via dotenv; do NOT use `node --env-file=.env` — its parser mishandles
  *  this .env's `${VAR}` references and silently drops later vars.)
  */
-import 'dotenv/config';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { config as loadDotenv } from 'dotenv';
+// Resolve .env relative to the repo root (this file is in <root>/scripts/), NOT cwd,
+// so the script works regardless of where it is invoked from.
+const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+loadDotenv({ path: path.join(repoRoot, '.env') });
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -62,8 +67,8 @@ console.log('workspace :', workspace);
 console.log('sandbox   :', workerEnv.ENABLE_EXEC_SANDBOX === '1' ? 'on' : 'off (model-loop focus)');
 console.log('---');
 
-const worker = spawn('node', ['ws-query-worker.mjs'], {
-  cwd: process.cwd(),
+const worker = spawn('node', [path.join(repoRoot, 'ws-query-worker.mjs')], {
+  cwd: repoRoot,
   env: workerEnv,
   stdio: ['pipe', 'pipe', 'pipe'],
 });
