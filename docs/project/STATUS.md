@@ -1,9 +1,24 @@
 # OxyGenie — Status (Living Memory)
 
 > **This is the living memory of the project. Update it whenever state changes.**
-> Last updated: **2026-05-30**
+> Last updated: **2026-05-31**
 
 ## Current position (one-paragraph snapshot)
+
+**2026-05-31 — Phases 0/1/0.5/2 are DONE; Phase 3 (capabilities + UI/UX overhaul) is NEXT and
+design-locked.** Phase 0.5 delivered the execution-runtime abstraction + single-host concurrency
+governance (target: one 16G/8-core VPS ~50 concurrent sessions): `ExecutionRuntime`+`LocalProcessBackend`
+(#39), `DockerBackend` (#41), unified path guard B3 (#42), WS backpressure C4 (#43/#45), bounded
+worker concurrency S1 (#48), per-worker heap cap S2 (#51), idle-connection reaper S3 (#52), load-test
+harness S5 (#53). Phase 2 delivered observability+accounting: per-run `usage_record` (#55), `audit_log`
+(#56), token metering + quota mechanism **OFF by default** (#57, rate stays config-driven, calibrate
+from real usage data later — see `research/2026-05-billing-design.md`). **Phase 3 is planned but not
+started** — read `PHASE3-PLAN.md` + `research/2026-05-phase3-ui-ux-design.md`; decisions locked (Coze
+shell aesthetic + Cowork workbench depth, redo design tokens keeping shadcn/Radix, 3D icons via
+owner-supplied assets); begin at Wave 0 (design tokens + 3-column workbench skeleton, owner signs off
+on style before Wave 1). Historical note below (kept for context).
+
+### Historical snapshot (2026-05-30, first browser-verified run)
 
 **🎉 2026-05-30: the app now runs and was VERIFIED IN A BROWSER end-to-end.** Hybrid local mode
 (Docker deps db/redis/minio/meili + `node start-production.mjs` on :3000, WS :3001 — see WORKLOG
@@ -37,10 +52,10 @@ file → done). The earlier GLM-plan blocker is resolved.
 |---|---|
 | Research (architecture review, Deep Agents comparison, scalability/runtime) | ✅ Done |
 | **Phase 0 — Foundation** | ✅ Largely done (repo/CI/dev-stack/live-model) |
-| **Phase 1 — Security hardening** | ✅ Core done (Risks #1/#2/#3/#4/#5/#10); #8 + integ-tests + B3/C4 deferred |
-| **Phase 0.5 — Execution-runtime & sandbox** | 🔵 NEXT (needs human design checkpoint + sandbox-backend budget) |
-| Phase 2 — Observability & accounting | ⬜ Not started |
-| Phase 3 — Catch up to Deep Agents | ⬜ Not started |
+| **Phase 1 — Security hardening** | ✅ Core done (Risks #1/#2/#3/#4/#5/#10) |
+| **Phase 0.5 — Execution-runtime + single-host concurrency** | ✅ Done (ExecutionRuntime #39, DockerBackend #41, B3 #42, C4 #43/#45, S1 #48, S2 #51, S3 #52, S5 #53) — single 16G/8-core ~50 concurrent target |
+| **Phase 2 — Observability & accounting** | ✅ Done (usage_record #55, audit_log #56, metering+quota OFF-by-default #57) |
+| **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🔵 NEXT — planned & design-locked (see `PHASE3-PLAN.md` + `research/2026-05-phase3-ui-ux-design.md`); start at Wave 0 |
 | Phase 4 — Multi-model & scale | ⬜ Not started |
 
 ## Done (most recent first)
