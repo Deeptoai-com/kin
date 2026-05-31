@@ -103,6 +103,16 @@ function TimelineDot({ status }: { status?: StepActivityStatus }) {
   return <span className="h-2 w-2 rounded-full bg-muted-foreground/60" />;
 }
 
+/** Compact tool-step duration (D2.3, craft-aligned): 1.8s · 12s · 1m5s. */
+function formatElapsed(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}m${s}s`;
+}
+
 function renderSourceList(sources: SearchSource[], onUrlClick?: (url: string) => void) {
   return (
     <div className="space-y-2">
@@ -635,6 +645,11 @@ export const AssistantTurnCard: FC<AssistantTurnCardProps> = ({
                     >
                       <ActivityStatusIcon status={activity.status} />
                       <span className="truncate flex-1">{summary}</span>
+                      {activity.elapsedSeconds != null && activity.elapsedSeconds > 0 && (
+                        <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground/70">
+                          {formatElapsed(activity.elapsedSeconds)}
+                        </span>
+                      )}
                     </button>
                   );
                 }
