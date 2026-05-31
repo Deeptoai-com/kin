@@ -82,3 +82,59 @@ export function useSessionTodos(): TodoSummary | null {
     };
   }, [messages]);
 }
+
+// ───────────────────────── ② Sub-agents ─────────────────────────
+
+export type SubAgentStatus = 'running' | 'completed' | 'error';
+
+export interface SubAgentItem {
+  id: string;
+  /** Claude Code Task tool's subagent_type, when provided. */
+  subagentType?: string;
+  /** Human description / intent of the delegated work. */
+  description: string;
+  status: SubAgentStatus;
+}
+
+function readString(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+/**
+ * Sub-agent invocations in the current session, in call order. Each Claude Code
+ * `Task` tool-call is one delegated sub-agent. Flat list (Wave 1); a nested tree
+ * of the sub-agent's own child tool calls needs the adapter to persist
+ * parent_tool_use_id onto tool-call parts (follow-up).
+ */
+export function selectSubAgents(messages: ThreadMessage[]): SubAgentItem[] {
+  const out: SubAgentItem[] = [];
+  for (const message of messages) {
+    for (const part of message.content) {
+      if (part.type !== 'tool-call' || part.toolName?.toLowerCase() !== 'task') continue;
+      const args = (part.args ?? {}) as Record<string, unknown>;
+      // Error wins over any other status — never show a failed delegation as "Done".
+      const status: SubAgentStatus =
+        part.toolStatus === 'error' || part.isError
+          ? 'error'
+          : part.toolStatus === 'completed'
+            ? 'completed'
+            : 'running';
+      out.push({
+        id: part.toolCallId,
+        subagentType: readString(args.subagent_type),
+        description:
+          readString(args.description) ??
+          readString(part.intent) ??
+          readString((args as { _intent?: unknown })._intent) ??
+          'Sub-agent task',
+        status,
+      });
+    }
+  }
+  return out;
+}
+
+export function useSessionSubAgents(): SubAgentItem[] {
+  const messages = useChatSessionStore((s) => s.messages);
+  return useMemo(() => selectSubAgents(messages), [messages]);
+}
