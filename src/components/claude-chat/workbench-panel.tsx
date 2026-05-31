@@ -81,8 +81,8 @@ const TodoRow: FC<{ item: TodoItem }> = ({ item }) => {
     <li className="flex items-start gap-2.5 text-sm">
       <span
         className={cn(
-          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border',
-          done && 'border-primary bg-primary text-primary-foreground',
+          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border',
+          done && 'border-success bg-success text-success-foreground',
           running && 'border-primary text-primary',
           !done && !running && 'border-border',
         )}
@@ -140,7 +140,7 @@ const TodoList: FC<{
 const SubAgentRow: FC<{ item: SubAgentItem }> = ({ item }) => {
   const statusColor =
     item.status === 'completed'
-      ? 'text-primary'
+      ? 'text-success'
       : item.status === 'error'
         ? 'text-destructive'
         : 'text-muted-foreground';

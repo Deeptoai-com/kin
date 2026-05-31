@@ -369,14 +369,14 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOp
   // ===== MINIMIZED STATE: Category buttons only =====
   if (isMinimized) {
     return (
-      <div className="mx-auto w-full max-w-3xl rounded-xl border bg-card/50 backdrop-blur-sm p-2">
+      <div className="mx-auto w-full max-w-3xl rounded-xl border bg-card/70 backdrop-blur-sm p-2 shadow-sm">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
           {categories.map((category) => (
             <Button
               key={category.id}
               variant="ghost"
               size="sm"
-              className="shrink-0 gap-1.5 hover:bg-accent"
+              className="shrink-0 gap-1.5 rounded-full border border-border bg-card hover:bg-accent"
               onClick={() => handleCategoryClick(category.id)}
             >
               <span className="text-base">{category.icon}</span>

@@ -401,7 +401,7 @@ export function ChatComposer({
   return (
     <ComposerPrimitive.Root
       data-composer-root="true"
-      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-transparent bg-card p-0.5 shadow-sm transition-shadow duration-200 focus-within:shadow-md hover:shadow"
+      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-border/70 bg-card p-0.5 shadow-md transition-shadow duration-200 focus-within:shadow-lg hover:shadow-lg"
       onSubmit={handleSend}
     >
       <div className="m-3.5 flex flex-col gap-3.5">
@@ -488,15 +488,15 @@ export function ChatComposer({
 
                 {/* Workspace Panel */}
                 {showWorkspace && currentSessionId && (
-                  <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-[#e5e4df] bg-white p-4 shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
+                  <div className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-lg border border-border bg-popover p-4 shadow-lg dark:border-border dark:bg-popover">
                     {/* Header */}
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="font-semibold text-[#1a1a18] text-sm dark:text-[#eee]">
+                      <h3 className="font-semibold text-foreground text-sm dark:text-foreground">
                         📚 Knowledge Base
                       </h3>
                       <button
                         onClick={() => setShowWorkspace(false)}
-                        className="rounded p-1 text-[#6b6a68] transition hover:bg-[#e5e4df] dark:text-[#9a9893] dark:hover:bg-[#3a3938]"
+                        className="rounded p-1 text-muted-foreground transition hover:bg-muted dark:text-muted-foreground dark:hover:bg-muted"
                         aria-label="关闭"
                       >
                         <Cross2Icon width={14} height={14} />
@@ -527,7 +527,7 @@ export function ChatComposer({
 
                 {/* Session Files Panel */}
                 {showSessionFiles && currentSessionId && (
-                  <div className="absolute bottom-full right-0 z-50 mb-2 w-64 h-80 overflow-hidden rounded-lg border border-[#e5e4df] bg-white shadow-lg dark:border-[#3a3938] dark:bg-[#1f1e1b]">
+                  <div className="absolute bottom-full right-0 z-50 mb-2 w-64 h-80 overflow-hidden rounded-lg border border-border bg-popover shadow-lg dark:border-border dark:bg-popover">
                     <SessionFilesPanel
                       sessionId={currentSessionId}
                       onClose={() => setShowSessionFiles(false)}
@@ -588,7 +588,7 @@ export function ChatComposer({
             {/* Send button */}
             <button
               type="submit"
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary bg-[linear-gradient(180deg,color-mix(in_oklab,var(--primary),white_9%),color-mix(in_oklab,var(--primary),black_10%))] text-primary-foreground shadow-sm transition-all hover:brightness-105 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               title={isRunning ? '正在生成，先停止或等待' : '发送消息'}
               aria-label="发送消息"
               disabled={!canSend}

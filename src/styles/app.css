@@ -7,9 +7,9 @@
    换皮不换骨：仅改 token 值，保留全部 shadcn 变量名 / @theme / Radix。
    品牌色与 tokens.css 的陶土 accent 同源。设计依据见 docs/project/wave0-design/. */
 :root {
-    --background: oklch(0.992 0.008 80);
+    --background: oklch(0.967 0.007 84);
     --foreground: oklch(0.24 0.02 60);
-    --card: oklch(0.998 0.004 80);
+    --card: oklch(0.999 0.003 84);
     --card-foreground: oklch(0.24 0.02 60);
     --popover: oklch(1.0 0 0);
     --popover-foreground: oklch(0.24 0.02 60);
@@ -23,6 +23,8 @@
     --accent-foreground: oklch(0.55 0.13 48);
     --destructive: oklch(0.60 0.20 28);
     --destructive-foreground: oklch(1.0 0 0);
+    --success: oklch(0.62 0.12 150);
+    --success-foreground: oklch(1.0 0 0);
     --border: oklch(0.905 0.01 70);
     --input: oklch(0.965 0.006 75);
     --ring: oklch(0.62 0.14 48);
@@ -42,7 +44,7 @@
     --font-sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     --font-serif: "Source Serif 4", Georgia, "Songti SC", serif;
     --font-mono: Menlo, monospace;
-    --radius: 1.25rem;
+    --radius: 0.625rem;
     --shadow-2xs: 0 1px 2px 0 hsl(28 35% 28% / 0.04);
     --shadow-xs: 0 1px 2px 0 hsl(28 35% 28% / 0.05);
     --shadow-sm: 0 1px 2px 0 hsl(28 35% 28% / 0.07), 0 1px 1px -1px
@@ -75,6 +77,8 @@
     --accent-foreground: oklch(0.80 0.11 52);
     --destructive: oklch(0.68 0.17 28);
     --destructive-foreground: oklch(1.0 0 0);
+    --success: oklch(0.70 0.12 150);
+    --success-foreground: oklch(0.18 0.02 150);
     --border: oklch(0.34 0.012 60);
     --input: oklch(0.33 0.014 60);
     --ring: oklch(0.72 0.13 52);
@@ -94,7 +98,7 @@
     --font-sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     --font-serif: "Source Serif 4", Georgia, "Songti SC", serif;
     --font-mono: Menlo, monospace;
-    --radius: 1.25rem;
+    --radius: 0.625rem;
     --shadow-2xs: 0 1px 2px 0 hsl(30 20% 3% / 0.30);
     --shadow-xs: 0 1px 2px 0 hsl(30 20% 3% / 0.34);
     --shadow-sm: 0 1px 2px 0 hsl(30 20% 3% / 0.40), 0 1px 1px -1px
@@ -127,6 +131,8 @@
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
     --color-destructive-foreground: var(--destructive-foreground);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
