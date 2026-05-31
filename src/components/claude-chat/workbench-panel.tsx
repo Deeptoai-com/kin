@@ -20,8 +20,9 @@
  */
 
 import { useState, type FC, type ReactNode } from 'react';
-import { ListChecks, GitBranch, FolderOpen, Gauge } from 'lucide-react';
+import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2 } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { useSessionTodos, type TodoItem } from '~/lib/hooks/use-session-workbench';
 
 type WorkbenchTab = 'progress' | 'subagents' | 'files' | 'context';
 
@@ -67,6 +68,69 @@ const EmptyState: FC<{ title: string; hint: string; children?: ReactNode }> = ({
   </div>
 );
 
+/** ① Progress — live TodoWrite checklist (Cowork-style). */
+const TodoRow: FC<{ item: TodoItem }> = ({ item }) => {
+  const done = item.status === 'completed';
+  const running = item.status === 'in_progress';
+  return (
+    <li className="flex items-start gap-2.5 text-sm">
+      <span
+        className={cn(
+          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border',
+          done && 'border-primary bg-primary text-primary-foreground',
+          running && 'border-primary text-primary',
+          !done && !running && 'border-border',
+        )}
+        aria-hidden
+      >
+        {done && <Check className="h-3 w-3" strokeWidth={3} />}
+        {running && <Loader2 className="h-3 w-3 animate-spin" />}
+      </span>
+      <span
+        className={cn(
+          'leading-snug',
+          done && 'text-muted-foreground line-through',
+          running && 'font-medium text-foreground',
+          !done && !running && 'text-foreground',
+        )}
+      >
+        {running && item.activeForm ? item.activeForm : item.content}
+      </span>
+    </li>
+  );
+};
+
+const TodoList: FC<{
+  todos: TodoItem[];
+  total: number;
+  completed: number;
+}> = ({ todos, total, completed }) => {
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return (
+    <div className="flex h-full flex-col">
+      <p className="px-4 pt-4 pb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Current plan · Todo
+      </p>
+      <ul className="flex flex-col gap-2.5 px-4">
+        {todos.map((item, i) => (
+          <TodoRow key={`${i}-${item.content}`} item={item} />
+        ))}
+      </ul>
+      <div className="mt-auto px-4 pb-4 pt-4">
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="mt-1.5 text-[10px] text-muted-foreground">
+          {completed} / {total} completed
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export interface WorkbenchPanelProps {
   currentSessionId: string | null;
   className?: string;
@@ -74,6 +138,7 @@ export interface WorkbenchPanelProps {
 
 export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, className }) => {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('progress');
+  const todoSummary = useSessionTodos();
 
   return (
     <aside
@@ -107,12 +172,19 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
 
       {/* Section body — Wave 0 empty states */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {activeTab === 'progress' && (
-          <EmptyState
-            title="No active plan"
-            hint="The agent's TodoWrite plan will appear here, with steps checked off live as the task runs."
-          />
-        )}
+        {activeTab === 'progress' &&
+          (todoSummary ? (
+            <TodoList
+              todos={todoSummary.todos}
+              total={todoSummary.total}
+              completed={todoSummary.completed}
+            />
+          ) : (
+            <EmptyState
+              title="No active plan"
+              hint="The agent's TodoWrite plan will appear here, with steps checked off live as the task runs."
+            />
+          ))}
         {activeTab === 'subagents' && (
           <EmptyState
             title="No sub-agents yet"
