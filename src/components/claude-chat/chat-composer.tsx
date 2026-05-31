@@ -588,7 +588,7 @@ export function ChatComposer({
             {/* Send button */}
             <button
               type="submit"
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary bg-[linear-gradient(180deg,color-mix(in_oklab,var(--primary),white_9%),color-mix(in_oklab,var(--primary),black_10%))] text-primary-foreground shadow-sm transition-all hover:brightness-105 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               title={isRunning ? '正在生成，先停止或等待' : '发送消息'}
               aria-label="发送消息"
               disabled={!canSend}

@@ -376,7 +376,7 @@ export function A2ComposerPanel({ composerText, onSetComposerText, onReset, onOp
               key={category.id}
               variant="ghost"
               size="sm"
-              className="shrink-0 gap-1.5 hover:bg-accent"
+              className="shrink-0 gap-1.5 rounded-full border border-border bg-card hover:bg-accent"
               onClick={() => handleCategoryClick(category.id)}
             >
               <span className="text-base">{category.icon}</span>
