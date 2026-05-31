@@ -300,3 +300,13 @@ B. 分阶段抄② diff/json/mermaid 富块 → 待 owner 圈选。
   artifact-markdown 是 artifacts 面板的独立 md 渲染器(react-syntax-highlighter oneDark/oneLight)，chrome/文字/品牌链接 hex 全 token 化(语法主题保留)。
   artifact-json 的 amber/green/blue 是 JSON 值类型语法配色(同代码高亮的"刻意特殊色")，按宪法 **保留**。
 - **skills-manager-panel**：技能启停管理面板(177 行)，**不算过度设计**；gray 中性 + 蓝色启用开关 → 全 token 化(开关 on=primary)。
+
+### route.tsx 对话页 chrome + 余组件审计 ✅ (2026-05-31)
+- route.tsx 消息区"查看文件改动"按钮等 Craft-hex 中性 chrome → token(border/bg-muted/muted-foreground)。
+- **审计确认本就干净(0 硬编码色，已合规)**：`streaming-markdown`、`context-badges`、`inline-image-preview`、
+  `artifacts-panel`、`skill-chip`、`artifact-button` 及 artifact-csv/html/image/svg/react 渲染器 → 标 ✅查。
+- **对话脸面(always-on-screen)的色彩统一基本完成**。剩余色债务集中在**二级预览 overlay**
+  (`overlay/fullscreen|multi-diff|terminal|json|diff|code-preview`)：混中性 hex + 语义色(diff 增删、错误红、文件类型)，
+  需逐个判断(diff 增删→success/destructive？文件类型色保留？)，放专门一批做。⬜
+- 仍属结构/行为(非纯色)的 ⬜：用户气泡(C,对标 craft UserMessageBubble)、消息操作条(D4,对标 TurnCardActionsMenu)、
+  streaming 不破版(D3.3,对标 CollapsibleMarkdownContext)、linkify(D3.4)。

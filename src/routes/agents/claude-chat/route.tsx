@@ -1516,7 +1516,7 @@ function ClaudeChatSurface({
         {/* Esc interrupt overlay */}
         {escPressedOnce && (
           <div className="fixed inset-x-0 top-4 z-50 flex justify-center pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="rounded-lg bg-[#1a1a18] px-4 py-2 text-sm text-white shadow-lg">
+            <div className="rounded-lg bg-card px-4 py-2 text-sm text-white shadow-lg">
               {content.status.escInterrupt}
             </div>
           </div>
@@ -1868,7 +1868,7 @@ const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
                 <button
                   type="button"
                   onClick={() => setShowMultiDiff(true)}
-                  className="mt-3 flex items-center gap-1.5 rounded-md border border-[#e5e4df] bg-[#f8f8f6] px-2.5 py-1.5 text-xs text-[#6b6a68] transition-colors hover:bg-[#f0f0eb] dark:border-[#3a3938] dark:bg-[#1f1e1b] dark:text-[#9a9893] dark:hover:bg-[#2a2928]"
+                  className="mt-3 flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/70 dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/70"
                 >
                   <Layers className="h-3.5 w-3.5" />
                   <span>{toLocalizedString(content.actions.viewFileChanges).replace('{count}', String(successfulChanges.length))}</span>
@@ -2171,7 +2171,7 @@ const HistoricalMessage: FC<{
                   <button
                     type="button"
                     onClick={() => setShowMultiDiff(true)}
-                    className="mt-3 flex items-center gap-1.5 rounded-md border border-[#e5e4df] bg-[#f8f8f6] px-2.5 py-1.5 text-xs text-[#6b6a68] transition-colors hover:bg-[#f0f0eb] dark:border-[#3a3938] dark:bg-[#1f1e1b] dark:text-[#9a9893] dark:hover:bg-[#2a2928]"
+                    className="mt-3 flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/70 dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/70"
                   >
                     <Layers className="h-3.5 w-3.5" />
                     <span>{toLocalizedString(content.actions.viewFileChanges).replace('{count}', String(successfulChanges.length))}</span>
