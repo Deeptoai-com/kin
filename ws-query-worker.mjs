@@ -15,6 +15,9 @@ import { createPathSecurity } from './src/claude/path-security.js';
 import { resolveMcpServerConfigs } from './src/claude/mcp/manager.js';
 import { runPython } from './src/claude/python/runner.js';
 import { generateImage } from './src/claude/glm-image/runner.js';
+import { runBash } from './src/claude/bash/runner.js';
+import { sandboxStatus } from './src/claude/execution/sandbox.js';
+import { getExecutionRuntime } from './src/claude/execution/index.js';
 
 // Read configuration from environment
 const config = {
@@ -351,12 +354,89 @@ process.stdin.on('end', async () => {
       tools: [glmImageGenerateTool],
     });
 
+    // PR-C: Sandboxed Bash tool — only registered when a sandbox backend is confirmed.
+    // Two valid sandboxes:
+    //   1. srt (bubblewrap) — Linux + seccomp=unconfined; sandboxStatus().state === 'active'
+    //   2. DockerBackend (EXEC_RUNTIME=docker) — every exec runs in an isolated container;
+    //      the container IS the sandbox (--network none, --cap-drop ALL, non-root, etc.)
+    // macOS local dev: set EXEC_RUNTIME=docker to enable bash (srt is off on macOS by design).
+    // If neither is available → tool NOT registered; Claude cannot call bash at all.
+    const { state: sandboxState } = sandboxStatus();
+    const runtimeName = getExecutionRuntime().name;
+    const sandboxReady = sandboxState === 'active' || runtimeName === 'docker';
+
+    const bashSdkServers = {};
+    if (sandboxReady) {
+      const bashRunTool = tool(
+        'run',
+        'Execute a shell (bash) command inside the session workspace sandbox. ' +
+        'Network is disabled. Filesystem is fenced to the workspace. ' +
+        'Resources are limited (2 CPU / 2 GiB RAM / 512 processes / 300 s timeout). ' +
+        'Use for: npm/pnpm install, build commands, git operations, file manipulation. ' +
+        'Do NOT use for: network requests (use fetch/axios in code instead).',
+        {
+          command: z.string().min(1).describe(
+            'Shell command to execute. Use relative paths. Absolute paths must be under the workspace.'
+          ),
+          timeoutMs: z.number().int().positive().max(300_000).optional()
+            .describe('Timeout in ms (max 300000 = 5 min). Default: 300000.'),
+          maxOutputBytes: z.number().int().positive().optional()
+            .describe('Max output bytes. Default: 512000.'),
+        },
+        async (args) => {
+          try {
+            const result = await runBash({
+              command: args.command,
+              cwd: config.cwd,
+              timeoutMs: args.timeoutMs,
+              maxOutputBytes: args.maxOutputBytes,
+            });
+
+            const isError = Boolean(
+              result.timedOut ||
+              result.killedByLimit ||
+              (typeof result.exitCode === 'number' && result.exitCode !== 0)
+            );
+
+            let text = '';
+            if (result.stdout) text += result.stdout;
+            if (result.stderr) text += (text ? '\n[stderr]\n' : '') + result.stderr;
+            if (result.timedOut) text += '\n[bash-runner] Command timed out.';
+            if (result.diskWarning) text += `\n⚠️ ${result.diskWarning}`;
+            if (!text) text = '(no output)';
+
+            return {
+              content: [{ type: 'text', text, isError }],
+            };
+          } catch (error) {
+            return {
+              content: [{
+                type: 'text',
+                text: error instanceof Error ? error.message : String(error),
+                isError: true,
+              }],
+            };
+          }
+        }
+      );
+
+      const bashMcpServer = createSdkMcpServer({
+        name: 'bash',
+        tools: [bashRunTool],
+      });
+      bashSdkServers['bash'] = bashMcpServer;
+      console.error('[Worker] Sandbox bash tool: REGISTERED (sandbox active)');
+    } else {
+      console.error(`[Worker] Sandbox bash tool: NOT registered (sandbox state=${sandboxState ?? 'null'} — srt inactive or unavailable)`);
+    }
+
     const { mcpServers, allowedTools } = await resolveMcpServerConfigs({
       userId,
       userHome: process.env.CLAUDE_HOME,
       sdkServers: {
         python: pythonMcpServer,
         'glm-image': glmImageMcpServer,
+        ...bashSdkServers,
       },
     });
 
