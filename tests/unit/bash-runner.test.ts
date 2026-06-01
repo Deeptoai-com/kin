@@ -7,22 +7,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── mock the runtime and sandbox so tests are pure ──────────────────────────
+const mockExec = vi.fn().mockResolvedValue({
+  stdout: 'hello\n', stderr: '', exitCode: 0, signal: null,
+  durationMs: 42, timedOut: false, truncated: false, killedByLimit: false,
+});
+let mockRuntimeName = 'local';
 vi.mock('../../src/claude/execution/index.js', () => ({
-  getExecutionRuntime: () => ({
-    exec: vi.fn().mockResolvedValue({
-      stdout: 'hello\n',
-      stderr: '',
-      exitCode: 0,
-      signal: null,
-      durationMs: 42,
-      timedOut: false,
-      truncated: false,
-      killedByLimit: false,
-    }),
-  }),
+  getExecutionRuntime: () => ({ name: mockRuntimeName, exec: mockExec }),
 }));
 
-// Default: sandbox is ACTIVE
+// Default: srt sandbox ACTIVE (Linux case)
 const mockEnsureSandbox = vi.fn().mockResolvedValue(true);
 vi.mock('../../src/claude/execution/sandbox.js', () => ({
   ensureSandbox: (...args: unknown[]) => mockEnsureSandbox(...args),
@@ -62,23 +56,29 @@ describe('runBash — input validation', () => {
 
 describe('runBash — fail-closed sandbox check', () => {
   beforeEach(() => {
-    mockEnsureSandbox.mockResolvedValue(false); // sandbox NOT active
+    mockEnsureSandbox.mockResolvedValue(false); // srt NOT active
+    mockRuntimeName = 'local';                   // and not Docker
   });
   afterEach(() => {
     mockEnsureSandbox.mockResolvedValue(true);
+    mockRuntimeName = 'local';
   });
 
-  it('refuses to run when sandbox is inactive', async () => {
+  it('refuses to run when srt is inactive AND runtime is not docker', async () => {
     await expect(runBash({ command: 'echo hi', cwd: '/workspace/u1' }))
       .rejects.toThrow('Sandbox is not active');
   });
 
-  it('error message references the design doc', async () => {
-    try {
-      await runBash({ command: 'echo hi', cwd: '/workspace/u1' });
-    } catch (e) {
-      expect((e as Error).message).toContain('permission-bash-sandbox-design');
-    }
+  it('error message mentions EXEC_RUNTIME=docker for macOS', async () => {
+    await expect(runBash({ command: 'echo hi', cwd: '/workspace/u1' }))
+      .rejects.toThrow('EXEC_RUNTIME=docker');
+  });
+
+  it('ALLOWS execution when srt is inactive but runtime is docker (macOS + Docker path)', async () => {
+    mockRuntimeName = 'docker'; // Docker backend = sandbox
+    const result = await runBash({ command: 'echo hi', cwd: '/workspace/u1' });
+    expect(result.exitCode).toBe(0);
+    expect(result.sandboxActive).toBe(true); // docker counts as sandbox
   });
 });
 

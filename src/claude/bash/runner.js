@@ -177,14 +177,21 @@ export async function runBash({ command, cwd, timeoutMs, maxOutputBytes } = {}) 
   }
 
   // ── 2. FAIL-CLOSED SANDBOX CHECK ─────────────────────────────────────────
-  // sandboxActive=false means srt failed to initialise.  We REFUSE to run
-  // bare Bash on the host — better to give a clear error than to silently
-  // bypass the isolation boundary.
-  const sandboxActive = await ensureSandbox(resolvedCwd);
+  // Two valid sandbox paths:
+  //   a) srt (bubblewrap): ensureSandbox() returns true — Linux + seccomp=unconfined.
+  //   b) DockerBackend (EXEC_RUNTIME=docker): every exec runs in an isolated container
+  //      (--network none, --cap-drop ALL, non-root, read-only rootfs). The container
+  //      IS the sandbox; srt is not needed.
+  // If neither is available → REFUSE. Never fall back to bare-host execution.
+  // macOS dev: set EXEC_RUNTIME=docker to enable bash (srt is off on macOS by design).
+  const srtActive = await ensureSandbox(resolvedCwd);
+  const runtime = getExecutionRuntime();
+  const sandboxActive = srtActive || runtime.name === 'docker';
   if (!sandboxActive) {
     throw new Error(
       '[bash-runner] Sandbox is not active on this host. ' +
       'Bash execution requires srt (Linux + seccomp=unconfined) or EXEC_RUNTIME=docker. ' +
+      'On macOS: start the app with EXEC_RUNTIME=docker to use Docker as the sandbox. ' +
       'See docs/project/research/2026-05-permission-bash-sandbox-design.md §3.2.',
     );
   }
@@ -195,8 +202,7 @@ export async function runBash({ command, cwd, timeoutMs, maxOutputBytes } = {}) 
   // ── 4. DISK GUARD (pre-run) ───────────────────────────────────────────────
   const diskBefore = await measureDirBytes(resolvedCwd);
 
-  // ── 5. EXECUTE via runtime ────────────────────────────────────────────────
-  const runtime = getExecutionRuntime();
+  // ── 5. EXECUTE via runtime (reuse `runtime` from sandbox check above) ───────
   const result  = await runtime.exec(
     { command: wrappedCommand },       // string form → backend runs via /bin/sh -c
     {

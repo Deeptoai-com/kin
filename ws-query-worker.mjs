@@ -17,6 +17,7 @@ import { runPython } from './src/claude/python/runner.js';
 import { generateImage } from './src/claude/glm-image/runner.js';
 import { runBash } from './src/claude/bash/runner.js';
 import { sandboxStatus } from './src/claude/execution/sandbox.js';
+import { getExecutionRuntime } from './src/claude/execution/index.js';
 
 // Read configuration from environment
 const config = {
@@ -353,14 +354,16 @@ process.stdin.on('end', async () => {
       tools: [glmImageGenerateTool],
     });
 
-    // PR-C: Sandboxed Bash tool — only registered when the sandbox is confirmed active.
-    // SECURITY: we check sandboxStatus() here (already initialised by Python runner or
-    // ensureSandbox() in the bash runner itself). If inactive → tool is NOT registered,
-    // so Claude cannot call it at all. Never falls back to bare-host execution.
-    // Tiers that want bash (auto/act) have permissionMode=acceptEdits; Explore (plan)
-    // will not benefit since plan mode doesn't execute tools anyway.
+    // PR-C: Sandboxed Bash tool — only registered when a sandbox backend is confirmed.
+    // Two valid sandboxes:
+    //   1. srt (bubblewrap) — Linux + seccomp=unconfined; sandboxStatus().state === 'active'
+    //   2. DockerBackend (EXEC_RUNTIME=docker) — every exec runs in an isolated container;
+    //      the container IS the sandbox (--network none, --cap-drop ALL, non-root, etc.)
+    // macOS local dev: set EXEC_RUNTIME=docker to enable bash (srt is off on macOS by design).
+    // If neither is available → tool NOT registered; Claude cannot call bash at all.
     const { state: sandboxState } = sandboxStatus();
-    const sandboxReady = sandboxState === 'active';
+    const runtimeName = getExecutionRuntime().name;
+    const sandboxReady = sandboxState === 'active' || runtimeName === 'docker';
 
     const bashSdkServers = {};
     if (sandboxReady) {
