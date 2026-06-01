@@ -124,7 +124,7 @@ Bash 是否可用 = `默认档 或 执行档` **且** `沙箱后端可用`（Lin
 ## 5. 安全不变量（验收红线）
 
 1. 原生 `Bash` 在所有档位永久禁（`disallowedTools` 含 `'Bash'`）。
-2. 自定义 bash 仅在「执行档 + 沙箱可用」注册；其余一律不可达。
+2. 自定义 bash 仅在「沙箱可用」时注册（⚠️ 见 §6 R4：tier 检查缺口）。
 3. 非裸-bypass 档位：canUseTool 路径/租户守卫始终在线。
 4. 裸 `bypassPermissions` 仅 `CLAUDE_DANGEROUS_DISABLE_GUARD=true`（生产禁开）。
 5. secret-strip（`buildSafeEnv`）永远生效，与沙箱开关无关。
@@ -137,6 +137,7 @@ Bash 是否可用 = `默认档 或 执行档` **且** `沙箱后端可用`（Lin
 - **R1 自定义 bash 绕过 disallowedTools**：靠条件性不注册 MCP server 控制（§2 命名注意）。需单测覆盖「macOS 无 docker → server 不在 mcpServers」。
 - **R2 srt 对任意 shell 命令的兼容性**：srt 此前只验证过 `python3 file`，任意 bash 命令可能触发 Seatbelt/bwrap 边界。PR-C 需在 Linux 真跑一组代表性命令（ls/cat/git/curl 被 deny-net 拦）验证。
 - **R3 Docker 后端冷启动开销**：每 session 容器；与 ExecutionRuntime per-session 计划耦合，按既有 execution-runtime-design §6 处理。
+- **R4 `wantsBash` 未落实（设计缺口，已记录待修）**：`resolveEffectivePermission()` 返回 `wantsBash` 但 ws-server 未使用；worker 注册 bash 工具只检查"沙箱可用"，未检查 tier。设计意图是"tier ∈ {默认,执行} AND 沙箱可用"，现实现是"沙箱可用"即注册（Explore 档下 bash server 也被注册，但 SDK `plan` 模式天然阻止工具调用，安全实际影响低）。**待修项**：在 worker 的注册条件加上 `wantsBash` 检查：`sandboxReady && effective.wantsBash`；需将 tier/wantsBash 从 ws-server 透传至 worker stdin。
 
 ---
 
