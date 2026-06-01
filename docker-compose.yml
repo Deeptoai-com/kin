@@ -259,7 +259,9 @@ services:
       # Gemini API for skill icon generation
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CLAUDE_SESSIONS_ROOT: /data/users
-      SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
+      # srt sandbox — seccomp=unconfined is already set above (required by bubblewrap).
+      # SANDBOX_ENABLED was a legacy unused var; ENABLE_EXEC_SANDBOX is what the code reads.
+      ENABLE_EXEC_SANDBOX: '1'
       CLAUDE_MCP_STORE_DIR: ${CLAUDE_MCP_STORE_DIR:-src/mcp-store}
       MCP_STORE_DIR: ${MCP_STORE_DIR:-src/mcp-store}
       PYTHON_RUNNER_TIMEOUT_MS: ${PYTHON_RUNNER_TIMEOUT_MS:-10000}
