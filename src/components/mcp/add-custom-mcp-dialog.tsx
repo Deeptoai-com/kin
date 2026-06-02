@@ -613,6 +613,12 @@ export const AddCustomMcpDialog: FC<{
 
             {form.type === 'stdio' ? (
               <div className="space-y-4">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {toLocalizedString(content.addDialog.form.stdioServerWarning)}
+                  </AlertDescription>
+                </Alert>
                 <div className="space-y-2">
                   <Label htmlFor="command">{toLocalizedString(content.addDialog.form.commandLabel)} *</Label>
                   <Input
