@@ -415,6 +415,21 @@ const addCustomMcpSchema = z.object({
     env: z.record(z.string(), z.string()).optional(),
     url: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),
+  }).superRefine((m, ctx) => {
+    // stdio requires a command.
+    if (m.type === 'stdio' && !m.command?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'stdio MCP requires a command', path: ['command'] });
+    }
+    // http/sse require a URL with an http(s) scheme. NOTE: we deliberately do NOT
+    // block private/LAN/localhost hosts — connecting to internal tools is a
+    // legitimate core use of a private-team deployment. Scheme check only.
+    if (m.type === 'http' || m.type === 'sse') {
+      if (!m.url?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${m.type} MCP requires a url`, path: ['url'] });
+      } else if (!/^https?:\/\//i.test(m.url.trim())) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'MCP url must start with http:// or https://', path: ['url'] });
+      }
+    }
   }),
   allowedTools: z.array(z.string()).optional().nullable(),
   credentials: z.array(z.object({

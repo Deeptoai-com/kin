@@ -319,6 +319,35 @@ export async function disableMcpServer(userId, slug) {
  * - mcpServers: config map for SDK query()
  * - allowedTools: merged list of allowed MCP tools
  */
+// P0 guardrail (private-deployment threat model =防误操作 + 共享宿主密钥卫生):
+// An MCP's own `env` must not be able to override the host's essential/sensitive
+// variables. We drop these keys from the MCP-supplied env before merging, so a
+// stdio server can't hijack PATH/HOME, leak/override our gateway creds
+// (ANTHROPIC_*/CLAUDE_*), or inject loader/runtime options. This is NOT a lockdown
+// of trusted teams — stdio remains a first-class feature; it just can't clobber
+// the keys that keep the session working or that hold host secrets.
+const MCP_ENV_PROTECTED_KEYS = new Set([
+  'PATH', 'HOME', 'NODE_PATH', 'NODE_OPTIONS',
+  'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES',
+]);
+const MCP_ENV_PROTECTED_PREFIXES = ['ANTHROPIC_', 'CLAUDE_'];
+
+function sanitizeMcpEnv(env) {
+  const out = {};
+  const dropped = [];
+  for (const [key, value] of Object.entries(env || {})) {
+    if (MCP_ENV_PROTECTED_KEYS.has(key) || MCP_ENV_PROTECTED_PREFIXES.some((p) => key.startsWith(p))) {
+      dropped.push(key);
+      continue;
+    }
+    out[key] = value;
+  }
+  if (dropped.length > 0) {
+    console.warn(`[MCP] Dropped protected env keys from MCP config: ${dropped.join(', ')}`);
+  }
+  return out;
+}
+
 export async function resolveMcpServerConfigs({ userId, userHome, sdkServers = {} } = {}) {
   const resolvedHome = userHome || (userId ? getUserClaudeHome(userId) : null);
   if (!resolvedHome) return { mcpServers: {}, allowedTools: [] };
@@ -363,18 +392,22 @@ export async function resolveMcpServerConfigs({ userId, userHome, sdkServers = {
     }
 
     if (mcpConfig.type === 'stdio') {
-      // Resolve env templates with user credentials (with envFallback support)
-      const resolvedEnv = resolveEnvTemplate(mcpConfig.env, credentials, entry.credentials || []);
+      // Resolve env templates with user credentials (with envFallback support),
+      // then strip protected keys so the MCP env can't override host essentials/secrets.
+      const resolvedEnv = sanitizeMcpEnv(
+        resolveEnvTemplate(mcpConfig.env, credentials, entry.credentials || [])
+      );
 
       // IMPORTANT: Merge with essential system environment variables (PATH, HOME, etc.)
-      // to ensure child process can find executables like 'node', 'npx'
-      // Claude Agent SDK may use this env as the complete environment for subprocess
+      // to ensure child process can find executables like 'node', 'npx'.
+      // Essentials come LAST so they always win over MCP-supplied values (the
+      // sanitizer already removed them from resolvedEnv; this is belt-and-suspenders).
       const mergedEnv = Object.keys(resolvedEnv).length > 0
         ? {
+            ...resolvedEnv,
             PATH: process.env.PATH,
             HOME: process.env.HOME,
             NODE_PATH: process.env.NODE_PATH,
-            ...resolvedEnv,
           }
         : undefined;
 
