@@ -51,6 +51,7 @@ import {
   type SchemaStatus,
 } from '~/claude/skills';
 import { validateGitHubUrl } from '~/claude/skills/command-parser';
+import type { CatalogSchemaResult } from '~/claude/skills/catalog-schema';
 
 /**
  * Require authenticated user
@@ -585,6 +586,45 @@ export const ensureDefaultSkillsFn = createServerFn({ method: 'POST' }).handler(
 
   return { ensured };
 });
+
+// ============================================================================
+// Catalog fillable-variable schema (S2.2) — generated from SKILL.md, cached in
+// skill_schema_cache by content hash. Lazy/on-demand (each generation is an SDK
+// call); the cache is global per (catalogId, contentHash). See PRD D5/S2.2.
+// ============================================================================
+
+/**
+ * Read the cached fillable-variable schema for a curated skill (no generation).
+ */
+export const getCuratedSkillSchemaFn = createServerFn({ method: 'POST' })
+  .inputValidator(parseSlugInput)
+  .handler(async ({ data }): Promise<CatalogSchemaResult> => {
+    await requireUser();
+    const { readCatalogSchema } = await import('~/claude/skills/catalog-schema');
+    const row = await loadOfficialCatalogRow(data.slug);
+    if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
+    return await readCatalogSchema(row.id);
+  });
+
+/**
+ * Generate (or refresh) the fillable-variable schema for a curated skill.
+ * Costs an SDK/LLM call; result is cached globally by content hash.
+ */
+export const generateCuratedSkillSchemaFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    return z.object({ slug: z.string().min(1), force: z.boolean().optional().default(false) }).parse(data);
+  })
+  .handler(async ({ data }): Promise<CatalogSchemaResult> => {
+    await requireUser();
+    const { generateCatalogSchema } = await import('~/claude/skills/catalog-schema');
+    const row = await loadOfficialCatalogRow(data.slug);
+    if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
+    return await generateCatalogSchema({ id: row.id, upstream: row.upstream }, { force: data.force });
+  });
 
 /**
  * Get global skills (admin only)

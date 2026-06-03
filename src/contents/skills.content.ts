@@ -109,6 +109,27 @@ const skillsContent = {
         noUpstream: t({ en: 'This entry has no upstream source.', 'zh-Hans': '该条目没有上游内容源。', fr: 'Aucune source amont.', ja: 'このエントリーには上流ソースがありません。', ko: '이 항목에는 업스트림 소스가 없습니다.', 'zh-Hant': '該條目沒有上游內容源。' }),
         close: t({ en: 'Close', 'zh-Hans': '关闭', fr: 'Fermer', ja: '閉じる', ko: '닫기', 'zh-Hant': '關閉' }),
       },
+      // Fillable-variable schema (S2.2)
+      schema: {
+        heading: t({ en: 'Fillable variables', 'zh-Hans': '可填充变量', fr: 'Variables', ja: '入力変数', ko: '입력 변수', 'zh-Hant': '可填充變量' }),
+        none: t({ en: 'No fillable-variable form yet.', 'zh-Hans': '尚未生成可填充表单。', fr: 'Pas encore de formulaire.', ja: 'フォーム未生成。', ko: '아직 폼이 없습니다.', 'zh-Hant': '尚未產生可填充表單。' }),
+        noInputs: t({ en: 'This skill needs no input fields.', 'zh-Hans': '该技能无需输入字段。', fr: 'Aucun champ requis.', ja: '入力フィールドは不要です。', ko: '입력 필드가 필요 없습니다.', 'zh-Hant': '該技能無需輸入欄位。' }),
+        generate: t({ en: 'Generate form', 'zh-Hans': '生成可填充表单', fr: 'Générer le formulaire', ja: 'フォームを生成', ko: '폼 생성', 'zh-Hant': '產生可填充表單' }),
+        regenerate: t({ en: 'Regenerate', 'zh-Hans': '重新生成', fr: 'Régénérer', ja: '再生成', ko: '다시 생성', 'zh-Hant': '重新產生' }),
+        generating: t({ en: 'Generating…', 'zh-Hans': '生成中…', fr: 'Génération…', ja: '生成中…', ko: '생성 중…', 'zh-Hant': '產生中…' }),
+        required: t({ en: 'required', 'zh-Hans': '必填', fr: 'requis', ja: '必須', ko: '필수', 'zh-Hant': '必填' }),
+        costNote: t({
+          en: 'Generation runs one AI call; the result is cached per content and shared across the team.',
+          'zh-Hans': '生成会调用一次 AI；结果按内容缓存、团队共享。',
+          fr: 'La génération lance un appel IA ; le résultat est mis en cache et partagé.',
+          ja: '生成は AI を1回呼び出します。結果は内容ごとにキャッシュされ共有されます。',
+          ko: '생성은 AI를 1회 호출하며, 결과는 콘텐츠별로 캐시되어 공유됩니다.',
+          'zh-Hant': '產生會呼叫一次 AI；結果按內容快取、團隊共享。',
+        }),
+        stale: t({ en: 'Content changed — form may be outdated.', 'zh-Hans': '内容已更新——表单可能过期。', fr: 'Contenu modifié — formulaire peut-être obsolète.', ja: '内容が更新されました — フォームが古い可能性。', ko: '콘텐츠 변경 — 폼이 오래됐을 수 있음.', 'zh-Hant': '內容已更新——表單可能過期。' }),
+        needsReview: t({ en: 'Auto-generated in fallback mode — review before relying on it.', 'zh-Hans': '容错模式生成——使用前请人工核对。', fr: 'Généré en mode secours — à vérifier.', ja: 'フォールバック生成 — 確認してください。', ko: '폴백 모드 생성 — 확인 필요.', 'zh-Hant': '容錯模式產生——使用前請人工核對。' }),
+        failed: t({ en: 'Generation failed.', 'zh-Hans': '生成失败。', fr: 'Échec de la génération.', ja: '生成に失敗しました。', ko: '생성 실패.', 'zh-Hant': '產生失敗。' }),
+      },
       categories: {
         ai_engineering: t({ en: 'AI Engineering', 'zh-Hans': 'AI 工程', fr: 'Ingénierie IA', ja: 'AI エンジニアリング', ko: 'AI 엔지니어링', 'zh-Hant': 'AI 工程' }),
         research: t({ en: 'Research', 'zh-Hans': '研究', fr: 'Recherche', ja: 'リサーチ', ko: '리서치', 'zh-Hant': '研究' }),

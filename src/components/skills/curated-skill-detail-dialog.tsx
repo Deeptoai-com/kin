@@ -1,9 +1,10 @@
-import { FC, ReactNode } from 'react';
+import { FC, ReactNode, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useServerFn } from '@tanstack/react-start';
 import ReactMarkdown from 'react-markdown';
 import { markdownComponents, markdownRemarkPlugins } from '~/components/claude-chat/markdown-components';
-import { Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Loader2, ExternalLink, AlertCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
 import {
@@ -14,8 +15,13 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import { Badge } from '~/components/ui/badge';
+import { Button } from '~/components/ui/button';
 import { ScrollArea } from '~/components/ui/scroll-area';
-import { getCuratedSkillDetailFn } from '~/server/function/skills.server';
+import {
+  getCuratedSkillDetailFn,
+  getCuratedSkillSchemaFn,
+  generateCuratedSkillSchemaFn,
+} from '~/server/function/skills.server';
 
 /**
  * Curated Skill Detail Dialog (Skills S1b) — read-only.
@@ -31,6 +37,9 @@ export const CuratedSkillDetailDialog: FC<{
 }> = ({ slug, isOpen, onClose }) => {
   const content = useIntlayer('skills');
   const getDetail = useServerFn(getCuratedSkillDetailFn);
+  const getSchema = useServerFn(getCuratedSkillSchemaFn);
+  const genSchema = useServerFn(generateCuratedSkillSchemaFn);
+  const [generating, setGenerating] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['curated-skill-detail', slug],
@@ -42,8 +51,41 @@ export const CuratedSkillDetailDialog: FC<{
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: schema, refetch: refetchSchema } = useQuery({
+    queryKey: ['curated-skill-schema', slug],
+    queryFn: async () => {
+      if (!slug) return null;
+      return await getSchema({ data: { slug } });
+    },
+    enabled: !!slug && isOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const c = content.curated;
   const d = c.detail;
+  const sc = c.schema;
+
+  const handleGenerateSchema = async (force = false) => {
+    if (!slug) return;
+    setGenerating(true);
+    try {
+      await genSchema({ data: { slug, force } });
+      await refetchSchema();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : toLocalizedString(sc.failed));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const schemaInputs = (schema?.schema?.inputs ?? []) as Array<{
+    name: string;
+    label?: string;
+    type: string;
+    required?: boolean;
+    description?: string;
+  }>;
+  const hasSchema = schema?.status === 'valid' || schema?.status === 'needs_review' || schema?.status === 'stale';
 
   const editorialBlocks: Array<{ label: ReactNode; value: string | null }> = data
     ? [
@@ -132,6 +174,71 @@ export const CuratedSkillDetailDialog: FC<{
               <div className="flex items-center gap-2 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                 <AlertCircle className="h-4 w-4" />
                 {data?.contentStatus === 'no_upstream' ? d.noUpstream : d.contentUnavailable}
+              </div>
+            )}
+          </div>
+
+          {/* Fillable-variable schema (S2.2) */}
+          <div className="mt-6 border-t pt-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <p className="text-xs font-medium text-muted-foreground">{sc.heading}</p>
+              {schema?.status === 'stale' && (
+                <Badge variant="outline" className="text-[10px]">{sc.stale}</Badge>
+              )}
+              {schema?.status === 'needs_review' && (
+                <Badge variant="outline" className="text-[10px]">{sc.needsReview}</Badge>
+              )}
+            </div>
+
+            {hasSchema ? (
+              <>
+                {schemaInputs.length > 0 ? (
+                  <div className="space-y-2">
+                    {schemaInputs.map((field) => (
+                      <div key={field.name} className="rounded-md border bg-muted/30 p-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{field.label || field.name}</span>
+                          <Badge variant="secondary" className="text-[10px]">{field.type}</Badge>
+                          {field.required && (
+                            <span className="text-[10px] text-destructive">{sc.required}</span>
+                          )}
+                        </div>
+                        {field.description && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{field.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{sc.noInputs}</p>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 h-7 gap-1 px-2 text-xs"
+                  disabled={generating}
+                  onClick={() => handleGenerateSchema(true)}
+                >
+                  {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  {generating ? sc.generating : sc.regenerate}
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {schema?.status === 'failed' ? sc.failed : sc.none}
+                </p>
+                <p className="text-[11px] text-muted-foreground/70">{sc.costNote}</p>
+                <Button
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  disabled={generating || data?.contentStatus === 'no_upstream'}
+                  onClick={() => handleGenerateSchema(false)}
+                >
+                  {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  {generating ? sc.generating : sc.generate}
+                </Button>
               </div>
             )}
           </div>
