@@ -6,6 +6,7 @@ import { Input } from '~/components/ui/input';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import type { CuratedSkillItem } from '~/server/function/skills.server';
+import { CuratedSkillDetailDialog } from './curated-skill-detail-dialog';
 
 /**
  * Curated Skills Section — read-only browse of the DB-backed curated catalog
@@ -31,6 +32,7 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
   const content = useIntlayer('skills');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [detailSlug, setDetailSlug] = useState<string | null>(null);
 
   const categoryLabel = (key: string | null): string => {
     if (!key) return key ?? '';
@@ -117,7 +119,16 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
           {filtered.map((skill) => (
             <div
               key={skill.slug}
-              className="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-primary/50"
+              role="button"
+              tabIndex={0}
+              onClick={() => setDetailSlug(skill.slug)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setDetailSlug(skill.slug);
+                }
+              }}
+              className="flex cursor-pointer flex-col rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >
               <div className="mb-2 flex items-start gap-2">
                 <span className="text-2xl leading-none" aria-hidden>
@@ -158,6 +169,7 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
                     href={skill.githubUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
                     className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
                     title={toLocalizedString(content.curated.viewOnGithub)}
                   >
@@ -170,6 +182,12 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
           ))}
         </div>
       )}
+
+      <CuratedSkillDetailDialog
+        slug={detailSlug}
+        isOpen={detailSlug !== null}
+        onClose={() => setDetailSlug(null)}
+      />
     </section>
   );
 };

@@ -70,7 +70,20 @@ const skillsContent = {
       searchPlaceholder: t({ en: 'Search curated skills...', 'zh-Hans': '搜索精选技能...', fr: 'Rechercher...', ja: '厳選スキルを検索...', ko: '엄선 스킬 검색...', 'zh-Hant': '搜尋精選技能...' }),
       allCategories: t({ en: 'All', 'zh-Hans': '全部', fr: 'Tous', ja: 'すべて', ko: '전체', 'zh-Hant': '全部' }),
       viewOnGithub: t({ en: 'View on GitHub', 'zh-Hans': '在 GitHub 查看', fr: 'Voir sur GitHub', ja: 'GitHub で見る', ko: 'GitHub에서 보기', 'zh-Hant': '在 GitHub 檢視' }),
+      viewDetails: t({ en: 'Details', 'zh-Hans': '详情', fr: 'Détails', ja: '詳細', ko: '상세', 'zh-Hant': '詳情' }),
       empty: t({ en: 'No curated skills match your filters', 'zh-Hans': '没有符合条件的精选技能', fr: 'Aucun skill ne correspond', ja: '条件に合う厳選スキルがありません', ko: '조건에 맞는 엄선 스킬이 없습니다', 'zh-Hant': '沒有符合條件的精選技能' }),
+      // Detail dialog (S1b)
+      detail: {
+        loading: t({ en: 'Loading content…', 'zh-Hans': '正在加载内容…', fr: 'Chargement…', ja: '読み込み中…', ko: '불러오는 중…', 'zh-Hant': '正在載入內容…' }),
+        suitableFor: t({ en: 'Who it\'s for', 'zh-Hans': '适合谁', fr: 'Pour qui', ja: '対象者', ko: '대상', 'zh-Hant': '適合誰' }),
+        problem: t({ en: 'What it solves', 'zh-Hans': '解决什么问题', fr: 'Ce que ça résout', ja: '解決する課題', ko: '해결하는 문제', 'zh-Hant': '解決什麼問題' }),
+        firstTask: t({ en: 'First task', 'zh-Hans': '第一个任务', fr: 'Première tâche', ja: '最初のタスク', ko: '첫 작업', 'zh-Hant': '第一個任務' }),
+        riskNotes: t({ en: 'Risk notes', 'zh-Hans': '风险提示', fr: 'Risques', ja: 'リスク', ko: '리스크', 'zh-Hant': '風險提示' }),
+        instructions: t({ en: 'SKILL.md', 'zh-Hans': 'SKILL.md 内容', fr: 'SKILL.md', ja: 'SKILL.md 内容', ko: 'SKILL.md 내용', 'zh-Hant': 'SKILL.md 內容' }),
+        contentUnavailable: t({ en: 'Content unavailable from skills-api right now.', 'zh-Hans': '暂时无法从 skills-api 获取内容。', fr: 'Contenu indisponible pour le moment.', ja: 'skills-api からコンテンツを取得できません。', ko: '지금은 skills-api에서 콘텐츠를 가져올 수 없습니다.', 'zh-Hant': '暫時無法從 skills-api 取得內容。' }),
+        noUpstream: t({ en: 'This entry has no upstream source.', 'zh-Hans': '该条目没有上游内容源。', fr: 'Aucune source amont.', ja: 'このエントリーには上流ソースがありません。', ko: '이 항목에는 업스트림 소스가 없습니다.', 'zh-Hant': '該條目沒有上游內容源。' }),
+        close: t({ en: 'Close', 'zh-Hans': '关闭', fr: 'Fermer', ja: '閉じる', ko: '닫기', 'zh-Hant': '關閉' }),
+      },
       categories: {
         ai_engineering: t({ en: 'AI Engineering', 'zh-Hans': 'AI 工程', fr: 'Ingénierie IA', ja: 'AI エンジニアリング', ko: 'AI 엔지니어링', 'zh-Hant': 'AI 工程' }),
         research: t({ en: 'Research', 'zh-Hans': '研究', fr: 'Recherche', ja: 'リサーチ', ko: '리서치', 'zh-Hant': '研究' }),
