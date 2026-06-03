@@ -73,6 +73,8 @@ const mcpContent = {
       success: t({ en: 'MCP verified successfully.', 'zh-Hans': 'MCP 验证成功。', fr: 'MCP vérifié avec succès.', ja: 'MCP の検証に成功しました。', ko: 'MCP 검증 성공.', 'zh-Hant': 'MCP 驗證成功。' }),
       failed: t({ en: 'MCP verification failed.', 'zh-Hans': 'MCP 验证失败。', fr: 'Échec de la vérification MCP.', ja: 'MCP の検証に失敗しました。', ko: 'MCP 검증 실패.', 'zh-Hant': 'MCP 驗證失敗。' }),
       genericFailed: t({ en: 'MCP verification failed.', 'zh-Hans': 'MCP 验证失败。', fr: 'Échec de la vérification MCP.', ja: 'MCP の検証に失敗しました。', ko: 'MCP 검증 실패.', 'zh-Hant': 'MCP 驗證失敗。' }),
+      connectedShort: t({ en: 'Connected', 'zh-Hans': '已连接', fr: 'Connecté', ja: '接続済み', ko: '연결됨', 'zh-Hant': '已連接' }),
+      failedShort: t({ en: 'Failed', 'zh-Hans': '连接失败', fr: 'Échec', ja: '失敗', ko: '실패', 'zh-Hant': '連接失敗' }),
     },
 
     // Delete messages
