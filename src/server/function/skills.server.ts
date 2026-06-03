@@ -52,6 +52,7 @@ import {
 } from '~/claude/skills';
 import { validateGitHubUrl } from '~/claude/skills/command-parser';
 import type { CatalogSchemaResult } from '~/claude/skills/catalog-schema';
+import type { SkillsApiListItem } from '~/claude/skills/skills-api-client';
 
 /**
  * Require authenticated user
@@ -288,18 +289,15 @@ export const getCuratedSkillDetailFn = createServerFn({ method: 'POST' })
     }).parse(data);
   })
   .handler(async ({ data }): Promise<CuratedSkillDetail> => {
-    await requireUser();
+    const user = await requireUser();
 
     const { db } = await import('~/db/db-config');
-    const { skillCatalog, skillContentCache } = await import('~/db/schema');
-    const { and, eq } = await import('drizzle-orm');
+    const { skillContentCache } = await import('~/db/schema');
+    const { eq } = await import('drizzle-orm');
     const { fetchSkillContent, parseSkillMarkdown } = await import('~/claude/skills/skills-api-client');
 
-    const [row] = await db
-      .select()
-      .from(skillCatalog)
-      .where(and(eq(skillCatalog.slug, data.slug), eq(skillCatalog.scope, 'official')))
-      .limit(1);
+    // Official by slug, else the user's own upstream-added entry (S3).
+    const row = await loadCatalogRowForUser(data.slug, user.id);
 
     if (!row) {
       throw new Error(`Curated skill not found: ${data.slug}`);
@@ -452,6 +450,35 @@ async function loadOfficialCatalogRow(slug: string) {
 }
 
 /**
+ * Resolve a catalog skill visible to a user: an official entry by slug, else
+ * the user's own upstream-added entry. Returns the full row (or null).
+ * S3: makes user-added skills first-class for install/detail/schema.
+ */
+async function loadCatalogRowForUser(slug: string, userId: string) {
+  const { db } = await import('~/db/db-config');
+  const { skillCatalog } = await import('~/db/schema');
+  const { and, eq } = await import('drizzle-orm');
+
+  const [official] = await db
+    .select()
+    .from(skillCatalog)
+    .where(and(eq(skillCatalog.slug, slug), eq(skillCatalog.scope, 'official')))
+    .limit(1);
+  if (official) return official;
+
+  const [own] = await db
+    .select()
+    .from(skillCatalog)
+    .where(and(
+      eq(skillCatalog.slug, slug),
+      eq(skillCatalog.scope, 'user'),
+      eq(skillCatalog.ownerUserId, userId),
+    ))
+    .limit(1);
+  return own ?? null;
+}
+
+/**
  * List the current user's installed skills (My Skills).
  */
 export const listMySkillsFn = createServerFn({ method: 'GET' }).handler(
@@ -491,7 +518,7 @@ export const installCuratedSkillFn = createServerFn({ method: 'POST' })
     const { skillEnablement } = await import('~/db/schema');
     const { materializeCatalogSkill } = await import('~/claude/skills/catalog-materializer');
 
-    const row = await loadOfficialCatalogRow(data.slug);
+    const row = await loadCatalogRowForUser(data.slug, user.id);
     if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
 
     const result = await materializeCatalogSkill(user.id, row);
@@ -529,7 +556,7 @@ export const uninstallCuratedSkillFn = createServerFn({ method: 'POST' })
     const { skillEnablement } = await import('~/db/schema');
     const { and, eq } = await import('drizzle-orm');
 
-    const row = await loadOfficialCatalogRow(data.slug);
+    const row = await loadCatalogRowForUser(data.slug, user.id);
     if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
 
     await dematerializeSkill(user.id, data.slug);
@@ -599,9 +626,9 @@ export const ensureDefaultSkillsFn = createServerFn({ method: 'POST' }).handler(
 export const getCuratedSkillSchemaFn = createServerFn({ method: 'POST' })
   .inputValidator(parseSlugInput)
   .handler(async ({ data }): Promise<CatalogSchemaResult> => {
-    await requireUser();
+    const user = await requireUser();
     const { readCatalogSchema } = await import('~/claude/skills/catalog-schema');
-    const row = await loadOfficialCatalogRow(data.slug);
+    const row = await loadCatalogRowForUser(data.slug, user.id);
     if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
     return await readCatalogSchema(row.id);
   });
@@ -619,11 +646,315 @@ export const generateCuratedSkillSchemaFn = createServerFn({ method: 'POST' })
     return z.object({ slug: z.string().min(1), force: z.boolean().optional().default(false) }).parse(data);
   })
   .handler(async ({ data }): Promise<CatalogSchemaResult> => {
-    await requireUser();
+    const user = await requireUser();
     const { generateCatalogSchema } = await import('~/claude/skills/catalog-schema');
-    const row = await loadOfficialCatalogRow(data.slug);
+    const row = await loadCatalogRowForUser(data.slug, user.id);
     if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
     return await generateCatalogSchema({ id: row.id, upstream: row.upstream }, { force: data.force });
+  });
+
+// ============================================================================
+// Upstream discovery / add (S3) — search the skills-api registry and pull a
+// skill into the user's own catalog (scope='user', source='upstream'). Once
+// added it installs / shows detail / generates schema like any catalog skill.
+// Admins can see + remove all user-added skills (governance guardrail).
+// ============================================================================
+
+export type UpstreamSkillStatus = 'official' | 'added' | 'addable';
+export interface UpstreamSearchItem extends SkillsApiListItem {
+  slug: string;
+  status: UpstreamSkillStatus;
+}
+export interface UpstreamSearchResponse {
+  items: UpstreamSearchItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * Search the upstream skills-api registry. Each result is tagged with whether
+ * it's already in the official library, already added by this user, or addable.
+ */
+export const searchUpstreamSkillsFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    return z.object({
+      query: z.string().optional().default(''),
+      page: z.number().int().min(1).optional().default(1),
+    }).parse(data);
+  })
+  .handler(async ({ data }): Promise<UpstreamSearchResponse> => {
+    const user = await requireUser();
+    const { searchSkills } = await import('~/claude/skills/skills-api-client');
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog } = await import('~/db/schema');
+    const { and, eq, inArray } = await import('drizzle-orm');
+
+    const result = await searchSkills({ query: data.query || undefined, page: data.page, pageSize: 20 });
+    const slugs = result.skills.map((s) => normalizeSkillName(s.skillId));
+
+    const officialSlugs = new Set<string>();
+    const addedSlugs = new Set<string>();
+    if (slugs.length > 0) {
+      const official = await db
+        .select({ slug: skillCatalog.slug })
+        .from(skillCatalog)
+        .where(and(eq(skillCatalog.scope, 'official'), inArray(skillCatalog.slug, slugs)));
+      official.forEach((r) => officialSlugs.add(r.slug));
+
+      const added = await db
+        .select({ slug: skillCatalog.slug })
+        .from(skillCatalog)
+        .where(and(
+          eq(skillCatalog.scope, 'user'),
+          eq(skillCatalog.ownerUserId, user.id),
+          inArray(skillCatalog.slug, slugs),
+        ));
+      added.forEach((r) => addedSlugs.add(r.slug));
+    }
+
+    const items: UpstreamSearchItem[] = result.skills.map((s) => {
+      const slug = normalizeSkillName(s.skillId);
+      const status: UpstreamSkillStatus = officialSlugs.has(slug)
+        ? 'official'
+        : addedSlugs.has(slug)
+          ? 'added'
+          : 'addable';
+      return { ...s, slug, status };
+    });
+
+    return { items, total: result.total, page: result.page, pageSize: result.pageSize, totalPages: result.totalPages };
+  });
+
+/**
+ * Add an upstream skill to the current user's catalog (scope='user').
+ * Skips if an official entry with the same slug exists (points to it instead);
+ * idempotent if the user already added it. Best-effort content prefetch.
+ */
+export const addUpstreamSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    return z.object({
+      owner: z.string().min(1),
+      repo: z.string().min(1),
+      skillId: z.string().min(1),
+      name: z.string().optional(),
+      githubUrl: z.string().optional(),
+    }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+
+    const slug = normalizeSkillName(data.skillId);
+
+    // Official entry exists → don't duplicate; point the user to it.
+    const [official] = await db
+      .select({ id: skillCatalog.id })
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.slug, slug), eq(skillCatalog.scope, 'official')))
+      .limit(1);
+    if (official) {
+      return { added: false, slug, reason: 'exists_official' as const };
+    }
+
+    // Already added by this user → idempotent.
+    const [own] = await db
+      .select({ id: skillCatalog.id })
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.slug, slug), eq(skillCatalog.scope, 'user'), eq(skillCatalog.ownerUserId, user.id)))
+      .limit(1);
+    if (own) {
+      return { added: true, slug, reason: 'already_added' as const };
+    }
+
+    let inserted: { id: string } | undefined;
+    try {
+      [inserted] = await db
+        .insert(skillCatalog)
+        .values({
+          slug,
+          name: data.name || data.skillId,
+          source: 'upstream',
+          scope: 'user',
+          ownerUserId: user.id,
+          upstream: { owner: data.owner, repo: data.repo, skillId: data.skillId },
+          githubUrl: data.githubUrl ?? null,
+          sourceLabel: `${data.owner}/${data.repo}`,
+        })
+        .returning({ id: skillCatalog.id });
+    } catch (error) {
+      // Unique (ownerUserId, slug) race or a same-slug-different-repo conflict.
+      console.warn('[Skills] addUpstreamSkill insert conflict:', error);
+      return { added: false, slug, reason: 'slug_conflict' as const };
+    }
+
+    // Best-effort content prefetch (validates + caches); non-fatal.
+    if (inserted) {
+      try {
+        const { getCatalogSkillContent } = await import('~/claude/skills/catalog-content');
+        await getCatalogSkillContent({ id: inserted.id, upstream: { owner: data.owner, repo: data.repo, skillId: data.skillId } });
+      } catch (error) {
+        console.warn('[Skills] addUpstreamSkill content prefetch failed (non-fatal):', error);
+      }
+    }
+
+    return { added: true, slug, reason: 'added' as const };
+  });
+
+/**
+ * List the current user's upstream-added skills (scope='user').
+ */
+export const listMyAddedSkillsFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<CuratedSkillItem[]> => {
+    const user = await requireUser();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog } = await import('~/db/schema');
+    const { and, eq, desc } = await import('drizzle-orm');
+
+    const rows = await db
+      .select({
+        slug: skillCatalog.slug,
+        name: skillCatalog.name,
+        titleZh: skillCatalog.titleZh,
+        summaryZh: skillCatalog.summaryZh,
+        category: skillCatalog.category,
+        level: skillCatalog.level,
+        tags: skillCatalog.tags,
+        reusabilityStatus: skillCatalog.reusabilityStatus,
+        iconEmoji: skillCatalog.iconEmoji,
+        addsCount: skillCatalog.addsCount,
+        source: skillCatalog.source,
+        githubUrl: skillCatalog.githubUrl,
+        skillsShUrl: skillCatalog.skillsShUrl,
+        sourceLabel: skillCatalog.sourceLabel,
+        sourceIcon: skillCatalog.sourceIcon,
+      })
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.scope, 'user'), eq(skillCatalog.ownerUserId, user.id)))
+      .orderBy(desc(skillCatalog.createdAt));
+
+    return rows.map((r) => ({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] }));
+  },
+);
+
+/**
+ * Remove one of the current user's upstream-added skills (deletes the catalog
+ * row → cascade content/schema/enablement) and cleans the materialized dir.
+ */
+export const removeAddedSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator(parseSlugInput)
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+    const { dematerializeSkill } = await import('~/claude/skills/catalog-materializer');
+
+    const deleted = await db
+      .delete(skillCatalog)
+      .where(and(
+        eq(skillCatalog.slug, data.slug),
+        eq(skillCatalog.scope, 'user'),
+        eq(skillCatalog.ownerUserId, user.id),
+      ))
+      .returning({ id: skillCatalog.id });
+
+    if (deleted.length > 0) {
+      await dematerializeSkill(user.id, data.slug);
+    }
+    return { removed: deleted.length > 0, slug: data.slug };
+  });
+
+// ── Admin governance: see + remove all user-added skills ─────────────────────
+
+export interface AdminUserAddedSkill {
+  id: string;
+  slug: string;
+  name: string;
+  ownerUserId: string | null;
+  ownerEmail: string | null;
+  ownerName: string | null;
+  upstream: { owner: string; repo: string; skillId: string } | null;
+  githubUrl: string | null;
+  createdAt: string | null;
+}
+
+/**
+ * List ALL users' upstream-added skills (admin only) — governance guardrail.
+ */
+export const listAllUserAddedSkillsFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<AdminUserAddedSkill[]> => {
+    await requireAdmin();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog, user: userTable } = await import('~/db/schema');
+    const { eq, desc } = await import('drizzle-orm');
+
+    const rows = await db
+      .select({
+        id: skillCatalog.id,
+        slug: skillCatalog.slug,
+        name: skillCatalog.name,
+        ownerUserId: skillCatalog.ownerUserId,
+        ownerEmail: userTable.email,
+        ownerName: userTable.name,
+        upstream: skillCatalog.upstream,
+        githubUrl: skillCatalog.githubUrl,
+        createdAt: skillCatalog.createdAt,
+      })
+      .from(skillCatalog)
+      .leftJoin(userTable, eq(skillCatalog.ownerUserId, userTable.id))
+      .where(eq(skillCatalog.scope, 'user'))
+      .orderBy(desc(skillCatalog.createdAt));
+
+    return rows.map((r) => ({
+      ...r,
+      createdAt: r.createdAt ? new Date(r.createdAt as unknown as string).toISOString() : null,
+    }));
+  },
+);
+
+/**
+ * Remove any user-added skill by id (admin only) — governance guardrail.
+ * Cascades content/schema/enablement and cleans the owner's materialized dir.
+ */
+export const adminRemoveUserAddedSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    return z.object({ id: z.string().min(1) }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+    const { dematerializeSkill } = await import('~/claude/skills/catalog-materializer');
+
+    const [row] = await db
+      .select({ slug: skillCatalog.slug, ownerUserId: skillCatalog.ownerUserId })
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.id, data.id), eq(skillCatalog.scope, 'user')))
+      .limit(1);
+    if (!row) return { removed: false };
+
+    await db.delete(skillCatalog).where(eq(skillCatalog.id, data.id));
+    if (row.ownerUserId) {
+      await dematerializeSkill(row.ownerUserId, row.slug);
+    }
+    return { removed: true };
   });
 
 /**

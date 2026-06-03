@@ -37,6 +37,61 @@ export interface SkillsApiContent {
   raw: string | null;
 }
 
+/** One row from GET /api/skills (lean list — no description/content). */
+export interface SkillsApiListItem {
+  source: string;
+  owner: string;
+  repo: string;
+  skillId: string;
+  name: string;
+  displayName: string;
+  installs: number;
+  isOfficial: boolean;
+  githubUrl: string;
+}
+
+export interface SkillsApiSearchResult {
+  skills: SkillsApiListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * Search the upstream skills registry.
+ * GET /api/skills?query=&owner=&repo=&sortBy=&sortOrder=&page=&pageSize=
+ */
+export async function searchSkills(params: {
+  query?: string;
+  owner?: string;
+  repo?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<SkillsApiSearchResult> {
+  const base = getSkillsApiBaseUrl();
+  const qs = new URLSearchParams();
+  if (params.query) qs.set('query', params.query);
+  if (params.owner) qs.set('owner', params.owner);
+  if (params.repo) qs.set('repo', params.repo);
+  if (params.sortBy) qs.set('sortBy', params.sortBy);
+  if (params.sortOrder) qs.set('sortOrder', params.sortOrder);
+  qs.set('page', String(params.page ?? 1));
+  qs.set('pageSize', String(params.pageSize ?? 20));
+
+  const res = await fetch(`${base}/api/skills?${qs.toString()}`, {
+    headers: buildHeaders(),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`skills-api search failed (${res.status}): ${body.slice(0, 200)}`);
+  }
+  return (await res.json()) as SkillsApiSearchResult;
+}
+
 function buildHeaders(): Record<string, string> {
   const headers: Record<string, string> = { accept: 'application/json' };
   const key = process.env.SKILLS_API_KEY?.trim();
