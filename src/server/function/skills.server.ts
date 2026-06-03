@@ -234,6 +234,176 @@ export const listCuratedSkillsFn = createServerFn({ method: 'GET' }).handler(
 );
 
 /**
+ * Status of a curated skill's SKILL.md content.
+ * - cached: served from skill_content_cache
+ * - fetched: just fetched from skills-api and cached
+ * - no_upstream: catalog row has no upstream ref (cannot fetch)
+ * - unavailable: fetch failed (network / 404) and nothing cached
+ */
+export type CuratedContentStatus = 'cached' | 'fetched' | 'no_upstream' | 'unavailable';
+
+export interface CuratedSkillDetail {
+  slug: string;
+  name: string;
+  titleZh: string | null;
+  summaryZh: string | null;
+  category: string | null;
+  level: string | null;
+  tags: string[];
+  reusabilityStatus: string | null;
+  suitableForZh: string | null;
+  problemZh: string | null;
+  firstTaskZh: string | null;
+  riskNotesZh: string | null;
+  iconEmoji: string | null;
+  source: string;
+  githubUrl: string | null;
+  skillsShUrl: string | null;
+  sourceLabel: string | null;
+  // Content (from skills-api, cached in skill_content_cache)
+  skillMd: string | null;
+  instructions: string | null;
+  metadata: Record<string, string> | null;
+  contentHash: string | null;
+  contentStatus: CuratedContentStatus;
+  contentError: string | null;
+}
+
+/**
+ * Get a curated skill's full detail: editorial fields (from skill_catalog) +
+ * SKILL.md content (cache-first from skill_content_cache, else fetched from
+ * skills-api and cached). Authenticated — content fetch hits an external API
+ * and writes the cache. See PRD S1b.
+ */
+export const getCuratedSkillDetailFn = createServerFn({ method: 'POST' })
+  .inputValidator((input) => {
+    const payload = typeof input === 'string' ? JSON.parse(input) : input;
+    const data = payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data?: unknown }).data
+      : payload;
+    return z.object({
+      slug: z.string().min(1),
+      force: z.boolean().optional().default(false),
+    }).parse(data);
+  })
+  .handler(async ({ data }): Promise<CuratedSkillDetail> => {
+    await requireUser();
+
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog, skillContentCache } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+    const { fetchSkillContent, parseSkillMarkdown } = await import('~/claude/skills/skills-api-client');
+
+    const [row] = await db
+      .select()
+      .from(skillCatalog)
+      .where(and(eq(skillCatalog.slug, data.slug), eq(skillCatalog.scope, 'official')))
+      .limit(1);
+
+    if (!row) {
+      throw new Error(`Curated skill not found: ${data.slug}`);
+    }
+
+    const editorial = {
+      slug: row.slug,
+      name: row.name,
+      titleZh: row.titleZh,
+      summaryZh: row.summaryZh,
+      category: row.category,
+      level: row.level,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      reusabilityStatus: row.reusabilityStatus,
+      suitableForZh: row.suitableForZh,
+      problemZh: row.problemZh,
+      firstTaskZh: row.firstTaskZh,
+      riskNotesZh: row.riskNotesZh,
+      iconEmoji: row.iconEmoji,
+      source: row.source,
+      githubUrl: row.githubUrl,
+      skillsShUrl: row.skillsShUrl,
+      sourceLabel: row.sourceLabel,
+    };
+
+    const renderContent = (
+      raw: string | null,
+      contentHash: string | null,
+      status: CuratedContentStatus,
+      contentError: string | null,
+    ): CuratedSkillDetail => {
+      const { metadata, body } = parseSkillMarkdown(raw);
+      return {
+        ...editorial,
+        skillMd: raw,
+        instructions: raw ? body : null,
+        metadata: raw ? metadata : null,
+        contentHash,
+        contentStatus: status,
+        contentError,
+      };
+    };
+
+    // Cache-first
+    if (!data.force) {
+      const [cached] = await db
+        .select()
+        .from(skillContentCache)
+        .where(eq(skillContentCache.catalogId, row.id))
+        .limit(1);
+      if (cached?.skillMd) {
+        return renderContent(cached.skillMd, cached.contentHash, 'cached', null);
+      }
+    }
+
+    if (!row.upstream) {
+      return renderContent(null, null, 'no_upstream', null);
+    }
+
+    // Fetch from skills-api + cache
+    try {
+      const content = await fetchSkillContent(row.upstream);
+      const raw = content.raw ?? null;
+      if (!raw) {
+        return renderContent(null, null, 'unavailable', 'skills-api returned empty content');
+      }
+      const contentHash = hashSkillMd(raw);
+      const now = new Date();
+      await db
+        .insert(skillContentCache)
+        .values({
+          catalogId: row.id,
+          skillMd: raw,
+          contentHash,
+          fetchedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: skillContentCache.catalogId,
+          set: { skillMd: raw, contentHash, fetchedAt: now },
+        });
+      return renderContent(raw, contentHash, 'fetched', null);
+    } catch (error) {
+      console.error('[Skills] getCuratedSkillDetail content fetch failed', {
+        slug: data.slug,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Last-resort: return any stale cache even on force
+      const [cached] = await db
+        .select()
+        .from(skillContentCache)
+        .where(eq(skillContentCache.catalogId, row.id))
+        .limit(1);
+      if (cached?.skillMd) {
+        return renderContent(cached.skillMd, cached.contentHash, 'cached', null);
+      }
+      return renderContent(
+        null,
+        null,
+        'unavailable',
+        error instanceof Error ? error.message : 'content fetch failed',
+      );
+    }
+  });
+
+/**
  * Get global skills (admin only)
  */
 export const getGlobalSkillsFn = createServerFn({ method: 'GET' }).handler(async () => {
