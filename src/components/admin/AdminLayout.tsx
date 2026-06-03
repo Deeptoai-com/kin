@@ -31,6 +31,7 @@ export function AdminLayout({ activeSection }: AdminLayoutProps) {
     if (pathname.startsWith('/admin/users')) return 'users';
     if (pathname.startsWith('/admin/organizations')) return 'organizations';
     if (pathname.startsWith('/admin/a2composer')) return 'a2composer';
+    if (pathname.startsWith('/admin/skills')) return 'skills';
 
     return 'dashboard';
   };

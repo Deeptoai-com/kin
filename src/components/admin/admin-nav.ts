@@ -3,8 +3,9 @@ import RiDashboardLine from '~icons/ri/dashboard-line';
 import RiUserSettingsLine from '~icons/ri/user-settings-line';
 import RiBuilding4Line from '~icons/ri/building-4-line';
 import RiFileEditLine from '~icons/ri/file-edit-line';
+import RiListSettingsLine from '~icons/ri/list-settings-line';
 
-export type AdminSection = 'dashboard' | 'users' | 'organizations' | 'a2composer';
+export type AdminSection = 'dashboard' | 'users' | 'organizations' | 'a2composer' | 'skills';
 
 export interface AdminNavItem {
   section: AdminSection;
@@ -42,6 +43,13 @@ export const adminNavItems: AdminNavItem[] = [
     description: 'Manage templates and categories',
     icon: RiFileEditLine,
     path: '/admin/a2composer',
+  },
+  {
+    section: 'skills',
+    label: 'Skills',
+    description: 'User-added upstream skills (governance)',
+    icon: RiListSettingsLine,
+    path: '/admin/skills',
   },
 ];
 

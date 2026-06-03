@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useState } from 'react';
-import { listAllSkillsFn, listCuratedSkillsFn, listMySkillsFn, isAdminUser } from '~/server/function/skills.server';
+import { listAllSkillsFn, listCuratedSkillsFn, listMySkillsFn, listMyAddedSkillsFn, isAdminUser } from '~/server/function/skills.server';
 import { listAllMcpsFn } from '~/server/function/mcp.server';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { SkillsPageComponent } from '~/components/skills/skills-page';
@@ -30,10 +30,11 @@ export const Route = createFileRoute('/agents/capabilities')({
     tab: search.tab === 'mcp' ? 'mcp' : 'skills',
   }),
   loader: async () => {
-    const [skillsResult, curatedSkills, mySkills, mcpResult, adminCheck] = await Promise.all([
+    const [skillsResult, curatedSkills, mySkills, myAddedSkills, mcpResult, adminCheck] = await Promise.all([
       listAllSkillsFn(),
       listCuratedSkillsFn(),
       listMySkillsFn(),
+      listMyAddedSkillsFn(),
       listAllMcpsFn(),
       isAdminUser(),
     ]);
@@ -54,6 +55,7 @@ export const Route = createFileRoute('/agents/capabilities')({
       allSkills,
       curatedSkills,
       installedCuratedSlugs,
+      myAddedSkills,
       isAdmin: adminCheck.isAdmin ?? false,
       officialMcps,
       systemMcps,
@@ -65,7 +67,7 @@ export const Route = createFileRoute('/agents/capabilities')({
 });
 
 function CapabilityCenter() {
-  const { allSkills, curatedSkills, installedCuratedSlugs, isAdmin, officialMcps, systemMcps, userMcps, allMcps } =
+  const { allSkills, curatedSkills, installedCuratedSlugs, myAddedSkills, isAdmin, officialMcps, systemMcps, userMcps, allMcps } =
     Route.useLoaderData();
   const { tab } = Route.useSearch();
   const content = useIntlayer('app');
@@ -91,7 +93,11 @@ function CapabilityCenter() {
 
         <TabsContent value="skills" className="mt-6">
           {curatedSkills.length > 0 && (
-            <CuratedSkillsSection skills={curatedSkills} installedSlugs={installedCuratedSlugs} />
+            <CuratedSkillsSection
+              skills={curatedSkills}
+              installedSlugs={installedCuratedSlugs}
+              addedSkills={myAddedSkills}
+            />
           )}
           <SkillsPageComponent
             skills={allSkills}

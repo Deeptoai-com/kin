@@ -1,5 +1,5 @@
 import { FC, useMemo, useState } from 'react';
-import { Search, ExternalLink, Sparkles, Check, Plus, Loader2, Lock } from 'lucide-react';
+import { Search, ExternalLink, Sparkles, Check, Plus, Loader2, Lock, Trash2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
@@ -10,30 +10,24 @@ import { Button } from '~/components/ui/button';
 import {
   installCuratedSkillFn,
   uninstallCuratedSkillFn,
+  removeAddedSkillFn,
   type CuratedSkillItem,
 } from '~/server/function/skills.server';
 import { CuratedSkillDetailDialog } from './curated-skill-detail-dialog';
+import { UpstreamSearchDialog } from './upstream-search-dialog';
 
 /**
- * Curated Skills Section — the Skill Library (DB-backed curated catalog).
+ * Curated Skills Section — the Skill Library (DB-backed catalog).
  *
  * S1: browse/search/category + detail (SKILL.md from skills-api).
- * S2: install/uninstall into "My Skills" (per-user, materialized to disk).
- *   - Install takes effect on the NEXT new conversation (this SDK version does
- *     not hot-reload a running session — see PRD D7).
- *   - Default skills (find-skills, skill-creator) are always installed + locked.
- *
- * See docs/project/prd/2026-06-skills-integration-prd.md.
+ * S2: install/uninstall into "My Skills" (per-user, materialized to disk; takes
+ *     effect next conversation). Default skills locked.
+ * S3: "Add from upstream" (search skills-api → user-scoped catalog) + a
+ *     "My added" section. See docs/project/prd/2026-06-skills-integration-prd.md.
  */
 
 const CATEGORY_ORDER = [
-  'ai_engineering',
-  'research',
-  'writing',
-  'design_frontend',
-  'automation',
-  'learning',
-  'security',
+  'ai_engineering', 'research', 'writing', 'design_frontend', 'automation', 'learning', 'security',
 ] as const;
 
 // Mirror of catalog-materializer DEFAULT_SKILL_SLUGS (server enforces the lock).
@@ -42,10 +36,12 @@ const DEFAULT_SKILL_SLUGS = ['find-skills', 'skill-creator'];
 export const CuratedSkillsSection: FC<{
   skills: CuratedSkillItem[];
   installedSlugs?: string[];
-}> = ({ skills, installedSlugs = [] }) => {
+  addedSkills?: CuratedSkillItem[];
+}> = ({ skills, installedSlugs = [], addedSkills = [] }) => {
   const content = useIntlayer('skills');
   const installFn = useServerFn(installCuratedSkillFn);
   const uninstallFn = useServerFn(uninstallCuratedSkillFn);
+  const removeFn = useServerFn(removeAddedSkillFn);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -53,6 +49,7 @@ export const CuratedSkillsSection: FC<{
   const [onlyInstalled, setOnlyInstalled] = useState(false);
   const [installed, setInstalled] = useState<Set<string>>(() => new Set(installedSlugs));
   const [pending, setPending] = useState<string | null>(null);
+  const [showUpstream, setShowUpstream] = useState(false);
 
   const categoryLabel = (key: string | null): string => {
     if (!key) return key ?? '';
@@ -70,9 +67,7 @@ export const CuratedSkillsSection: FC<{
     if (onlyInstalled) {
       list = list.filter((s) => installed.has(s.slug) || DEFAULT_SKILL_SLUGS.includes(s.slug));
     }
-    if (activeCategory) {
-      list = list.filter((s) => s.category === activeCategory);
-    }
+    if (activeCategory) list = list.filter((s) => s.category === activeCategory);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -116,20 +111,31 @@ export const CuratedSkillsSection: FC<{
     }
   };
 
+  const handleRemoveAdded = async (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    if (!confirm(toLocalizedString(content.curated.removeConfirm))) return;
+    setPending(slug);
+    try {
+      await removeFn({ data: { slug } });
+      toast.success(toLocalizedString(content.curated.removedToast));
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'remove failed');
+      setPending(null);
+    }
+  };
+
   const renderInstallControl = (slug: string) => {
     const isDefault = DEFAULT_SKILL_SLUGS.includes(slug);
     const isInstalled = isDefault || installed.has(slug);
     const isPending = pending === slug;
-
     if (isDefault) {
       return (
         <Badge variant="secondary" className="gap-1 text-[10px]">
-          <Lock className="h-3 w-3" />
-          {content.curated.defaultLocked}
+          <Lock className="h-3 w-3" />{content.curated.defaultLocked}
         </Badge>
       );
     }
-
     return (
       <Button
         size="sm"
@@ -138,21 +144,72 @@ export const CuratedSkillsSection: FC<{
         disabled={isPending}
         onClick={(e) => handleToggleInstall(e, slug)}
       >
-        {isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : isInstalled ? (
-          <Check className="h-3 w-3" />
-        ) : (
-          <Plus className="h-3 w-3" />
-        )}
-        {isPending
-          ? content.curated.installing
-          : isInstalled
-            ? content.curated.installed
-            : content.curated.install}
+        {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : isInstalled ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+        {isPending ? content.curated.installing : isInstalled ? content.curated.installed : content.curated.install}
       </Button>
     );
   };
+
+  const renderCard = (skill: CuratedSkillItem, opts?: { removable?: boolean }) => (
+    <div
+      key={skill.slug}
+      role="button"
+      tabIndex={0}
+      onClick={() => setDetailSlug(skill.slug)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setDetailSlug(skill.slug);
+        }
+      }}
+      className="flex cursor-pointer flex-col rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+    >
+      <div className="mb-2 flex items-start gap-2">
+        <span className="text-2xl leading-none" aria-hidden>{skill.iconEmoji || '🧩'}</span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-medium" title={skill.titleZh || skill.name}>{skill.titleZh || skill.name}</h3>
+          <p className="truncate text-xs text-muted-foreground" title={skill.name}>{skill.name}</p>
+        </div>
+        {skill.level && <Badge variant="outline" className="shrink-0 text-[10px]">{skill.level}</Badge>}
+      </div>
+
+      {skill.summaryZh && <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">{skill.summaryZh}</p>}
+
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {skill.category && <Badge variant="secondary" className="text-[10px]">{categoryLabel(skill.category)}</Badge>}
+        {skill.tags.slice(0, 2).map((tag) => (
+          <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
+        ))}
+      </div>
+
+      <div className="mt-auto flex items-center gap-2">
+        {renderInstallControl(skill.slug)}
+        {opts?.removable && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
+            disabled={pending === skill.slug}
+            onClick={(e) => handleRemoveAdded(e, skill.slug)}
+          >
+            <Trash2 className="h-3 w-3" />{content.curated.remove}
+          </Button>
+        )}
+        {skill.githubUrl && (
+          <a
+            href={skill.githubUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+            title={toLocalizedString(content.curated.viewOnGithub)}
+          >
+            <ExternalLink className="h-3 w-3" />{skill.sourceLabel || 'GitHub'}
+          </a>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <section className="mb-10">
@@ -163,10 +220,14 @@ export const CuratedSkillsSection: FC<{
         <span className="text-sm text-muted-foreground">
           {toLocalizedString(content.curated.count).replace('{count}', String(skills.length))}
         </span>
+        <Button variant="outline" size="sm" className="ml-auto gap-1" onClick={() => setShowUpstream(true)}>
+          <Download className="h-3.5 w-3.5" />
+          {content.curated.upstream.addButton}
+        </Button>
       </div>
       <p className="mb-4 text-sm text-muted-foreground">{content.curated.subtitle}</p>
 
-      {/* Toolbar: search + category filter + My-Skills toggle */}
+      {/* Toolbar */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -178,118 +239,48 @@ export const CuratedSkillsSection: FC<{
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <Button
-            variant={activeCategory === null ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActiveCategory(null)}
-          >
+          <Button variant={activeCategory === null ? 'default' : 'outline'} size="sm" onClick={() => setActiveCategory(null)}>
             {content.curated.allCategories}
           </Button>
           {presentCategories.map((cat) => (
-            <Button
-              key={cat}
-              variant={activeCategory === cat ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setActiveCategory(cat)}
-            >
+            <Button key={cat} variant={activeCategory === cat ? 'default' : 'outline'} size="sm" onClick={() => setActiveCategory(cat)}>
               {categoryLabel(cat)}
             </Button>
           ))}
         </div>
-        <Button
-          variant={onlyInstalled ? 'default' : 'outline'}
-          size="sm"
-          className="ml-auto gap-1"
-          onClick={() => setOnlyInstalled((v) => !v)}
-        >
-          <Check className="h-3.5 w-3.5" />
-          {content.curated.onlyInstalled}
+        <Button variant={onlyInstalled ? 'default' : 'outline'} size="sm" className="ml-auto gap-1" onClick={() => setOnlyInstalled((v) => !v)}>
+          <Check className="h-3.5 w-3.5" />{content.curated.onlyInstalled}
         </Button>
       </div>
 
-      {/* Grid */}
+      {/* Official grid */}
       {filtered.length === 0 ? (
         <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
           <p className="text-sm text-muted-foreground">{content.curated.empty}</p>
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((skill) => (
-            <div
-              key={skill.slug}
-              role="button"
-              tabIndex={0}
-              onClick={() => setDetailSlug(skill.slug)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setDetailSlug(skill.slug);
-                }
-              }}
-              className="flex cursor-pointer flex-col rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            >
-              <div className="mb-2 flex items-start gap-2">
-                <span className="text-2xl leading-none" aria-hidden>
-                  {skill.iconEmoji || '🧩'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-sm font-medium" title={skill.titleZh || skill.name}>
-                    {skill.titleZh || skill.name}
-                  </h3>
-                  <p className="truncate text-xs text-muted-foreground" title={skill.name}>
-                    {skill.name}
-                  </p>
-                </div>
-                {skill.level && (
-                  <Badge variant="outline" className="shrink-0 text-[10px]">
-                    {skill.level}
-                  </Badge>
-                )}
-              </div>
-
-              {skill.summaryZh && (
-                <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">{skill.summaryZh}</p>
-              )}
-
-              <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                {skill.category && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {categoryLabel(skill.category)}
-                  </Badge>
-                )}
-                {skill.tags.slice(0, 2).map((tag) => (
-                  <Badge key={tag} variant="outline" className="text-[10px]">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-
-              {/* Action row: install control + GitHub link */}
-              <div className="mt-auto flex items-center gap-2">
-                {renderInstallControl(skill.slug)}
-                {skill.githubUrl && (
-                  <a
-                    href={skill.githubUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-                    title={toLocalizedString(content.curated.viewOnGithub)}
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    {skill.sourceLabel || 'GitHub'}
-                  </a>
-                )}
-              </div>
-            </div>
-          ))}
+          {filtered.map((skill) => renderCard(skill))}
         </div>
       )}
 
-      <CuratedSkillDetailDialog
-        slug={detailSlug}
-        isOpen={detailSlug !== null}
-        onClose={() => setDetailSlug(null)}
+      {/* My added (upstream) */}
+      {addedSkills.length > 0 && (
+        <div className="mt-8">
+          <h3 className="mb-3 text-sm font-medium text-muted-foreground">
+            {content.curated.myAddedTitle} ({addedSkills.length})
+          </h3>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {addedSkills.map((skill) => renderCard(skill, { removable: true }))}
+          </div>
+        </div>
+      )}
+
+      <CuratedSkillDetailDialog slug={detailSlug} isOpen={detailSlug !== null} onClose={() => setDetailSlug(null)} />
+      <UpstreamSearchDialog
+        isOpen={showUpstream}
+        onClose={() => setShowUpstream(false)}
+        onAdded={() => window.location.reload()}
       />
     </section>
   );
