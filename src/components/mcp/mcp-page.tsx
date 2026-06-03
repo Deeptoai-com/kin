@@ -50,6 +50,7 @@ export const McpPageComponent: FC<{
   const [userMcps, setUserMcps] = useState<ExtendedMcpInfo[]>(() => initialUserMcps || []);
   const [enabledMcps, setEnabledMcps] = useState<string[]>(() => initialEnabled || []);
   const [verifyingSlug, setVerifyingSlug] = useState<string | null>(null);
+  const [verifyResults, setVerifyResults] = useState<Record<string, { ok: boolean; message?: string }>>({});
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -116,18 +117,19 @@ export const McpPageComponent: FC<{
     try {
       setVerifyingSlug(slug);
       const result = await verifyMcp({ data: { slug } });
-      if (result.ok) {
-        alert(toLocalizedString(content.verify.success));
-      } else {
-        const detail = result.message
-          || (result.details ? JSON.stringify(result.details, null, 2) : '')
-          || result.stderr
-          || '';
-        alert(`${toLocalizedString(content.verify.failed)} ${detail}`.trim());
-      }
+      const message = result.ok
+        ? (result.message || undefined)
+        : (result.message
+            || (result.details ? JSON.stringify(result.details, null, 2) : '')
+            || result.stderr
+            || undefined);
+      setVerifyResults((prev) => ({ ...prev, [slug]: { ok: !!result.ok, message } }));
     } catch (error) {
       console.error('Failed to verify MCP:', error);
-      alert(toLocalizedString(content.verify.genericFailed));
+      setVerifyResults((prev) => ({
+        ...prev,
+        [slug]: { ok: false, message: toLocalizedString(content.verify.genericFailed) },
+      }));
     } finally {
       setVerifyingSlug(null);
     }
@@ -241,6 +243,7 @@ export const McpPageComponent: FC<{
                   onDelete={mcp.store !== 'official' ? () => handleDeleteCustomMcp(mcp.slug) : undefined}
                   verifying={verifyingSlug === mcp.slug}
                   deleting={deletingSlug === mcp.slug}
+                  verifyResult={verifyResults[mcp.slug]}
                 />
               ))}
             </div>
@@ -265,6 +268,7 @@ export const McpPageComponent: FC<{
                   onDelete={mcp.store !== 'official' ? () => handleDeleteCustomMcp(mcp.slug) : undefined}
                   verifying={verifyingSlug === mcp.slug}
                   deleting={deletingSlug === mcp.slug}
+                  verifyResult={verifyResults[mcp.slug]}
                 />
               ))}
             </div>

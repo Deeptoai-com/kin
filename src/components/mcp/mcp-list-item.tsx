@@ -8,6 +8,8 @@ import type { ExtendedMcpInfo } from '~/claude/mcp';
 import { toLocalizedString } from '~/lib/utils';
 import { cn } from '~/lib/utils';
 
+export type McpVerifyResult = { ok: boolean; message?: string };
+
 interface McpListItemProps {
   mcp: ExtendedMcpInfo;
   isEnabled: boolean;
@@ -17,6 +19,8 @@ interface McpListItemProps {
   onDelete?: () => void;
   verifying?: boolean;
   deleting?: boolean;
+  /** Last on-demand connection test result (P1: status badge in the capability center). */
+  verifyResult?: McpVerifyResult;
 }
 
 export const McpListItem: FC<McpListItemProps> = ({
@@ -28,6 +32,7 @@ export const McpListItem: FC<McpListItemProps> = ({
   onDelete,
   verifying,
   deleting,
+  verifyResult,
 }) => {
   const content = useIntlayer('mcp');
 
@@ -51,6 +56,19 @@ export const McpListItem: FC<McpListItemProps> = ({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm truncate">{mcp.name}</h3>
+          {verifyResult && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 shrink-0 text-xs',
+                verifyResult.ok ? 'text-green-600 dark:text-green-500' : 'text-destructive'
+              )}
+              title={verifyResult.message
+                || toLocalizedString(verifyResult.ok ? content.verify.success : content.verify.failed)}
+            >
+              <span className={cn('h-2 w-2 rounded-full', verifyResult.ok ? 'bg-green-500' : 'bg-destructive')} />
+              {toLocalizedString(verifyResult.ok ? content.verify.connectedShort : content.verify.failedShort)}
+            </span>
+          )}
           {isSystem && (
             <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
               <Globe className="mr-1 h-3 w-3" />
