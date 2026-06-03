@@ -403,6 +403,189 @@ export const getCuratedSkillDetailFn = createServerFn({ method: 'POST' })
     }
   });
 
+// ============================================================================
+// Catalog "install" (My Skills) — S2 execution layer
+//
+// Install = materialize the skill onto disk (per-user) + record in
+// skill_enablement. Takes effect on the NEXT new conversation (this SDK version
+// does not hot-reload a running session). Default skills (find-skills,
+// skill-creator) are always installed and locked. See PRD D6/D7/S2.
+// ============================================================================
+
+export interface MySkillItem {
+  slug: string;
+  name: string;
+  titleZh: string | null;
+  iconEmoji: string | null;
+  category: string | null;
+  source: string;
+  isDefault: boolean;
+}
+
+const curatedSlugSchema = z.object({ slug: z.string().min(1) });
+
+function parseSlugInput(input: unknown): { slug: string } {
+  const payload = typeof input === 'string' ? JSON.parse(input) : input;
+  const data = payload && typeof payload === 'object' && 'data' in payload
+    ? (payload as { data?: unknown }).data
+    : payload;
+  return curatedSlugSchema.parse(data);
+}
+
+/** Load an official catalog row by slug (id + source + upstream). */
+async function loadOfficialCatalogRow(slug: string) {
+  const { db } = await import('~/db/db-config');
+  const { skillCatalog } = await import('~/db/schema');
+  const { and, eq } = await import('drizzle-orm');
+  const [row] = await db
+    .select({
+      id: skillCatalog.id,
+      slug: skillCatalog.slug,
+      source: skillCatalog.source,
+      upstream: skillCatalog.upstream,
+    })
+    .from(skillCatalog)
+    .where(and(eq(skillCatalog.slug, slug), eq(skillCatalog.scope, 'official')))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * List the current user's installed skills (My Skills).
+ */
+export const listMySkillsFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<MySkillItem[]> => {
+    const user = await requireUser();
+    const { db } = await import('~/db/db-config');
+    const { skillCatalog, skillEnablement } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+    const { isDefaultSkill } = await import('~/claude/skills/catalog-materializer');
+
+    const rows = await db
+      .select({
+        slug: skillCatalog.slug,
+        name: skillCatalog.name,
+        titleZh: skillCatalog.titleZh,
+        iconEmoji: skillCatalog.iconEmoji,
+        category: skillCatalog.category,
+        source: skillCatalog.source,
+      })
+      .from(skillEnablement)
+      .innerJoin(skillCatalog, eq(skillEnablement.catalogId, skillCatalog.id))
+      .where(and(eq(skillEnablement.userId, user.id), eq(skillEnablement.enabled, true)));
+
+    return rows.map((r) => ({ ...r, isDefault: isDefaultSkill(r.slug) }));
+  },
+);
+
+/**
+ * Install (enable) a catalog skill for the current user:
+ * materialize onto disk + record in skill_enablement. Effective next conversation.
+ */
+export const installCuratedSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator(parseSlugInput)
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const { db } = await import('~/db/db-config');
+    const { skillEnablement } = await import('~/db/schema');
+    const { materializeCatalogSkill } = await import('~/claude/skills/catalog-materializer');
+
+    const row = await loadOfficialCatalogRow(data.slug);
+    if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
+
+    const result = await materializeCatalogSkill(user.id, row);
+    if (!result.ok) {
+      throw new Error(`Failed to install ${data.slug}: ${result.error ?? result.status}`);
+    }
+
+    const now = new Date();
+    await db
+      .insert(skillEnablement)
+      .values({ userId: user.id, catalogId: row.id, enabled: true, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [skillEnablement.userId, skillEnablement.catalogId],
+        set: { enabled: true, updatedAt: now },
+      });
+
+    return { slug: data.slug, installed: true, effectiveNextConversation: true };
+  });
+
+/**
+ * Uninstall (disable) a catalog skill for the current user:
+ * remove the materialized dir + clear skill_enablement. Default skills are locked.
+ */
+export const uninstallCuratedSkillFn = createServerFn({ method: 'POST' })
+  .inputValidator(parseSlugInput)
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const { isDefaultSkill, dematerializeSkill } = await import('~/claude/skills/catalog-materializer');
+
+    if (isDefaultSkill(data.slug)) {
+      throw new Error('SKILL_DEFAULT_LOCKED');
+    }
+
+    const { db } = await import('~/db/db-config');
+    const { skillEnablement } = await import('~/db/schema');
+    const { and, eq } = await import('drizzle-orm');
+
+    const row = await loadOfficialCatalogRow(data.slug);
+    if (!row) throw new Error(`Curated skill not found: ${data.slug}`);
+
+    await dematerializeSkill(user.id, data.slug);
+    await db
+      .delete(skillEnablement)
+      .where(and(eq(skillEnablement.userId, user.id), eq(skillEnablement.catalogId, row.id)));
+
+    return { slug: data.slug, installed: false };
+  });
+
+/**
+ * Ensure the default skills (find-skills + skill-creator) are installed for the
+ * current user. Idempotent — call on app/chat load. Materializes any missing
+ * default and records enablement.
+ */
+export const ensureDefaultSkillsFn = createServerFn({ method: 'POST' }).handler(async () => {
+  const user = await requireUser();
+  const { db } = await import('~/db/db-config');
+  const { skillCatalog, skillEnablement } = await import('~/db/schema');
+  const { and, eq } = await import('drizzle-orm');
+  const { DEFAULT_SKILL_SLUGS, materializeCatalogSkill } = await import('~/claude/skills/catalog-materializer');
+
+  const ensured: string[] = [];
+  for (const slug of DEFAULT_SKILL_SLUGS) {
+    const row = await loadOfficialCatalogRow(slug);
+    if (!row) {
+      console.warn(`[Skills] default skill not in catalog, skipping: ${slug}`);
+      continue;
+    }
+
+    const [existing] = await db
+      .select({ enabled: skillEnablement.enabled })
+      .from(skillEnablement)
+      .where(and(eq(skillEnablement.userId, user.id), eq(skillEnablement.catalogId, row.id)))
+      .limit(1);
+    if (existing?.enabled) continue;
+
+    const result = await materializeCatalogSkill(user.id, row);
+    if (!result.ok) {
+      console.error(`[Skills] failed to materialize default skill ${slug}:`, result.error);
+      continue;
+    }
+
+    const now = new Date();
+    await db
+      .insert(skillEnablement)
+      .values({ userId: user.id, catalogId: row.id, enabled: true, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [skillEnablement.userId, skillEnablement.catalogId],
+        set: { enabled: true, updatedAt: now },
+      });
+    ensured.push(slug);
+  }
+
+  return { ensured };
+});
+
 /**
  * Get global skills (admin only)
  */

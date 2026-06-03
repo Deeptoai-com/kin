@@ -1,21 +1,29 @@
 import { FC, useMemo, useState } from 'react';
-import { Search, ExternalLink, Sparkles } from 'lucide-react';
+import { Search, ExternalLink, Sparkles, Check, Plus, Loader2, Lock } from 'lucide-react';
+import { toast } from 'sonner';
 import { useIntlayer } from 'react-intlayer';
+import { useServerFn } from '@tanstack/react-start';
 import { toLocalizedString } from '~/lib/utils';
 import { Input } from '~/components/ui/input';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
-import type { CuratedSkillItem } from '~/server/function/skills.server';
+import {
+  installCuratedSkillFn,
+  uninstallCuratedSkillFn,
+  type CuratedSkillItem,
+} from '~/server/function/skills.server';
 import { CuratedSkillDetailDialog } from './curated-skill-detail-dialog';
 
 /**
- * Curated Skills Section — read-only browse of the DB-backed curated catalog
- * (seeded from the platform's curated-100). Skills S1a: display only —
- * search + category filter + cards. Runtime enable/materialization (S2) and
- * SKILL.md detail from skills-api (S1b) are later phases, so there is
- * intentionally no enable toggle here yet.
+ * Curated Skills Section — the Skill Library (DB-backed curated catalog).
  *
- * See docs/project/prd/2026-06-skills-integration-prd.md (§9 S1).
+ * S1: browse/search/category + detail (SKILL.md from skills-api).
+ * S2: install/uninstall into "My Skills" (per-user, materialized to disk).
+ *   - Install takes effect on the NEXT new conversation (this SDK version does
+ *     not hot-reload a running session — see PRD D7).
+ *   - Default skills (find-skills, skill-creator) are always installed + locked.
+ *
+ * See docs/project/prd/2026-06-skills-integration-prd.md.
  */
 
 const CATEGORY_ORDER = [
@@ -28,11 +36,23 @@ const CATEGORY_ORDER = [
   'security',
 ] as const;
 
-export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skills }) => {
+// Mirror of catalog-materializer DEFAULT_SKILL_SLUGS (server enforces the lock).
+const DEFAULT_SKILL_SLUGS = ['find-skills', 'skill-creator'];
+
+export const CuratedSkillsSection: FC<{
+  skills: CuratedSkillItem[];
+  installedSlugs?: string[];
+}> = ({ skills, installedSlugs = [] }) => {
   const content = useIntlayer('skills');
+  const installFn = useServerFn(installCuratedSkillFn);
+  const uninstallFn = useServerFn(uninstallCuratedSkillFn);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [detailSlug, setDetailSlug] = useState<string | null>(null);
+  const [onlyInstalled, setOnlyInstalled] = useState(false);
+  const [installed, setInstalled] = useState<Set<string>>(() => new Set(installedSlugs));
+  const [pending, setPending] = useState<string | null>(null);
 
   const categoryLabel = (key: string | null): string => {
     if (!key) return key ?? '';
@@ -40,7 +60,6 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
     return key in map ? toLocalizedString(map[key]) : key;
   };
 
-  // Categories actually present in the data, in canonical order
   const presentCategories = useMemo(() => {
     const set = new Set(skills.map((s) => s.category).filter(Boolean) as string[]);
     return CATEGORY_ORDER.filter((c) => set.has(c));
@@ -48,6 +67,9 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
 
   const filtered = useMemo(() => {
     let list = skills;
+    if (onlyInstalled) {
+      list = list.filter((s) => installed.has(s.slug) || DEFAULT_SKILL_SLUGS.includes(s.slug));
+    }
     if (activeCategory) {
       list = list.filter((s) => s.category === activeCategory);
     }
@@ -62,7 +84,75 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
       );
     }
     return list;
-  }, [skills, activeCategory, searchQuery]);
+  }, [skills, activeCategory, searchQuery, onlyInstalled, installed]);
+
+  const handleToggleInstall = async (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    if (DEFAULT_SKILL_SLUGS.includes(slug)) {
+      toast.info(toLocalizedString(content.curated.defaultLockedToast));
+      return;
+    }
+    const isInstalled = installed.has(slug);
+    setPending(slug);
+    try {
+      if (isInstalled) {
+        await uninstallFn({ data: { slug } });
+        setInstalled((prev) => {
+          const next = new Set(prev);
+          next.delete(slug);
+          return next;
+        });
+        toast.success(toLocalizedString(content.curated.uninstalledToast));
+      } else {
+        await installFn({ data: { slug } });
+        setInstalled((prev) => new Set(prev).add(slug));
+        toast.success(toLocalizedString(content.curated.installedToast));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      toast.error(`${toLocalizedString(content.curated.installFailed)}${message ? `: ${message}` : ''}`);
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const renderInstallControl = (slug: string) => {
+    const isDefault = DEFAULT_SKILL_SLUGS.includes(slug);
+    const isInstalled = isDefault || installed.has(slug);
+    const isPending = pending === slug;
+
+    if (isDefault) {
+      return (
+        <Badge variant="secondary" className="gap-1 text-[10px]">
+          <Lock className="h-3 w-3" />
+          {content.curated.defaultLocked}
+        </Badge>
+      );
+    }
+
+    return (
+      <Button
+        size="sm"
+        variant={isInstalled ? 'outline' : 'default'}
+        className="h-7 gap-1 px-2 text-xs"
+        disabled={isPending}
+        onClick={(e) => handleToggleInstall(e, slug)}
+      >
+        {isPending ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : isInstalled ? (
+          <Check className="h-3 w-3" />
+        ) : (
+          <Plus className="h-3 w-3" />
+        )}
+        {isPending
+          ? content.curated.installing
+          : isInstalled
+            ? content.curated.installed
+            : content.curated.install}
+      </Button>
+    );
+  };
 
   return (
     <section className="mb-10">
@@ -70,14 +160,13 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-semibold">{content.curated.title}</h2>
-        <Badge variant="secondary">{content.curated.previewBadge}</Badge>
         <span className="text-sm text-muted-foreground">
           {toLocalizedString(content.curated.count).replace('{count}', String(skills.length))}
         </span>
       </div>
       <p className="mb-4 text-sm text-muted-foreground">{content.curated.subtitle}</p>
 
-      {/* Toolbar: search + category filter */}
+      {/* Toolbar: search + category filter + My-Skills toggle */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -107,6 +196,15 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
             </Button>
           ))}
         </div>
+        <Button
+          variant={onlyInstalled ? 'default' : 'outline'}
+          size="sm"
+          className="ml-auto gap-1"
+          onClick={() => setOnlyInstalled((v) => !v)}
+        >
+          <Check className="h-3.5 w-3.5" />
+          {content.curated.onlyInstalled}
+        </Button>
       </div>
 
       {/* Grid */}
@@ -153,7 +251,7 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
                 <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">{skill.summaryZh}</p>
               )}
 
-              <div className="mt-auto flex flex-wrap items-center gap-1.5">
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
                 {skill.category && (
                   <Badge variant="secondary" className="text-[10px]">
                     {categoryLabel(skill.category)}
@@ -164,6 +262,11 @@ export const CuratedSkillsSection: FC<{ skills: CuratedSkillItem[] }> = ({ skill
                     {tag}
                   </Badge>
                 ))}
+              </div>
+
+              {/* Action row: install control + GitHub link */}
+              <div className="mt-auto flex items-center gap-2">
+                {renderInstallControl(skill.slug)}
                 {skill.githubUrl && (
                   <a
                     href={skill.githubUrl}

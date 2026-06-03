@@ -78,7 +78,7 @@ import {
   type TextContentPart,
   type ContentPart,
 } from '~/lib/chat-session-store';
-import { disableUserSkillsFn } from '~/server/function/skills.server';
+import { disableUserSkillsFn, ensureDefaultSkillsFn } from '~/server/function/skills.server';
 import {
   trackClaudeAgentSessionCreated,
   trackClaudeAgentSessionSwitched,
@@ -161,8 +161,15 @@ const useFileHandlers = () => useContext(FileHandlersContext);
 export const Route = createFileRoute('/agents/claude-chat')({
   component: RouteComponent,
   loader: async () => {
-    // Fetch permission info on server side
-    const permissionInfo = await getPermissionInfo();
+    // Fetch permission info + ensure default skills are installed (idempotent,
+    // best-effort: a materialization hiccup must not block the chat page).
+    const [permissionInfo] = await Promise.all([
+      getPermissionInfo(),
+      ensureDefaultSkillsFn().catch((error) => {
+        console.warn('[Skills] ensureDefaultSkills failed (non-fatal):', error);
+        return null;
+      }),
+    ]);
     return { permissionInfo };
   },
 });

@@ -71,6 +71,31 @@ const skillsContent = {
       allCategories: t({ en: 'All', 'zh-Hans': '全部', fr: 'Tous', ja: 'すべて', ko: '전체', 'zh-Hant': '全部' }),
       viewOnGithub: t({ en: 'View on GitHub', 'zh-Hans': '在 GitHub 查看', fr: 'Voir sur GitHub', ja: 'GitHub で見る', ko: 'GitHub에서 보기', 'zh-Hant': '在 GitHub 檢視' }),
       viewDetails: t({ en: 'Details', 'zh-Hans': '详情', fr: 'Détails', ja: '詳細', ko: '상세', 'zh-Hant': '詳情' }),
+      // Install / My Skills (S2)
+      install: t({ en: 'Install', 'zh-Hans': '安装', fr: 'Installer', ja: 'インストール', ko: '설치', 'zh-Hant': '安裝' }),
+      installed: t({ en: 'Installed', 'zh-Hans': '已安装', fr: 'Installé', ja: 'インストール済み', ko: '설치됨', 'zh-Hant': '已安裝' }),
+      uninstall: t({ en: 'Uninstall', 'zh-Hans': '卸载', fr: 'Désinstaller', ja: 'アンインストール', ko: '제거', 'zh-Hant': '解除安裝' }),
+      installing: t({ en: 'Installing…', 'zh-Hans': '安装中…', fr: 'Installation…', ja: 'インストール中…', ko: '설치 중…', 'zh-Hant': '安裝中…' }),
+      defaultLocked: t({ en: 'Default', 'zh-Hans': '默认', fr: 'Par défaut', ja: 'デフォルト', ko: '기본', 'zh-Hant': '預設' }),
+      installedToast: t({
+        en: 'Added to My Skills — takes effect in your next new conversation.',
+        'zh-Hans': '已加入「我的技能」——下个新对话生效。',
+        fr: 'Ajouté à Mes Skills — effectif dans votre prochaine conversation.',
+        ja: '「マイスキル」に追加しました — 次の新しい会話から有効です。',
+        ko: '「내 스킬」에 추가됨 — 다음 새 대화부터 적용됩니다.',
+        'zh-Hant': '已加入「我的技能」——下個新對話生效。',
+      }),
+      uninstalledToast: t({
+        en: 'Removed from My Skills — applies to your next new conversation.',
+        'zh-Hans': '已从「我的技能」移除——下个新对话生效。',
+        fr: 'Retiré de Mes Skills — effectif dans votre prochaine conversation.',
+        ja: '「マイスキル」から削除しました — 次の新しい会話から反映されます。',
+        ko: '「내 스킬」에서 제거됨 — 다음 새 대화부터 적용됩니다.',
+        'zh-Hant': '已從「我的技能」移除——下個新對話生效。',
+      }),
+      installFailed: t({ en: 'Install failed', 'zh-Hans': '安装失败', fr: 'Échec de l\'installation', ja: 'インストール失敗', ko: '설치 실패', 'zh-Hant': '安裝失敗' }),
+      defaultLockedToast: t({ en: 'Default skills cannot be uninstalled.', 'zh-Hans': '默认技能不可卸载。', fr: 'Les skills par défaut ne peuvent pas être désinstallés.', ja: 'デフォルトスキルはアンインストールできません。', ko: '기본 스킬은 제거할 수 없습니다.', 'zh-Hant': '預設技能不可解除安裝。' }),
+      onlyInstalled: t({ en: 'My Skills only', 'zh-Hans': '只看已安装', fr: 'Mes Skills seulement', ja: 'マイスキルのみ', ko: '내 스킬만', 'zh-Hant': '只看已安裝' }),
       empty: t({ en: 'No curated skills match your filters', 'zh-Hans': '没有符合条件的精选技能', fr: 'Aucun skill ne correspond', ja: '条件に合う厳選スキルがありません', ko: '조건에 맞는 엄선 스킬이 없습니다', 'zh-Hant': '沒有符合條件的精選技能' }),
       // Detail dialog (S1b)
       detail: {
