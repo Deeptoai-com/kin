@@ -200,6 +200,7 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **Phase C（真预览）交给架构师 + 完整实施指南落档**。chat/Workbench 单源重做 S1+S2 已合并 `main`、S3 延后备案，**真预览（多文件 App 跑起来）= Phase C，归架构师**。交付 `research/2026-06-phasec-implementation-guide-for-architect.md`（① 如何实施含 **UI 接缝契约**：`.oxygenie/app.json` + `preview_state` 事件 + `chat-session-store` slot + `useSessionPreview` selector + 卡片「运行预览」露出，后端/前端归属切分；② 预期=SPA static 硬验收；③ 验证清单+回归；④ 求助/协作规矩）。另：成果物多文件 App 预览加了「这是多文件 App…」提示横幅（`artifact-html.tsx`，合并 `main`）。
 - **2026-06-04** — **Cowork S2 实现（turn 卡渲染收尾）+ S3 决定（暂不修，挂 artifact 线）**。S2：
   `turn-builder.ts` 折叠头改 Cowork 式 **「Worked Xs · N steps · 改 K 文件」**（耗时=工具 `elapsedSeconds`
   之和、步数=工具/搜索组渲染行、改动文件=Write/Edit/MultiEdit/NotebookEdit 去重计数；纯思考轮 stepCount=0
