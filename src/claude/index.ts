@@ -27,6 +27,8 @@ export {
 export {
   runChat,
   cancelActiveRun,
+  startPreview,
+  stopPreview,
   abort,
   resumeSession,
   newSession,
