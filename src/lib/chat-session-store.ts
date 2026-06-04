@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import type { UsageData } from '~/components/claude-chat/usage-card';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
-import type { PermissionTier } from '~/lib/permission-tier';
+import type { InteractionMode } from '~/lib/permission-tier';
 
 // Define our own message types that are compatible with @assistant-ui/react
 export type TextContentPart = {
@@ -120,6 +120,18 @@ export type PreviewState = {
   error?: string;
 };
 
+// Ask-mode HITL: a pending tool-approval request, pushed by the worker over WS
+// (`approval_request`). The user approves/rejects; the decision goes back to the
+// worker's canUseTool. See docs/project/research/2026-06-ask-act-hitl-design.md.
+export type ApprovalRequest = {
+  toolUseID: string;
+  toolName: string;
+  title?: string | null;
+  displayName?: string | null;
+  description?: string | null;
+  input?: Record<string, unknown>;
+};
+
 interface ChatSessionState {
   // Current session ID
   currentSessionId: string | null;
@@ -145,6 +157,9 @@ interface ChatSessionState {
   // Phase C preview runtime state (session-scoped; null when no preview running)
   previewState: PreviewState | null;
 
+  // Ask-mode HITL: tool-approval requests awaiting the user's decision.
+  pendingApprovals: ApprovalRequest[];
+
   // Structured output from last query (for artifact metadata)
   lastStructuredOutput: unknown | null;
 
@@ -159,7 +174,8 @@ interface ChatSessionState {
 
   // Selected product permission tier (ephemeral, per-session UI choice).
   // Clamped to the org ceiling server-side; undefined → server uses org default.
-  selectedTier?: PermissionTier;
+  // Holds the interaction mode ('ask' | 'act'); field name kept for wire compat.
+  selectedTier?: InteractionMode;
 
   // Actions
   setSessionId: (sessionId: string | null) => void;
@@ -179,13 +195,15 @@ interface ChatSessionState {
   setUsageData: (data: UsageData) => void;
   setSessionMetadata: (data: SessionMetadata) => void;
   setPreviewState: (state: PreviewState | null) => void;
+  addPendingApproval: (req: ApprovalRequest) => void;
+  resolvePendingApproval: (toolUseID: string) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
   setShowThinking: (show: boolean) => void;
   setQueueCount: (count: number) => void;
   clearMessages: () => void;
   addTemporarySkill: (skillSlug: string) => void;
   clearTemporarySkills: () => void;
-  setSelectedTier: (tier: PermissionTier | undefined) => void;
+  setSelectedTier: (mode: InteractionMode | undefined) => void;
 
   // Load historical messages from SDK format
   loadHistoricalMessages: (sdkMessages: SDKMessage[]) => void;
@@ -389,6 +407,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   usageData: null,
   sessionMetadata: null,
   previewState: null,
+  pendingApprovals: [],
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
   queueCount: 0, // Number of pending runs waiting to be processed
@@ -477,6 +496,19 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setPreviewState: (data) => {
     set({ previewState: data });
+  },
+
+  addPendingApproval: (req) => {
+    set((state) => {
+      if (state.pendingApprovals.some((a) => a.toolUseID === req.toolUseID)) return state;
+      return { pendingApprovals: [...state.pendingApprovals, req] };
+    });
+  },
+
+  resolvePendingApproval: (toolUseID) => {
+    set((state) => ({
+      pendingApprovals: state.pendingApprovals.filter((a) => a.toolUseID !== toolUseID),
+    }));
   },
 
   setLastStructuredOutput: (data) => {
