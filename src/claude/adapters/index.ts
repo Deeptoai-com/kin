@@ -5,7 +5,8 @@
  */
 
 export {
-  ClaudeAgentWSAdapter,
+  runChat,
+  cancelActiveRun,
   abort,
   resumeSession,
   createSession,

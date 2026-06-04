@@ -25,6 +25,17 @@ const config = {
   cwd: process.env.WORKER_CWD || process.cwd(),
 };
 
+// Monotonic sequence number stamped on every frame emitted to the parent.
+// The UI message store uses it to merge/order live deltas deterministically —
+// without it, ordering relies purely on JS arrival order (see cowork redesign
+// spec §3). Returns the underlying write() result so callers can honor
+// backpressure (await 'drain' when the pipe is full).
+let __frameSeq = 0;
+function writeFrame(frame) {
+  frame.seq = __frameSeq++;
+  return process.stdout.write(JSON.stringify(frame) + '\n');
+}
+
 const PERMISSION_MODES = new Set([
   'default',
   'plan',
@@ -632,7 +643,7 @@ Example bad operations:
         if (streamEvent.type === 'content_block_delta'
           && streamEvent.delta?.type === 'text_delta'
           && typeof streamEvent.delta.text === 'string') {
-          process.stdout.write(JSON.stringify({
+          writeFrame({
             type: 'event',
             event: {
               type: 'text_delta',
@@ -640,7 +651,7 @@ Example bad operations:
               turnId: currentTurnId ?? undefined,
               parentToolUseId: parentToolUseId ?? undefined,
             },
-          }) + '\n');
+          });
         }
 
         // message_delta contains the actual stop_reason - emit pending text now
@@ -648,7 +659,7 @@ Example bad operations:
           const stopReason = streamEvent.delta?.stop_reason;
           if (pendingTextForStopReason) {
             const isIntermediate = stopReason === 'tool_use';
-            process.stdout.write(JSON.stringify({
+            writeFrame({
               type: 'event',
               event: {
                 type: 'text_complete',
@@ -657,7 +668,7 @@ Example bad operations:
                 turnId: currentTurnId ?? undefined,
                 parentToolUseId: parentToolUseId ?? undefined,
               },
-            }) + '\n');
+            });
             pendingTextForStopReason = null;
           }
         }
@@ -667,7 +678,7 @@ Example bad operations:
       // pipe to the parent is full (parent paused reading because the WS client is
       // slow), await 'drain' before continuing so the SDK event pump stops instead
       // of buffering unboundedly in this worker.
-      const ok = process.stdout.write(JSON.stringify({ type: 'event', event }) + '\n');
+      const ok = writeFrame({ type: 'event', event });
       if (!ok) {
         await new Promise((resolve) => process.stdout.once('drain', resolve));
       }
@@ -677,7 +688,7 @@ Example bad operations:
     if (!isTerminating) {
       // Defensive: flush any pending text that wasn't emitted
       if (pendingTextForStopReason) {
-        process.stdout.write(JSON.stringify({
+        writeFrame({
           type: 'event',
           event: {
             type: 'text_complete',
@@ -685,20 +696,20 @@ Example bad operations:
             isIntermediate: false,
             turnId: currentTurnId ?? undefined,
           },
-        }) + '\n');
+        });
         pendingTextForStopReason = null;
       }
-      process.stdout.write(JSON.stringify({ type: 'done' }) + '\n');
+      writeFrame({ type: 'done' });
     }
     process.exit(0);
   } catch (error) {
     console.error('[Worker] Error:', error);
     console.error('[Worker] Error stack:', error instanceof Error ? error.stack : 'N/A');
-    process.stdout.write(JSON.stringify({
+    writeFrame({
       type: 'error',
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
-    }) + '\n');
+    });
     process.exit(1);
   }
 });

@@ -66,6 +66,10 @@ export interface ThreadMessage {
     type: 'complete' | 'running' | 'requires-action' | 'incomplete';
     reason?: string;
   };
+  // Monotonic sequence number of the last event that mutated this message
+  // (from the worker, forwarded by the server). Used for deterministic ordering
+  // robustness; the store otherwise trusts append/arrival order. See cowork spec §3.
+  seq?: number;
 }
 
 // SDK message type (from server)
@@ -148,6 +152,13 @@ interface ChatSessionState {
   setMessages: (messages: ThreadMessage[]) => void;
   addMessage: (message: ThreadMessage) => void;
   updateLastMessage: (content: ContentPart[]) => void;
+  // Patch a message in place by id (used by the live WS stream to grow the
+  // current assistant message — single ordered source for left thread + workbench).
+  updateMessageById: (
+    id: string,
+    update: { content?: ContentPart[]; status?: ThreadMessage['status']; seq?: number }
+  ) => void;
+  removeMessageById: (id: string) => void;
   setIsRunning: (isRunning: boolean) => void;
   setAgentStatus: (status: ChatSessionState['agentStatus']) => void;
   setCurrentToolName: (toolName: string | null) => void;
@@ -343,6 +354,29 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         };
       }
       return { messages };
+    });
+  },
+
+  updateMessageById: (id, update) => {
+    set((state) => {
+      const idx = state.messages.findIndex((m) => m.id === id);
+      if (idx === -1) return state;
+      const messages = [...state.messages];
+      messages[idx] = {
+        ...messages[idx],
+        ...(update.content !== undefined && { content: update.content }),
+        ...(update.status !== undefined && { status: update.status }),
+        ...(update.seq !== undefined && { seq: update.seq }),
+      };
+      return { messages };
+    });
+  },
+
+  removeMessageById: (id) => {
+    set((state) => {
+      const idx = state.messages.findIndex((m) => m.id === id);
+      if (idx === -1) return state;
+      return { messages: state.messages.filter((m) => m.id !== id) };
     });
   },
 
