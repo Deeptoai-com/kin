@@ -6,22 +6,16 @@
  */
 
 import {
-  ActionBarPrimitive,
   AssistantRuntimeProvider,
-  AttachmentPrimitive,
-  MessagePrimitive,
   ThreadPrimitive,
   useAssistantApi,
-  useLocalRuntime,
-  useMessage,
+  useExternalStoreRuntime,
   useThread,
+  type ThreadMessageLike,
 } from '@assistant-ui/react';
 import * as Avatar from '@radix-ui/react-avatar';
 import {
-  BarChartIcon,
   ClipboardIcon,
-  Pencil1Icon,
-  ReloadIcon,
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
 import { createFileRoute } from '@tanstack/react-router';
@@ -29,12 +23,10 @@ import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery } from '@tanstack/react-query';
 import { ThumbsDown, ThumbsUp, Layers, Paperclip, PanelLeftClose, PanelLeftOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
-import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
-import { MarkdownText } from '~/components/assistant-ui/markdown-text';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, memo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { AssistantTurnCard } from '~/components/claude-chat/assistant-turn-card';
 import { SessionList, useInvalidateSessions } from '~/components/claude-chat/session-list';
-import { UsageCard } from '~/components/claude-chat/usage-card';
 import { type SessionMetadata } from '~/components/claude-chat/session-info-panel';
 import { ArtifactsPanel } from '~/components/claude-chat/artifacts-panel';
 import { ArtifactButton } from '~/components/claude-chat/artifact-button';
@@ -59,7 +51,8 @@ import type { MessageAttachment } from '~/db/schema/message-attachment.schema';
 import { getPermissionInfo } from '~/server/permissions.server';
 // Use WebSocket adapter for more reliable real-time communication
 import {
-  ClaudeAgentWSAdapter,
+  runChat,
+  cancelActiveRun,
   abort,
   getSessionId,
   resumeSession,
@@ -87,6 +80,39 @@ import {
 
 const MIN_ARTIFACT_SPLIT = 1 / 3;
 const MAX_ARTIFACT_SPLIT = 2 / 3;
+
+function genMessageId(): string {
+  return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Map a store ThreadMessage to assistant-ui's ThreadMessageLike for the
+ * externalStore runtime. We render the visible list ourselves from the store,
+ * but the runtime still needs the converted messages for composer/scroll/empty
+ * state. Custom part fields (toolStatus, isIntermediate, …) survive conversion
+ * (fromThreadMessageLike spreads tool-call parts and returns text/reasoning as-is).
+ */
+function convertStoreMessage(message: ThreadMessage): ThreadMessageLike {
+  // assistant-ui only accepts `status` on assistant messages — passing it on a
+  // user/system message throws "status is only supported for assistant messages".
+  return {
+    role: message.role,
+    content: message.content as unknown as ThreadMessageLike['content'],
+    id: message.id,
+    createdAt: message.createdAt,
+    ...(message.role === 'assistant' && message.status
+      ? { status: message.status as unknown as ThreadMessageLike['status'] }
+      : {}),
+  } as ThreadMessageLike;
+}
+
+/** Extract the typed text from an externalStore AppendMessage's content parts. */
+function extractAppendText(content: readonly { type: string; text?: string }[]): string {
+  return content
+    .filter((part) => part.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text as string)
+    .join('\n');
+}
 
 const clampSplitRatio = (value: number) =>
   Math.min(MAX_ARTIFACT_SPLIT, Math.max(MIN_ARTIFACT_SPLIT, value));
@@ -1035,9 +1061,37 @@ function ClaudeChatSurface({
   hideScrollbars?: boolean;
 }) {
   const content = useIntlayer('claude-chat');
-  const runtime = useLocalRuntime(ClaudeAgentWSAdapter);
-  const historicalMessages = useChatSessionStore((state) => state.messages);
-  const hasHistoricalMessages = historicalMessages.length > 0;
+
+  // Single ordered message source: the zustand store. The externalStore runtime
+  // reads it for composer/scroll/empty/running state; the visible list is rendered
+  // directly from `messages` below (see Cowork redesign spec §2 — one source feeds
+  // both the left thread and the right Workbench).
+  const messages = useChatSessionStore((state) => state.messages);
+  const isThreadRunning = useChatSessionStore((state) => state.isRunning);
+  const hasHistoricalMessages = messages.length > 0;
+
+  const runtime = useExternalStoreRuntime<ThreadMessage>({
+    messages,
+    isRunning: isThreadRunning,
+    convertMessage: convertStoreMessage,
+    onNew: async (message) => {
+      const text = extractAppendText(message.content as readonly { type: string; text?: string }[]);
+      if (!text.trim()) return;
+      // Add the user message to the single store source, then stream the agent
+      // turn into it (runChat creates + grows the assistant message).
+      useChatSessionStore.getState().addMessage({
+        id: genMessageId(),
+        role: 'user',
+        content: [{ type: 'text', text }],
+        createdAt: new Date(),
+        status: { type: 'complete' },
+      });
+      await runChat(text, { runConfig: message.runConfig });
+    },
+    onCancel: async () => {
+      cancelActiveRun();
+    },
+  });
 
   // Session info panel state
   const [showSessionInfo, setShowSessionInfo] = useState(false);
@@ -1456,8 +1510,10 @@ function ClaudeChatSurface({
                 </div>
               )}
 
-              {/* Render historical messages from store */}
-              {historicalMessages.map((msg) => (
+              {/* Single source: render the whole thread (historical + live) from
+                  the store via one renderer. The streaming turn updates in place
+                  as runChat() patches its message; no separate runtime message list. */}
+              {messages.map((msg) => (
                 <HistoricalMessage
                   key={msg.id}
                   message={msg}
@@ -1466,9 +1522,6 @@ function ClaudeChatSurface({
                 />
               ))}
 
-              {/* Render live messages from runtime */}
-              <ThreadPrimitive.Messages components={{ Message: ChatMessage }} />
-              <ThreadArtifactCallout />
               <div aria-hidden="true" className="h-4" />
             </ThreadPrimitive.Viewport>
 
@@ -1609,50 +1662,6 @@ const EscapeInterruptHandler: FC<{
   }, [isRunning, escPressedOnce, setEscPressedOnce, escTimeoutRef, api]);
 
   return null;
-};
-
-const ThreadArtifactCallout: FC = () => {
-  const messages = useThread((state) => state.messages) as Array<{
-    id: string;
-    role?: string;
-  }>;
-  const artifacts = useArtifactsStore((state) => state.artifacts);
-  const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact);
-
-  const artifact = useMemo(() => {
-    if (!messages || messages.length === 0) return null;
-
-    const candidateMessageIds: string[] = [];
-    for (let i = messages.length - 1; i >= 0 && candidateMessageIds.length < 3; i -= 1) {
-      const msg = messages[i];
-      if (msg?.role === 'assistant') {
-        candidateMessageIds.push(msg.id);
-      }
-    }
-
-    if (candidateMessageIds.length === 0) return null;
-    const candidateSet = new Set(candidateMessageIds);
-    const matches = Array.from(artifacts.values()).filter(
-      (entry) => entry.messageId && candidateSet.has(entry.messageId)
-    );
-    if (matches.length === 0) return null;
-    return matches.sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  }, [messages, artifacts]);
-
-  if (!artifact || artifact.type === 'image') return null;
-
-  return (
-    <div className="mx-auto w-full max-w-3xl px-2 pb-2">
-      <ArtifactButton
-        type={artifact.type}
-        title={artifact.title}
-        fileName={artifact.fileName}
-        filePath={artifact.sourceFilePath}
-        isTemporary={artifact.isTemporary}
-        onClick={() => setActiveArtifact(artifact.id)}
-      />
-    </div>
-  );
 };
 
 const getInlineImageFiles = (artifact: Artifact | null | undefined): ArtifactImageFile[] => {
@@ -1801,253 +1810,24 @@ const HistoricalAttachmentStrip: FC<{
 };
 
 /**
- * Assistant Message Component - with manual part rendering
- * Manually renders all content parts to support custom tool-call type
+ * Live "thinking / using tool" indicator for the in-flight turn. Subscribes to
+ * the frequently-changing agentStatus/currentToolName so ONLY this leaf re-renders
+ * on each status tick — keeping the memoized turn rows from re-rendering.
  */
-const AssistantMessage: FC<{ isLast: boolean }> = ({ isLast }) => {
-  // Get i18n content
-  const content = useIntlayer('claude-chat');
-
-  // Get message using the hook to access runtime context
-  const message = useMessage();
-  const messageStatus = message.status;
-
-  // Get file handlers from context
-  const { onFileClick, onUrlClick } = useFileHandlers();
-
-  // Access content parts - cast to our ContentPart type
-  const messageContent = (message as any).content as ContentPart[] | undefined;
-  const isRunning = messageStatus?.type === 'running';
-  const hasContent = (messageContent?.length ?? 0) > 0;
-  const copyText = useMemo(() => getMessageTextContent(messageContent), [messageContent]);
-  const hasFinalResponse = Boolean(copyText?.trim());
-
-  // State for showing usage card
-  const [showUsageCard, setShowUsageCard] = useState(false);
-
-  // State for multi-diff overlay
-  const [showMultiDiff, setShowMultiDiff] = useState(false);
-
-  // Get usage data and agent status from store (only show for last message)
-  const usageData = useChatSessionStore((state) => state.usageData);
+const LiveTurnIndicator: FC = () => {
   const agentStatus = useChatSessionStore((state) => state.agentStatus);
   const currentToolName = useChatSessionStore((state) => state.currentToolName);
-
-  // Determine display status for InlineStatus component
-  const displayStatus: AgentStatusType = isRunning ? (agentStatus as AgentStatusType) : 'idle';
-
-  // Artifact detection - pass full content array to support both text and tool-call detection
-  const artifact = useArtifactDetection(message.id, messageContent);
-  const inlineImageFiles = useMemo(() => getInlineImageFiles(artifact), [artifact]);
-
-  // Extract file changes for multi-diff overlay
-  const fileChanges = useMemo(() => {
-    if (!messageContent) return [];
-    return extractFileChanges(messageContent, message.id);
-  }, [messageContent, message.id]);
-
-  // Filter to only successful changes for multi-diff display
-  const successfulChanges = useMemo(() => fileChanges.filter(c => !c.error), [fileChanges]);
-  const hasMultipleFileChanges = successfulChanges.length > 1;
-
-  return (
-    <MessagePrimitive.Root className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
-      <div className={cn('relative font-sans', hasFinalResponse ? 'mb-12' : 'mb-4')}>
-        <div className="relative leading-[1.65rem]">
-          <div className="grid grid-cols-1 gap-2.5">
-            <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
-              {/* Status indicator - only show when no structured content is available yet */}
-              {isRunning && !hasContent && (
-                <div className="mb-3">
-                  <InlineStatus status={displayStatus} toolName={currentToolName} />
-                </div>
-              )}
-
-              {messageContent && (
-                <AssistantTurnCard
-                  content={messageContent}
-                  status={messageStatus}
-                  onUrlClick={onUrlClick}
-                  onFileClick={onFileClick}
-                />
-              )}
-
-              {inlineImageFiles.length > 0 && (
-                <InlineImagePreview
-                  images={inlineImageFiles}
-                  title={artifact?.fileName || artifact?.title}
-                />
-              )}
-
-              {/* Multi-diff aggregation button */}
-              {hasMultipleFileChanges && !isRunning && (
-                <button
-                  type="button"
-                  onClick={() => setShowMultiDiff(true)}
-                  className="mt-3 flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/70 dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/70"
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  <span>{toLocalizedString(content.actions.viewFileChanges).replace('{count}', String(successfulChanges.length))}</span>
-                </button>
-              )}
-
-            </div>
-          </div>
-        </div>
-        {hasFinalResponse && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0">
-            <ActionBarPrimitive.Root
-              hideWhenRunning
-              autohide="not-last"
-              className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
-            >
-              <div className="relative flex items-center text-muted-foreground">
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(copyText)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                  aria-label={toLocalizedString(content.message.copy)}
-                >
-                  <ClipboardIcon width={20} height={20} />
-                </button>
-                <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.helpful)}>
-                  <ThumbsUp width={16} height={16} />
-                </ActionBarPrimitive.FeedbackPositive>
-                <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95" aria-label={toLocalizedString(content.actions.notHelpful)}>
-                  <ThumbsDown width={16} height={16} />
-                </ActionBarPrimitive.FeedbackNegative>
-                <ActionBarPrimitive.Reload className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
-                  <ReloadIcon width={20} height={20} />
-                </ActionBarPrimitive.Reload>
-                {/* Statistics button - only show for last message with usage data */}
-                {isLast && usageData && (
-                  <button
-                    type="button"
-                    onClick={() => setShowUsageCard(!showUsageCard)}
-                    className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95"
-                    aria-label={toLocalizedString(content.actions.viewStats)}
-                  >
-                    <BarChartIcon width={20} height={20} />
-                  </button>
-                )}
-                {/* Usage Card - shown when statistics button is clicked */}
-                {isLast && showUsageCard && usageData && (
-                  <UsageCard data={usageData} onClose={() => setShowUsageCard(false)} />
-                )}
-              </div>
-              {isLast && (
-                <p className="mt-2 w-full text-right text-muted-foreground text-[0.65rem] leading-[0.85rem] opacity-90 sm:text-[0.75rem]">
-                  {content.disclaimer}
-                </p>
-              )}
-            </ActionBarPrimitive.Root>
-          </div>
-        )}
-      </div>
-
-      {/* Multi-diff overlay */}
-      <MultiDiffPreviewOverlay
-        isOpen={showMultiDiff}
-        onClose={() => setShowMultiDiff(false)}
-        changes={successfulChanges}
-      />
-    </MessagePrimitive.Root>
-  );
-};
-
-const ChatMessage: FC = () => {
-  const message = useMessage();
-  const isUser = message.role === 'user';
-  const isAssistant = message.role === 'assistant';
-  const isLast = message.isLast;
-  const hasUserAttachments = Boolean((message as any).attachments?.length);
-
-  // Get file handlers from context for user messages
-  const { onFileClick, onUrlClick } = useFileHandlers();
-
-  // Extract text content for user messages
-  const userTextContent = useMemo(() => {
-    if (!isUser) return '';
-    const content = (message as any).content as Array<{ type: string; text?: string }> | undefined;
-    if (!content) return '';
-    return content
-      .filter((p) => p.type === 'text' && p.text)
-      .map((p) => p.text)
-      .join('\n');
-  }, [isUser, message]);
-  const userSkillMarker = useMemo(() => {
-    if (!isUser) return null;
-    const parsed = parseSkillMarker(userTextContent);
-    return { marker: parsed.marker, text: parsed.strippedText };
-  }, [isUser, userTextContent]);
-
-  if (isUser) {
-    return (
-      <MessagePrimitive.Root className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
-        <div className="group/user wrap-break-word relative inline-flex max-w-[75ch] flex-col gap-2 rounded-xl bg-muted py-2.5 pr-6 pl-2.5 text-foreground transition-all">
-          <div className="relative flex flex-row items-center gap-2">
-            <div className="shrink-0 transition-all duration-300">
-              <Avatar.Root className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-primary font-bold text-[12px] text-primary-foreground">
-                <Avatar.AvatarFallback>U</Avatar.AvatarFallback>
-              </Avatar.Root>
-            </div>
-            <div className="flex-1">
-              <div className="relative grid grid-cols-1 gap-2 py-0.5">
-                {hasUserAttachments && (
-                  <div className="flex flex-wrap gap-2">
-                    <MessagePrimitive.Attachments components={{ Attachment: ClaudeMessageAttachment }} />
-                  </div>
-                )}
-                {userSkillMarker?.marker && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SkillChip label={userSkillMarker.marker.name ?? userSkillMarker.marker.slug} />
-                  </div>
-                )}
-                <div className="wrap-break-word whitespace-normal">
-                  <StreamingMarkdown
-                    content={userSkillMarker?.text ?? userTextContent}
-                    isStreaming={false}
-                    mode="minimal"
-                    onUrlClick={onUrlClick}
-                    onFileClick={onFileClick}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="pointer-events-none absolute right-2 bottom-0">
-            <ActionBarPrimitive.Root
-              autohide="not-last"
-              className="pointer-events-auto min-w-max translate-x-1 translate-y-4 rounded-lg border bg-card/80 p-0.5 opacity-0 shadow-sm backdrop-blur-sm transition group-hover/user:translate-x-0.5 group-hover/user:opacity-100"
-            >
-              <div className="flex items-center text-muted-foreground">
-                <ActionBarPrimitive.Reload className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
-                  <ReloadIcon width={20} height={20} />
-                </ActionBarPrimitive.Reload>
-                <ActionBarPrimitive.Edit className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95">
-                  <Pencil1Icon width={20} height={20} />
-                </ActionBarPrimitive.Edit>
-              </div>
-            </ActionBarPrimitive.Root>
-          </div>
-        </div>
-      </MessagePrimitive.Root>
-    );
-  }
-
-  if (isAssistant) {
-    return <AssistantMessage isLast={isLast} />;
-  }
-
-  return null;
+  return <InlineStatus status={agentStatus as AgentStatusType} toolName={currentToolName} />;
 };
 
 /**
- * Historical Message Component
- * Renders messages loaded from JSONL history files
- * Structure aligned with AssistantMessage/ChatMessage for consistency
+ * Turn renderer — the single source of truth for BOTH historical and live turns
+ * (Cowork redesign spec §4). Reads the store ThreadMessage directly (all custom
+ * part fields preserved) and feeds AssistantTurnCard, which streams + collapses
+ * on done via `status`. Memoized so a live turn's per-chunk updates don't
+ * re-render already-completed turns.
  */
-const HistoricalMessage: FC<{
+const HistoricalMessageImpl: FC<{
   message: ThreadMessage;
   attachments?: MessageAttachment[];
   sessionId: string | null;
@@ -2093,8 +1873,14 @@ const HistoricalMessage: FC<{
   );
   const hasFinalResponse = Boolean(finalText?.trim());
 
+  // Live turn: while the agent is streaming this message, show the thinking/tool
+  // indicator until the first content part arrives (AssistantTurnCard takes over
+  // once there are activities or response text).
+  const isRunning = message.status?.type === 'running';
+  const hasContent = message.content.length > 0;
+
   if (isUser) {
-    // User message - aligned with ChatMessage user structure
+    // User message
     return (
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className="group/user wrap-break-word relative inline-flex max-w-[75ch] flex-col gap-2 rounded-xl bg-muted py-2.5 pr-6 pl-2.5 text-foreground transition-all">
@@ -2151,15 +1937,21 @@ const HistoricalMessage: FC<{
   }
 
   if (isAssistant) {
-    // Assistant message - use plain div (not MessagePrimitive.Root)
-    // because HistoricalMessage renders outside ThreadPrimitive.Messages
+    // Assistant message - rendered directly from the store (single source);
+    // `status` drives AssistantTurnCard's live streaming + collapse-on-done.
     return (
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className={cn('relative font-sans', hasFinalResponse ? 'mb-12' : 'mb-4')}>
           <div className="relative leading-[1.65rem]">
             <div className="grid grid-cols-1 gap-2.5">
               <div className="wrap-break-word whitespace-normal pr-8 pl-2 text-foreground">
+                {isRunning && !hasContent && (
+                  <div className="mb-3">
+                    <LiveTurnIndicator />
+                  </div>
+                )}
                 <AssistantTurnCard
+                  status={message.status}
                   content={message.content as ContentPart[]}
                   onUrlClick={onUrlClick}
                   onFileClick={onFileClick}
@@ -2172,11 +1964,16 @@ const HistoricalMessage: FC<{
                   />
                 )}
 
-                {/* Artifact Button */}
+                {/* Artifact Button — one deliverable card per turn, with the
+                    real file name / title (not a generic "{TYPE} 成果物"). */}
                 {artifact && artifact.type !== 'image' && (
                   <div className="mt-3">
                     <ArtifactButton
                       type={artifact.type}
+                      title={artifact.title}
+                      fileName={artifact.fileName}
+                      filePath={artifact.sourceFilePath}
+                      isTemporary={artifact.isTemporary}
                       onClick={() => setActiveArtifact(artifact.id)}
                     />
                   </div>
@@ -2196,7 +1993,7 @@ const HistoricalMessage: FC<{
               </div>
             </div>
           </div>
-          {/* ActionBar - aligned with AssistantMessage (copy/feedback only, no reload/stats for historical) */}
+          {/* ActionBar - copy/feedback only */}
           {hasFinalResponse && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0">
               <div className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition">
@@ -2248,13 +2045,4 @@ const HistoricalMessage: FC<{
   return null;
 };
 
-const ClaudeMessageAttachment: FC = () => {
-  return (
-    <AttachmentPrimitive.Root className="flex items-center gap-2 rounded-lg border bg-card/70 px-2.5 py-1 text-xs text-foreground shadow-sm">
-      <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="max-w-[16rem] truncate">
-        <AttachmentPrimitive.Name />
-      </span>
-    </AttachmentPrimitive.Root>
-  );
-};
+const HistoricalMessage = memo(HistoricalMessageImpl);

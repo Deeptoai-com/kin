@@ -11,7 +11,13 @@
  */
 
 import type { ChatModelAdapter, ChatModelRunOptions, ChatModelRunResult } from '@assistant-ui/react';
-import { notifyMessagesLoaded, useChatSessionStore, type SDKMessage as StorageSDKMessage } from '~/lib/chat-session-store';
+import {
+  notifyMessagesLoaded,
+  useChatSessionStore,
+  type SDKMessage as StorageSDKMessage,
+  type ContentPart as StoreContentPart,
+  type ThreadMessage as StoreThreadMessage,
+} from '~/lib/chat-session-store';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
 
 // SDK Message Types (matching what WebSocket server sends)
@@ -109,10 +115,10 @@ type InboundMessage =
 type OutboundMessage =
   | { type: 'session_init'; sessionId: string; sdkSessionId: string | null; userId?: string }
   | { type: 'session_metadata'; sessionId: string; metadata: SessionMetadata }
-  | { type: 'message'; event: SDKMessage }
+  | { type: 'message'; event: SDKMessage; seq?: number }
   | { type: 'messages_loaded'; messages: StorageSDKMessage[] }
   | { type: 'error'; code: string; message: string; retriable: boolean }
-  | { type: 'done' }
+  | { type: 'done'; seq?: number }
   | { type: 'aborted' }
   | { type: 'pong' };
 
@@ -347,6 +353,15 @@ const RECONNECT_DELAY_MS = 1000;
 // Track if a query is currently running (set when run starts, cleared on completion)
 let isQueryRunning = false;
 
+// AbortController for the run currently being driven by runChat(); onCancel/Esc
+// aborts it to break the stream loop immediately (in addition to the WS abort).
+let activeRunAbort: AbortController | null = null;
+
+// Local id generator for the assistant message runChat() grows in the store.
+function genMessageId(): string {
+  return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
 // Track queued + active runs to guard session switches and serialize streams
 let pendingRuns = 0;
 
@@ -520,10 +535,14 @@ function getWebSocket(): Promise<WebSocket> {
           notifySessionInit(msg.sessionId);
         }
 
-        // Handle messages loaded (historical messages for resume)
+        // Handle messages loaded (historical messages for resume). Single-path:
+        // hydrate the store via the route's onMessagesLoaded subscription, then
+        // stop — the run-loop message queue has no branch for it, so the old
+        // forward below was a dead path (cowork redesign spec §3).
         if (msg.type === 'messages_loaded') {
           console.log('[WS Adapter] Received', msg.messages.length, 'historical messages');
           notifyMessagesLoaded(msg.messages);
+          return;
         }
 
         // Forward to current handler
@@ -665,9 +684,14 @@ export function disconnect(): void {
 }
 
 /**
- * Claude Agent WebSocket Adapter for Assistant UI
+ * Claude Agent WebSocket stream generator.
+ *
+ * Internal: kept as a ChatModelAdapter-shaped async generator (queueing, abort,
+ * event→ContentPart transformation, streaming throttle all unchanged), but it is
+ * no longer fed to a LocalRuntime. Instead `runChat()` below drives it and writes
+ * each yielded chunk into the single message store (externalStore mode).
  */
-export const ClaudeAgentWSAdapter: ChatModelAdapter = {
+const ClaudeAgentWSAdapter: ChatModelAdapter = {
   async *run({ messages, abortSignal, runConfig }: ChatModelRunOptions) {
     console.log('[WS Adapter] run() called with', messages.length, 'messages');
 
@@ -1414,5 +1438,75 @@ export const ClaudeAgentWSAdapter: ChatModelAdapter = {
     }
   },
 };
+
+/**
+ * Drive one agent turn and stream it into the single message store.
+ *
+ * The user message is expected to already be in the store (added by the route's
+ * externalStore `onNew`). This creates the assistant message up-front (status
+ * `running`) and patches it in place on every yielded chunk, so the left thread
+ * AND the right Workbench (both read `chat-session-store.messages`) update live.
+ */
+export async function runChat(
+  prompt: string,
+  options: { runConfig?: ChatModelRunOptions['runConfig'] } = {}
+): Promise<void> {
+  const assistantId = genMessageId();
+  const store = useChatSessionStore.getState();
+
+  // Assistant placeholder so the turn is visible (spinner) before the first token.
+  store.addMessage({
+    id: assistantId,
+    role: 'assistant',
+    content: [],
+    createdAt: new Date(),
+    status: { type: 'running' },
+  });
+
+  const abortController = new AbortController();
+  activeRunAbort = abortController;
+
+  // Synthetic single-message input: the generator only reads the last user
+  // message's text for the prompt (SDK keeps conversation context server-side).
+  const runOptions = {
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: prompt }] },
+    ],
+    abortSignal: abortController.signal,
+    runConfig: options.runConfig,
+  } as unknown as ChatModelRunOptions;
+
+  // run() is typed as Promise | AsyncGenerator (ChatModelAdapter union); our
+  // implementation is always the generator.
+  const stream = ClaudeAgentWSAdapter.run(runOptions) as AsyncGenerator<ChatModelRunResult>;
+
+  try {
+    for await (const chunk of stream) {
+      useChatSessionStore.getState().updateMessageById(assistantId, {
+        content: chunk.content as unknown as StoreContentPart[],
+        status: chunk.status as StoreThreadMessage['status'],
+      });
+    }
+  } catch (error) {
+    console.error('[WS Adapter] runChat error:', error);
+    useChatSessionStore.getState().updateMessageById(assistantId, {
+      status: { type: 'incomplete', reason: 'error' },
+    });
+  } finally {
+    if (activeRunAbort === abortController) {
+      activeRunAbort = null;
+    }
+  }
+}
+
+/**
+ * Cancel the in-flight turn: abort the local stream loop (immediate) and tell the
+ * server to stop the worker. Wired to the composer Stop button / Esc.
+ */
+export function cancelActiveRun(): void {
+  notifyUserAbort();
+  activeRunAbort?.abort();
+  abort();
+}
 
 export default ClaudeAgentWSAdapter;

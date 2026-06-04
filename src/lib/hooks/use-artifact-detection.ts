@@ -184,7 +184,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
   const sessionId = useChatSessionStore((state) => state.currentSessionId)
   const createArtifact = useArtifactsStore((state) => state.createArtifact)
   const updateArtifact = useArtifactsStore((state) => state.updateArtifact)
-  const setActiveArtifact = useArtifactsStore((state) => state.setActiveArtifact)
   const getArtifactByFilePath = useArtifactsStore((state) => state.getArtifactByFilePath)
   const artifact = useArtifactsStore((state) => state.getArtifactByMessageId(messageId))
   const lastStructuredOutput = useChatSessionStore((state) => state.lastStructuredOutput)
@@ -268,6 +267,25 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 toolName: target.toolName,
               })
               artifactId = existing.id
+            } else if (artifact && artifact.isTemporary && !artifact.sourceFilePath) {
+              // A3 dedup: the text code-block fallback (Method 2) already created a
+              // temporary card for this message before the Write tool finished. Upgrade
+              // that card in place to the file-backed artifact instead of creating a
+              // second "HTML 成果物" card for the same turn.
+              updateArtifact(artifact.id, {
+                sourceFilePath: target.filePath,
+                content: contentToUse,
+                type: target.type,
+                fileName: target.fileName,
+                messageId,
+                isTemporary: false,
+                mimeType,
+                imageFiles,
+                // P14: Tool-to-Artifact Lineage
+                toolCallId: target.toolCallId,
+                toolName: target.toolName,
+              })
+              artifactId = artifact.id
             } else {
               artifactId = createArtifact({
                 sessionId: sessionId || 'unknown',
@@ -285,7 +303,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
               })
             }
 
-            setActiveArtifact(artifactId)
             console.log('[Artifact Detection] Updated artifact from tool call:', target.filePath)
             processedToolCallsRef.current.add(target.toolCallId)
 
@@ -368,7 +385,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 toolCallId: group.toolCallId,
                 toolName: group.toolName,
               })
-              setActiveArtifact(existing.id)
             } else {
               const artifactId = createArtifact({
                 sessionId,
@@ -384,7 +400,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 toolCallId: group.toolCallId,
                 toolName: group.toolName,
               })
-              setActiveArtifact(artifactId)
             }
 
             processedToolCallsRef.current.add(group.toolCallId)
@@ -511,8 +526,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
         content: artifactContent,
         isTemporary: true, // Mark as temporary
       })
-      // Auto-open the artifact panel
-      setActiveArtifact(artifactId)
     }
   }, [
     messageId,
@@ -520,7 +533,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     sessionId,
     createArtifact,
     updateArtifact,
-    setActiveArtifact,
     getArtifactByFilePath,
     artifact,
   ])
@@ -582,7 +594,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             fileName: metadata.files[0]?.path,
             isTemporary: false,
           })
-          setActiveArtifact(existing.id)
           console.log('[Artifact Detection] Phase 2: Updated existing artifact metadata')
         } else {
           // NEW: Create artifact directly from structured output when no Phase 1 artifact exists
@@ -602,7 +613,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
             isTemporary: false,
           })
 
-          setActiveArtifact(artifactId)
           console.log('[Artifact Detection] Phase 2: Created new artifact:', artifactId)
         }
 
@@ -634,7 +644,6 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     getArtifactByFilePath,
     updateArtifact,
     createArtifact,
-    setActiveArtifact,
   ])
 
   return artifact

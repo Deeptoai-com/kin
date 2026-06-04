@@ -1094,12 +1094,14 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
             recordUsage(ws, event);
           }
           if (!silentInit) {
-            applyBackpressure(sendMessage(ws, { type: 'message', event }));
+            // Forward the worker's monotonic seq so the client store can order/merge
+            // live deltas deterministically (cowork redesign spec §3).
+            applyBackpressure(sendMessage(ws, { type: 'message', event, seq: msg.seq }));
           }
         } else if (msg.type === 'done') {
           worker.__terminalSent = true;
           if (!silentInit) {
-            sendMessage(ws, { type: 'done' });
+            sendMessage(ws, { type: 'done', seq: msg.seq });
           }
         } else if (msg.type === 'error') {
           worker.__terminalSent = true;

@@ -25,7 +25,8 @@ export {
 
 // Client adapters (for browser-side use)
 export {
-  ClaudeAgentWSAdapter,
+  runChat,
+  cancelActiveRun,
   abort,
   resumeSession,
   newSession,
