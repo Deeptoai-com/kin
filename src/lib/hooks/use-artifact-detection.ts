@@ -145,6 +145,31 @@ function extractImageGroupsFromToolResults(
   return groups
 }
 
+// A3: collapse a multi-file generation (e.g. a React+Vite app writing App.tsx,
+// main.tsx, package.json, vite.config.ts …) to ONE "deliverable" artifact card
+// per message instead of one card per file. The other files still show in the
+// Workbench → Files tab. The single "real app preview" is Phase C (sandbox).
+const CONFIG_FILE_RE =
+  /(^|\/)(package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|tsconfig[^/]*\.json|[^/]*\.config\.(js|ts|cjs|mjs)|vite\.config\.[^/]*|\.eslintrc[^/]*|\.prettierrc[^/]*)$/i
+const TYPE_RANK: Record<ArtifactType, number> = {
+  html: 5, react: 4, svg: 3, markdown: 2, csv: 1, json: 0, image: 0,
+}
+const ENTRY_HINT_RE = /(^|\/)(app|main|index)\.[jt]sx?$/i
+
+/** Choose the single most "previewable" target among a message's write/edit targets. */
+function pickPrimaryArtifactTarget(targets: ArtifactTarget[]): ArtifactTarget | null {
+  if (targets.length <= 1) return targets[0] ?? null
+  const nonConfig = targets.filter((t) => !CONFIG_FILE_RE.test(t.filePath))
+  const pool = nonConfig.length > 0 ? nonConfig : targets
+  return [...pool].sort((a, b) => {
+    const tr = (TYPE_RANK[b.type] ?? 0) - (TYPE_RANK[a.type] ?? 0)
+    if (tr !== 0) return tr
+    const ae = ENTRY_HINT_RE.test(a.filePath) ? 1 : 0
+    const be = ENTRY_HINT_RE.test(b.filePath) ? 1 : 0
+    return be - ae
+  })[0]
+}
+
 /**
  * Hook to detect and create artifacts from message content
  * Implements hybrid detection mode:
@@ -172,7 +197,11 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
 
     // ✅ FIX: Only detect artifacts from completed tool calls (with result)
     // This prevents rendering loops caused by detecting incomplete tool-use events
-    const toolTargets = extractArtifactTargets(content, { requireResult: true })
+    // A3: collapse to one primary deliverable per message (rest live in Files tab).
+    const primaryTarget = pickPrimaryArtifactTarget(
+      extractArtifactTargets(content, { requireResult: true }),
+    )
+    const toolTargets = primaryTarget ? [primaryTarget] : []
 
     if (toolTargets.length > 0) {
       const pending = toolTargets.filter((target) => {
@@ -387,7 +416,11 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
     }
 
     // Map existing artifacts to this message using file path (for historical sessions)
-    const linkTargets = extractArtifactTargets(content, { requireResult: false })
+    // A3: same one-primary-per-message collapse as the live path.
+    const linkPrimary = pickPrimaryArtifactTarget(
+      extractArtifactTargets(content, { requireResult: false }),
+    )
+    const linkTargets = linkPrimary ? [linkPrimary] : []
     if (linkTargets.length > 0 && sessionId) {
       let isCancelled = false
       const runLink = async () => {
