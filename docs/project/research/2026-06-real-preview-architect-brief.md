@@ -139,4 +139,8 @@
 - **当前状态（已强制默认关）**：`ENABLE_STRUCTURED_OUTPUTS` 强制默认 `false`（`.env.example` / `CLAUDE.md` / worker 注释均已写明）；关闭状态下泄漏与多跑一轮均不发生。artifact 元数据改由被动探测（`use-artifact-detection.ts`）兜底，不依赖结构化输出。
 - **根治选项（待本线定）**：① 维持关闭，artifact 元数据继续走探测；或 ② 若要重新启用，需先解决 Stop-hook 泄漏（过滤该内部反馈文本 + 抑制多跑一轮），并与本节的 manifest/`declare_app` 策略统一——`.oxygenie/app.json` 若成为 artifact 声明的唯一来源，结构化输出可能整体不再需要。**建议 ①，重启用须随本线 artifact 策略一并评审。**
 - **不做**：评审已决定 S2 PR **不**加投机性文本过滤（实现者无法离线复现确切注入格式，且只治标不治本——多跑一轮只有关 env 才能消除）。
+- **决策检查点（post-Phase-C，owner 已拍板延后到此）**：Phase C 落地后,由架构师在本线**明确二选一**——
+  **（杀）** 若 `.oxygenie/app.json` manifest 成为成果物/App 声明的唯一来源 → 删 `ENABLE_STRUCTURED_OUTPUTS` 开关 + worker `outputFormat`/schema 透传 + store `lastStructuredOutput` + `use-artifact-detection.ts` 的 Phase 2 分支（**默认倾向**）；
+  **（修）** 若仍需结构化输出 → 先解决 Stop-hook 泄漏（过滤内部反馈 + 抑制多跑一轮）再启用。
+  在此检查点之前:维持 `false`,不删不修。
 </content>
