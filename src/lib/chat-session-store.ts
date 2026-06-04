@@ -109,6 +109,17 @@ export type SDKMessage = {
   }>;
 };
 
+// Phase C preview runtime state — pushed by the preview backend over WS
+// (`preview_state` event). Session-scoped; the selector filters by currentSessionId.
+export type PreviewState = {
+  sessionId: string;
+  previewId: string;
+  mode: 'static' | 'live';
+  status: 'detecting' | 'installing' | 'building' | 'ready' | 'error' | 'stopped';
+  url?: string;
+  error?: string;
+};
+
 interface ChatSessionState {
   // Current session ID
   currentSessionId: string | null;
@@ -130,6 +141,9 @@ interface ChatSessionState {
 
   // Session metadata (tools, agents, configuration)
   sessionMetadata: SessionMetadata | null;
+
+  // Phase C preview runtime state (session-scoped; null when no preview running)
+  previewState: PreviewState | null;
 
   // Structured output from last query (for artifact metadata)
   lastStructuredOutput: unknown | null;
@@ -164,6 +178,7 @@ interface ChatSessionState {
   setCurrentToolName: (toolName: string | null) => void;
   setUsageData: (data: UsageData) => void;
   setSessionMetadata: (data: SessionMetadata) => void;
+  setPreviewState: (state: PreviewState | null) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
   setShowThinking: (show: boolean) => void;
   setQueueCount: (count: number) => void;
@@ -373,6 +388,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   currentToolName: null,
   usageData: null,
   sessionMetadata: null,
+  previewState: null,
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
   queueCount: 0, // Number of pending runs waiting to be processed
@@ -459,6 +475,10 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     set({ sessionMetadata: data });
   },
 
+  setPreviewState: (data) => {
+    set({ previewState: data });
+  },
+
   setLastStructuredOutput: (data) => {
     set({ lastStructuredOutput: data });
   },
@@ -498,7 +518,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     // instead of a fragmented stack of "步骤已完成" cards with duplicate artifacts.
     let cur: {
       id: string;
-      createdAt: Date;
+      createdAt: Date | undefined;
       status: ThreadMessage['status'];
       parts: ContentPart[];
     } | null = null;

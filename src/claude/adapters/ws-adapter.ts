@@ -17,6 +17,7 @@ import {
   type SDKMessage as StorageSDKMessage,
   type ContentPart as StoreContentPart,
   type ThreadMessage as StoreThreadMessage,
+  type PreviewState,
 } from '~/lib/chat-session-store';
 import type { SessionMetadata } from '~/components/claude-chat/session-info-panel';
 
@@ -110,6 +111,8 @@ type InboundMessage =
   | { type: 'chat'; content: string; sessionId?: string; skillSlug?: string; permissionTier?: string }
   | { type: 'resume'; sessionId: string }
   | { type: 'abort' }
+  | { type: 'start_preview'; sessionId?: string; mode?: 'static' | 'live' }
+  | { type: 'stop_preview'; sessionId?: string }
   | { type: 'ping' };
 
 type OutboundMessage =
@@ -120,6 +123,7 @@ type OutboundMessage =
   | { type: 'error'; code: string; message: string; retriable: boolean }
   | { type: 'done'; seq?: number }
   | { type: 'aborted' }
+  | { type: 'preview_state'; state: PreviewState; seq?: number }
   | { type: 'pong' };
 
 // Assistant UI Part Types
@@ -545,6 +549,14 @@ function getWebSocket(): Promise<WebSocket> {
           return;
         }
 
+        // Preview state is session-level and arrives asynchronously (outside a
+        // chat run), so handle it on the persistent socket rather than via the
+        // per-run messageHandler (which is only set during runChat()).
+        if (msg.type === 'preview_state') {
+          useChatSessionStore.getState().setPreviewState(msg.state);
+          return;
+        }
+
         // Forward to current handler
         if (messageHandler) {
           messageHandler(msg);
@@ -562,6 +574,22 @@ function getWebSocket(): Promise<WebSocket> {
 async function send(message: InboundMessage): Promise<void> {
   const socket = await getWebSocket();
   socket.send(JSON.stringify(message));
+}
+
+/**
+ * Start / stop the Phase C preview for a session (sent over the same /ws/agent
+ * socket). Defaults to the adapter's current session. The backend responds
+ * asynchronously via `preview_state` events (handled on the persistent socket).
+ */
+export async function startPreview(
+  sessionId?: string,
+  mode: 'static' | 'live' = 'static',
+): Promise<void> {
+  await send({ type: 'start_preview', sessionId: sessionId ?? currentSessionId, mode });
+}
+
+export async function stopPreview(sessionId?: string): Promise<void> {
+  await send({ type: 'stop_preview', sessionId: sessionId ?? currentSessionId });
 }
 
 /**
