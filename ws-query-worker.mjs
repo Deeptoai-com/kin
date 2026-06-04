@@ -199,6 +199,7 @@ process.stdin.on('end', async () => {
       permissionMode: requestedPermissionMode,
       disallowedTools: requestedDisallowedTools,
       allowBash: requestedAllowBash = false,
+      wantsBash: requestedWantsBash,
       userId,
     } = request;
     const permissionMode = resolvePermissionMode(requestedPermissionMode, userId);
@@ -230,6 +231,12 @@ process.stdin.on('end', async () => {
       : permissionMode === 'plan'
         ? 'plan'
         : 'acceptEdits';
+    // R4 (#69): the tier's bash preference. Explicit from ws-server
+    // (resolveEffectivePermission); when absent (legacy/direct caller), fall back to
+    // "no bash in plan/explore mode" so the secure default matches the tier model.
+    const wantsBash = typeof requestedWantsBash === 'boolean'
+      ? requestedWantsBash
+      : sdkPermissionMode !== 'plan';
     const { canUseTool, debugInfo } = createPathSecurity({
       workspace: config.cwd,
       userId,
@@ -244,6 +251,7 @@ process.stdin.on('end', async () => {
     console.error(`[Worker]   Model: ${config.model || 'default'}`);
     console.error(`[Worker]   Permission Mode: ${permissionMode}`);
     console.error(`[Worker]   Disallowed Tools: ${disallowedTools.join(', ') || '(none)'}`);
+    console.error(`[Worker]   Sandboxed Bash (tier wantsBash): ${wantsBash}`);
     if (process.env.CLAUDE_SECURITY_DEBUG === 'true') {
       console.error(`[Worker]   Path Security: ${JSON.stringify(debugInfo)}`);
     }
@@ -382,9 +390,12 @@ process.stdin.on('end', async () => {
     const { state: sandboxState } = sandboxStatus();
     const runtimeName = getExecutionRuntime().name;
     const sandboxReady = sandboxState === 'active' || runtimeName === 'docker';
+    // R4 (#69): also gate by the tier's bash preference. explore (wantsBash=false)
+    // gets NO sandboxed Bash even when a sandbox is ready; auto/act do.
+    const bashAllowed = sandboxReady && wantsBash;
 
     const bashSdkServers = {};
-    if (sandboxReady) {
+    if (bashAllowed) {
       const bashRunTool = tool(
         'run',
         'Execute a shell (bash) command inside the session workspace sandbox. ' +
@@ -443,7 +454,9 @@ process.stdin.on('end', async () => {
         tools: [bashRunTool],
       });
       bashSdkServers['bash'] = bashMcpServer;
-      console.error('[Worker] Sandbox bash tool: REGISTERED (sandbox active)');
+      console.error('[Worker] Sandbox bash tool: REGISTERED (sandbox ready + tier wantsBash)');
+    } else if (sandboxReady && !wantsBash) {
+      console.error('[Worker] Sandbox bash tool: NOT registered (tier wantsBash=false — e.g. explore)');
     } else {
       console.error(`[Worker] Sandbox bash tool: NOT registered (sandbox state=${sandboxState ?? 'null'} — srt inactive or unavailable)`);
     }

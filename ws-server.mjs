@@ -939,8 +939,10 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
     // for legacy clients that send no tier). Single source: src/lib/permission-tier.js.
     const effective = resolveEffectivePermission({ requestedTier: permissionTier });
     permissionMode = effective.permissionMode;
-    // wantsBash: tier's preference; actual bash availability gated by sandbox in PR-C.
-    // For now keeps existing allowBash logic (native Bash still in disallowedTools).
+    // R4 (#69): thread the tier's bash preference to the worker so the SANDBOXED
+    // Bash tool (mcp__bash__run) is gated by tier — explore (read-only) gets no bash
+    // even when a sandbox is ready. Native Bash stays in disallowedTools regardless.
+    const wantsBash = effective.wantsBash;
     if (permissionTier) {
       console.log(`[WS Server] Permission tier: ${effective.tier} → mode=${permissionMode}`);
     }
@@ -1004,6 +1006,7 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       permissionMode,
       disallowedTools,
       allowBash,  // Pass allowBash flag so worker can trust org-based bypass mode
+      wantsBash,  // R4 (#69): tier's bash preference; gates the sandboxed Bash tool
       userId: ws.userId,
     });
     worker.stdin.write(request);
