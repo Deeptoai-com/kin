@@ -91,7 +91,7 @@ file → done). The earlier GLM-plan blocker is resolved.
 | **Phase 1 — Security hardening** | ✅ Core done (Risks #1/#2/#3/#4/#5/#10) |
 | **Phase 0.5 — Execution-runtime + single-host concurrency** | ✅ Done (ExecutionRuntime #39, DockerBackend #41, B3 #42, C4 #43/#45, S1 #48, S2 #51, S3 #52, S5 #53) — single 16G/8-core ~50 concurrent target |
 | **Phase 2 — Observability & accounting** | ✅ Done (usage_record #55, audit_log #56, metering+quota OFF-by-default #57) |
-| **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🟡 In progress — Wave 0 (tokens A "暖雾奶油" + 3-col workbench skeleton) + Wave 1 (① Todo, ② Sub-agents) merged (#60); next: Wave 2 (Ask/Act + ③ HITL) |
+| **Phase 3 — Catch up to Deep Agents (capabilities + UI/UX)** | 🟡 In progress — Wave 0 + Wave 1 merged (#60); **Wave 2 (Ask/Act + HITL tool approval) merged + owner-tested** (2026-06-04, `feat/ask-act-hitl`); + Cowork single-source chat S1/S2 merged. Remaining: nested sub-agent tree, responsive workbench drawer |
 | Phase 4 — Multi-model & scale | ⬜ Not started |
 
 ## Done (most recent first)
@@ -200,6 +200,14 @@ file → done). The earlier GLM-plan blocker is resolved.
 - `test` — non-blocking (suite is e2e/integration; needs DB + live server in CI).
 
 ## Decision log
+
+- **2026-06-04** — **Ask/Act + HITL（Phase 3 Wave 2）实现 + owner 实测通过 + 合并 `main`**（merge
+  `feat/ask-act-hitl`）。2 档(🖐 Ask 逐动作审批 / ⏩ Act 自主,默认),砍掉 explore/auto/Plan。实现:先
+  **spike 验证** SDK `canUseTool` 能 async-await(0.2.112),再**对照官方文档**(canUseTool=官方 HITL 机制;
+  Ask=`default`、Act=`acceptEdits`;options.toolUseID/title/signal;reject=interrupt:false)。chunk1=模型
+  3→2;chunk2=worker stdin 行协议 + HITL canUseTool(只读放行/动作类发 approval_request 并 await)+ ws-server
+  中继/回写 + 前端 pendingApprovals + ApprovalPrompt 卡。实测:选择器两档、Ask 逐动作批准/拒绝生效、Act 不打断。
+  **R4(#69)由"删 explore"解决,PR #108 已关。** 设计/校验见 `research/2026-06-ask-act-hitl-design.md`(§8 文档校验)。
 
 - **2026-06-04** — **权限模型拍板:对标 Cowork 的 Ask/Act 两档,砍掉 Plan/explore/auto**。理由:纯
   web、不在客户本地、全沙盒 → 只读 Plan 无用;符合既定哲学(安全=沙盒,档位=交互偏好)。**Ask**=每个动作
