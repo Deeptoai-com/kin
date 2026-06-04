@@ -93,13 +93,17 @@ function genMessageId(): string {
  * (fromThreadMessageLike spreads tool-call parts and returns text/reasoning as-is).
  */
 function convertStoreMessage(message: ThreadMessage): ThreadMessageLike {
+  // assistant-ui only accepts `status` on assistant messages — passing it on a
+  // user/system message throws "status is only supported for assistant messages".
   return {
     role: message.role,
     content: message.content as unknown as ThreadMessageLike['content'],
     id: message.id,
     createdAt: message.createdAt,
-    status: message.status as unknown as ThreadMessageLike['status'],
-  };
+    ...(message.role === 'assistant' && message.status
+      ? { status: message.status as unknown as ThreadMessageLike['status'] }
+      : {}),
+  } as ThreadMessageLike;
 }
 
 /** Extract the typed text from an externalStore AppendMessage's content parts. */
