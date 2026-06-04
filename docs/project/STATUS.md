@@ -200,6 +200,18 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-04** — **「真预览」架构拍板（架构师评审）**：让用户看到 agent 生成的多文件 App 真正运行。
+  方向 = **per-session 持久沙盒 + 按需预览进程 + idle 回收**（不每会话常驻 dev server）。
+  新增 `PreviewRuntime`/`SessionSandboxManager`（不硬改 one-shot `DockerBackend`）+ `preview-controller`
+  sidecar 独占 docker socket；**双档**（默认 build→内置静态服务器 serve=硬验收，HMR dev=best-effort）；
+  **Traefik + Docker provider + forward-auth**（本地 `*.127-0-0-1.sslip.io`、生产 `*.preview.<domain>`+
+  wildcard cert，子路径仅兜底，v1 不做 on-demand TLS）；鉴权用**一次性 bootstrap JWT → opaque
+  httpOnly host-only preview cookie**；app manifest = `.oxygenie/app.json`（v1 启发式生成，命令仅限
+  package.json scripts）；**Provider 抽象先留、只实现 Docker**；**v1 硬验收 = 纯前端 SPA
+  install→build→static→iframe**，Next/Express/带 API = best-effort。诊断+对比+计划见
+  `research/2026-06-real-preview-architect-brief.md` + `…-v1-implementation-plan.md` +
+  `…-workbench-artifact-ordering-fix-plan.md`。**归属**：沙盒新对话执行。也顺带记录三个 UI 缺陷
+  （Workbench 只 Progress/滞后、每文件一张「打开成果物」、消息错乱）的根因与 Phase A/B 修正（UI 轨道）。
 - **2026-06-04** — **Skills integration S1–S4 shipped + owner-tested** (PRs #90–#99). Model:
   **DB catalog = source of truth**, FS = runtime projection (materialize enabled skills to
   `~/.claude/skills/`). Key owner decisions recorded in the Skills PRD:
