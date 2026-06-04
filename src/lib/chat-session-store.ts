@@ -109,6 +109,18 @@ export type SDKMessage = {
   }>;
 };
 
+// Ask-mode HITL: a pending tool-approval request, pushed by the worker over WS
+// (`approval_request`). The user approves/rejects; the decision goes back to the
+// worker's canUseTool. See docs/project/research/2026-06-ask-act-hitl-design.md.
+export type ApprovalRequest = {
+  toolUseID: string;
+  toolName: string;
+  title?: string | null;
+  displayName?: string | null;
+  description?: string | null;
+  input?: Record<string, unknown>;
+};
+
 interface ChatSessionState {
   // Current session ID
   currentSessionId: string | null;
@@ -130,6 +142,9 @@ interface ChatSessionState {
 
   // Session metadata (tools, agents, configuration)
   sessionMetadata: SessionMetadata | null;
+
+  // Ask-mode HITL: tool-approval requests awaiting the user's decision.
+  pendingApprovals: ApprovalRequest[];
 
   // Structured output from last query (for artifact metadata)
   lastStructuredOutput: unknown | null;
@@ -165,6 +180,8 @@ interface ChatSessionState {
   setCurrentToolName: (toolName: string | null) => void;
   setUsageData: (data: UsageData) => void;
   setSessionMetadata: (data: SessionMetadata) => void;
+  addPendingApproval: (req: ApprovalRequest) => void;
+  resolvePendingApproval: (toolUseID: string) => void;
   setLastStructuredOutput: (data: unknown | null) => void;
   setShowThinking: (show: boolean) => void;
   setQueueCount: (count: number) => void;
@@ -374,6 +391,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
   currentToolName: null,
   usageData: null,
   sessionMetadata: null,
+  pendingApprovals: [],
   lastStructuredOutput: null,
   showThinking: true, // Default: show thinking/reasoning blocks
   queueCount: 0, // Number of pending runs waiting to be processed
@@ -458,6 +476,19 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
   setSessionMetadata: (data) => {
     set({ sessionMetadata: data });
+  },
+
+  addPendingApproval: (req) => {
+    set((state) => {
+      if (state.pendingApprovals.some((a) => a.toolUseID === req.toolUseID)) return state;
+      return { pendingApprovals: [...state.pendingApprovals, req] };
+    });
+  },
+
+  resolvePendingApproval: (toolUseID) => {
+    set((state) => ({
+      pendingApprovals: state.pendingApprovals.filter((a) => a.toolUseID !== toolUseID),
+    }));
   },
 
   setLastStructuredOutput: (data) => {
