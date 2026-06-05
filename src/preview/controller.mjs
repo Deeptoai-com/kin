@@ -209,6 +209,9 @@ async function createContainer({ previewId, sessionId, userId, host, workspacePa
         'corepack enable >/dev/null 2>&1 || true',
         `mkdir -p ${shellQuote(workdir)} ${shellQuote(nodeModulesTarget)} ${shellQuote(path.posix.join(workdir, '.oxygenie'))}`,
         `chown -R ${shellQuote(PREVIEW_USER)} ${shellQuote(nodeModulesTarget)} ${shellQuote(path.posix.join(workdir, '.oxygenie'))} 2>/dev/null || true`,
+        // Non-recursive: give the preview user write access to the workspace root
+        // (lockfiles, build output dir) without rewriting ownership of user source files.
+        `chown ${shellQuote(PREVIEW_USER)} ${shellQuote(workdir)} 2>/dev/null || true`,
         'tail -f /dev/null',
       ].join(' && '),
     ],
@@ -227,7 +230,12 @@ async function createContainer({ previewId, sessionId, userId, host, workspacePa
       Memory: parseBytes(PREVIEW_MEMORY),
       NanoCpus: Math.max(0.25, PREVIEW_CPUS) * 1_000_000_000,
       PidsLimit: PREVIEW_PIDS,
+      // Drop everything, then re-add only CHOWN: the root-run startup step needs it to
+      // hand the node_modules volume + workspace root to the unprivileged preview user.
+      // install/build/serve still run as PREVIEW_USER (non-root) with no effective caps,
+      // so untrusted build code remains unprivileged.
       CapDrop: ['ALL'],
+      CapAdd: ['CHOWN'],
       SecurityOpt: ['no-new-privileges'],
     },
   };
@@ -300,6 +308,7 @@ function staticServerScript() {
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+try { if (process.env.PREVIEW_PID_FILE) fs.writeFileSync(process.env.PREVIEW_PID_FILE, String(process.pid)); } catch (e) {}
 const root = path.resolve(process.env.PREVIEW_ROOT || 'dist');
 const port = Number(process.env.PORT || ${PREVIEW_PORT});
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.ico':'image/x-icon','.txt':'text/plain; charset=utf-8'};
@@ -352,17 +361,32 @@ async function startPreview(body) {
   });
 
   const outputDir = body.manifest.outputDir || 'dist';
+  const previewRoot = path.posix.join(workdir, outputDir);
+  const logPath = path.posix.join(workdir, '.oxygenie/preview.log');
+  const pidPath = path.posix.join(workdir, '.oxygenie/preview.pid');
   const script = staticServerScript();
-  const command = [
-    'mkdir -p .oxygenie',
-    'if [ -f .oxygenie/preview.pid ]; then kill "$(cat .oxygenie/preview.pid)" 2>/dev/null || true; fi',
-    `PORT=${PREVIEW_PORT} PREVIEW_ROOT=${shellQuote(path.posix.join(workdir, outputDir))} nohup node -e ${shellQuote(script)} > .oxygenie/preview.log 2>&1 & echo $! > .oxygenie/preview.pid`,
-  ].join(' && ');
+
+  // Stop any previous server (best-effort) before (re)starting.
   await execInContainer({
     previewId: body.previewId,
-    command,
+    command:
+      'mkdir -p .oxygenie && if [ -f .oxygenie/preview.pid ]; then kill "$(cat .oxygenie/preview.pid)" 2>/dev/null || true; fi',
     workdir,
-    timeoutMs: 30 * 1000,
+    timeoutMs: 10 * 1000,
+  });
+
+  // Start the static server as a DETACHED exec running node in the foreground via
+  // `exec` (so the exec's PID *is* the node PID). A backgrounded `nohup ... &` inside
+  // an attached exec races with exec-session teardown and can be reaped before it is
+  // useful; a detached exec is owned by the daemon and survives reliably.
+  // The server writes its own (container-namespace) PID to PREVIEW_PID_FILE on startup —
+  // the exec API only exposes the host-namespace PID, which is useless for an in-container
+  // `kill`, so we let the process self-record the PID that restart/idle-reap actually need.
+  await execInContainer({
+    previewId: body.previewId,
+    command: `PORT=${PREVIEW_PORT} PREVIEW_ROOT=${shellQuote(previewRoot)} PREVIEW_PID_FILE=${shellQuote(pidPath)} exec node -e ${shellQuote(script)} > ${shellQuote(logPath)} 2>&1`,
+    workdir,
+    detach: true,
   });
   return { build };
 }
