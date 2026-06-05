@@ -275,12 +275,18 @@ services:
       # OAuth Providers (frontend - Client ID only)
       VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-      # Mastra Agent (Zhipu AI GLM-5.0 via Mastra built-in gateway)
-      ZHIPU_API_KEY: ${ZHIPU_API_KEY:?}
-      # Claude Agent SDK configuration
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?}
+      # Mastra Agent (Zhipu AI GLM via Mastra built-in gateway) — optional, not used in ARK-only deploy
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);
+      # do NOT set ANTHROPIC_API_KEY (it would make the SDK use x-api-key instead of Bearer).
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:?}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_DEFAULT_SONNET_MODEL: ${ANTHROPIC_DEFAULT_SONNET_MODEL:-}
+      ANTHROPIC_DEFAULT_OPUS_MODEL: ${ANTHROPIC_DEFAULT_OPUS_MODEL:-}
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: ${ANTHROPIC_DEFAULT_HAIKU_MODEL:-}
+      CLAUDE_CODE_SUBAGENT_MODEL: ${CLAUDE_CODE_SUBAGENT_MODEL:-}
       # Gemini API for skill icon generation
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CLAUDE_SESSIONS_ROOT: /data/users
@@ -303,7 +309,7 @@ services:
       MAX_ACTIVE_PREVIEWS: ${MAX_ACTIVE_PREVIEWS:-4}
       PREVIEW_IDLE_TIMEOUT_MS: ${PREVIEW_IDLE_TIMEOUT_MS:-300000}
       PREVIEW_PROTOCOL: ${PREVIEW_PROTOCOL:-https}
-      PREVIEW_HOST_TEMPLATE: ${PREVIEW_HOST_TEMPLATE:-{previewId}.preview.${APP_HOSTNAME}}
+      PREVIEW_HOST_TEMPLATE: ${PREVIEW_HOST_TEMPLATE:-{previewId}.${APP_HOSTNAME}}
       PREVIEW_COOKIE_SECURE: ${PREVIEW_COOKIE_SECURE:-1}
       PREVIEW_BOOTSTRAP_TTL_MS: ${PREVIEW_BOOTSTRAP_TTL_MS:-90000}
       PREVIEW_COOKIE_TTL_MS: ${PREVIEW_COOKIE_TTL_MS:-900000}
@@ -346,16 +352,16 @@ services:
       # 1. Main HTTP service (Web) - exclude /ws
       # ---------------------------------------------------------
       # HTTP router (port 80) -> redirect to HTTPS
-      - "traefik.http.routers.main-web.rule=Host(`deeptoai.com`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main-web.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
       - "traefik.http.routers.main-web.entrypoints=web"
       - "traefik.http.routers.main-web.middlewares=redirect-to-https@file"
       - "traefik.http.routers.main-web.service=main-service"
       - "traefik.http.routers.main-web.priority=50"
 
       # HTTPS router (port 443)
-      - "traefik.http.routers.main-websecure.rule=Host(`deeptoai.com`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main-websecure.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
       - "traefik.http.routers.main-websecure.entrypoints=websecure"
-      - "traefik.http.routers.main-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.main-websecure.tls=true"
       - "traefik.http.routers.main-websecure.service=main-service"
       - "traefik.http.routers.main-websecure.priority=50"
 
@@ -365,9 +371,9 @@ services:
       # ---------------------------------------------------------
       # 2. WebSocket service (WS) - exclusive /ws + higher priority
       # ---------------------------------------------------------
-      - "traefik.http.routers.ws-router.rule=Host(`deeptoai.com`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws-router.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.ws-router.entrypoints=websecure"
-      - "traefik.http.routers.ws-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ws-router.tls=true"
       - "traefik.http.routers.ws-router.priority=100"
       - "traefik.http.routers.ws-router.service=ws-service"
 
@@ -380,9 +386,9 @@ services:
       # Preview content is served by dynamic preview containers. Their /__oxy/*
       # auth paths must route back to the ws-server (same process that issued the
       # one-time token and owns preview cookie sessions).
-      - "traefik.http.routers.preview-auth.rule=HostRegexp(`{preview:[a-z0-9-]+}.preview.${APP_HOSTNAME}`) && PathPrefix(`/__oxy`)"
+      - "traefik.http.routers.preview-auth.rule=HostRegexp(`{preview:[a-z0-9-]+}.${APP_HOSTNAME}`) && PathPrefix(`/__oxy`)"
       - "traefik.http.routers.preview-auth.entrypoints=websecure"
-      - "traefik.http.routers.preview-auth.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.preview-auth.tls=true"
       - "traefik.http.routers.preview-auth.priority=200"
       - "traefik.http.routers.preview-auth.service=ws-service"
     restart: unless-stopped
@@ -417,7 +423,9 @@ services:
       PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-dokploy-network}
       PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-websecure}
       PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-1}
-      PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-letsencrypt}
+      # Empty: previews use Traefik's default cert (Cloudflare Origin CA), not Let's Encrypt
+      # (orange-cloud blocks HTTP-01). See research/2026-06-oxygenie-cc-dokploy-deployment.md §3.
+      PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-}
       PREVIEW_FORWARD_AUTH_URL: ${PREVIEW_FORWARD_AUTH_URL:-http://app:3001/__oxy/preview/authorize}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

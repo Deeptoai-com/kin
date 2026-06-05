@@ -20,7 +20,7 @@
 | 项 | 决策 | 备注 |
 |---|---|---|
 | 代码源 | GitHub `foreveryh/oxygenie` @ `codex/phasec-real-preview` | controller 硬化在 `d19621c` |
-| 镜像 | **GHCR**（既定方案）`ghcr.io/foreveryh/oxygenie/app`，`buildx --platform linux/amd64` | Dokploy 拉取，非 Dokploy 构建 |
+| 镜像 | **Dokploy 自建**（compose 用 `*app_build`，在 amd64 服务器构建）| 见 §8（已纠正；与 CLAUDE.md GHCR 段不一致，待 Owner 确认）|
 | Dokploy 项目 | 新建 `oxygenie` | |
 | App 域名 | `oxygenie.cc`（apex） | |
 | WebSocket | `wss://oxygenie.cc/ws/agent`（Traefik 按 `/ws` 路径转 3001） | |
@@ -127,8 +127,11 @@ ARK `/api/coding` 网关用 **Bearer（`ANTHROPIC_AUTH_TOKEN`）**，不是 `x-a
 5. **preview-controller 服务**（约 L396-421）：`PREVIEW_TRAEFIK_CERTRESOLVER` 默认 `letsencrypt` →
    清空（用默认 Origin 证书）；确认 `PREVIEW_TRAEFIK_NETWORK`/`PREVIEW_DOCKER_NETWORK=dokploy-network`
    （已是）；`PREVIEW_BASE_DOMAIN=oxygenie.cc`。镜像 = GHCR（含 controller 硬化，见 §7）。
-6. **VITE build args**（构建期烤入镜像，非 compose 运行期）：`VITE_WS_URL=wss://oxygenie.cc/ws/agent`、
-   `VITE_BASE_URL`（按需）必须在 `buildx` 构建镜像时通过 `--build-arg` 传入。
+6. **VITE build args**：已在 `x-app-build` 锚点按 `${APP_HOSTNAME}` 参数化（Dokploy 自建时自动烤入）；
+   只需设 `APP_HOSTNAME=oxygenie.cc`，无需手工传 `--build-arg`。
+
+> ✅ 第 6 处之外的 1–5 已于 2026-06-05 改完并 `docker compose config` 校验通过
+> （commit 见决策日志）。
 
 ---
 
@@ -149,18 +152,23 @@ ARK `/api/coding` 网关用 **Bearer（`ANTHROPIC_AUTH_TOKEN`）**，不是 `x-a
 
 ---
 
-## 8. GHCR 镜像构建（带 ARK/域名所需 build args）
+## 8. 镜像构建方式 —— Dokploy 自建（**已纠正**）
 
-```bash
-gh auth refresh -h github.com -s write:packages
-echo $(gh auth token) | docker login ghcr.io -u foreveryh --password-stdin
-docker buildx build --platform linux/amd64 \
-  --build-arg VITE_WS_URL=wss://oxygenie.cc/ws/agent \
-  -t ghcr.io/foreveryh/oxygenie/app:latest \
-  --push .
-```
-> ⚠️ 必须 `--platform linux/amd64`（Dokploy 服务器是 x86_64，Mac 是 arm64）。
-> ⚠️ 从 `codex/phasec-real-preview` 分支构建（含 Phase C + Ask/Act + controller 硬化）。
+**`docker-compose.dokploy.yml` 的全部 app 服务（migrate/worker/app/preview-controller）都用
+`<<: *app_build`（`build:` 锚点），即 Dokploy 克隆分支后在它自己的 amd64 服务器上构建。**
+因此：
+
+- **不需要**本地 `buildx` 跨架构构建，**不需要**推 GHCR、不需要 `--platform linux/amd64`。
+- VITE build-args 已在 `x-app-build` 锚点里按 `${APP_HOSTNAME}` 等参数化
+  （如 `VITE_WS_URL=wss://${APP_HOSTNAME}/ws/agent`）→ 只要在 Dokploy 设 `APP_HOSTNAME=oxygenie.cc`
+  即自动烤入正确前端域名。
+- Dokploy 端：Docker Compose 服务的 Git 源指向 `foreveryh/oxygenie` 分支 `codex/phasec-real-preview`，
+  compose 路径 `docker-compose.dokploy.yml`；部署即构建。
+
+> ⚠️ **与 CLAUDE.md 不一致**：CLAUDE.md「Dokploy 部署规则」写的是 GHCR + `pull_policy: always`
+> + 本地 `buildx --platform linux/amd64`。但当前 `docker-compose.dokploy.yml`（Phase C，commit
+> 0d05389）用的是 `*app_build`（Dokploy 自建）。本部署按**文件现状（自建）**走；CLAUDE.md 那段
+> 待与 Owner 确认后更正或保留为备选。
 
 ---
 
@@ -173,11 +181,12 @@ docker buildx build --platform linux/amd64 \
 - [x] **ARK `ANTHROPIC_AUTH_TOKEN` 已提供 + 实测通过**（2026-06-05：`/api/coding/v1/messages`
       + Bearer，`glm-5.1` 与 `doubao-seed-2.0-lite` 均 HTTP200 应答 `OK`）
 - [x] `doubao-seed-2.0-lite` 确认存在且可用（实测通过）
-- [ ] 按 §6 改 `docker-compose.dokploy.yml`
-- [ ] 按 §6/§5 补 `infra/deploy/env.dokploy.example` 的 ARK/模型/域名键
-- [ ] 从 phasec 分支构建并推送 GHCR 镜像（§8）
-- [ ] Dokploy 建 `oxygenie` 项目 + Docker Compose（compose 路径 `docker-compose.dokploy.yml`）+ 注入 env + 装 Origin 证书
-- [ ] 部署 → 冒烟 → **浏览器真预览路由 E2E** → 通过后合并 PR #107 到 main
+- [x] 按 §6 改 `docker-compose.dokploy.yml`（1–5 已改，`docker compose config` 校验通过）
+- [x] 按 §6/§5 补 `infra/deploy/env.dokploy.example` 的 ARK/模型键
+- [x] 镜像：Dokploy 自建（无需 GHCR，见 §8）
+- [ ] **【动生产】** Dokploy 建 `oxygenie` 项目 + Docker Compose（Git 源 `codex/phasec-real-preview`，
+      compose 路径 `docker-compose.dokploy.yml`）+ 注入 env（用 `secrets.env` 蓝本）+ 装 Origin 证书
+- [ ] **【动生产】** 部署 → 冒烟 → **浏览器真预览路由 E2E** → 通过后合并 PR #107 到 main
 
 ---
 
