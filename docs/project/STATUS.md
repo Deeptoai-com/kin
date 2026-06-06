@@ -1,7 +1,7 @@
 # OxyGenie — Status (Living Memory)
 
 > **This is the living memory of the project. Update it whenever state changes.**
-> Last updated: **2026-06-06**
+> Last updated: **2026-06-07**
 
 ## Current position (one-paragraph snapshot)
 
@@ -236,7 +236,7 @@ file → done). The earlier GLM-plan blocker is resolved.
 | Make tests CI-runnable (unit/e2e split + services) | M | Then make `test` a hard gate |
 | Fix TS errors | S–M | Good starter task; then make `typecheck` a hard gate |
 | Sandbox Python/Bash exec — adopt `srt` + env allowlist | M | **Critical** (Risk #1); via Phase 0.5 `ExecutionRuntime` + Anthropic `srt` |
-| `changedoc` (ai-pr-docs) — provider = ARK | S (chore) | Repointed OpenRouter→**ARK** `/api/coding/v3` + `doubao-seed-2.0-code` + `ARK_API_KEY` (#118). To go green: ensure `ARK_API_KEY` is visible to the `ai-review` Environment (`pull_request_target` → new config effective next PR). Not a quality gate. Optional: gate behind an `ai-review` label to stop red on every PR. |
+| `changedoc` (ai-pr-docs) — wired to ARK ✅ | S (chore) | OpenRouter→**ARK** `/api/coding/v3` + `doubao-seed-2.0-code` (#118); secret = generic **`OPENAI_API_KEY`** (#120) set on `ai-review` env (= the ARK `ANTHROPIC_AUTH_TOKEN`). curl-validated (HTTP 200). `pull_request_target` → **next PR** confirms green. Not a quality gate. Optional: `ai-review` label gate to silence red. |
 | Archive old public repo `constructa-starter` | S (chore) | Avoid two-public-repo confusion |
 | Bump gitleaks/checkout actions off Node 20 | S (chore) | Deprecation forced ~2026-06-16 |
 | **Workspace (项目) as a first-class concept** | L | Decouple Workspace from Conversation; let new-chat pick "existing workspace vs new"; conversations belong to a workspace (stable absolute path). Today每对话=独立 workspace（`getSessionWorkspace`, 1:1）。L2 in `research/2026-06-conversation-persistence-resume-comparison.md`; subsumes the persistence 治本. Owner-deferred 2026-06 (do 治标 first). |
@@ -252,7 +252,8 @@ file → done). The earlier GLM-plan blocker is resolved.
 | ✅ ~~NEXT · Path A: bundle Traefik + preview-auth~~ | M | **Done — `docker-compose.prod.yml` (#113/#114).** Bundled Traefik + preview-auth (v3 `HostRegexp`) + wildcard cert + `dockerproxy` shim (Docker 28/29 API min); LE DNS-01 + CF Origin CA. **VM-verified** on Ubuntu 22.04/Docker 29. Residual: LE issuance vs real public DNS untested. |
 | ✅ ~~NEXT · Agent code sandbox: fix srt registration sequencing~~ | M | **Done — PR #112.** Eager `ensureSandbox()` before the `sandboxStatus()` check (was `state=null` → bash never registered); bubblewrap in image. Verified live (srt active). |
 | **🔵 NEXT · MCP catalog/picker + fix stale "coming soon" copy** | M | No curated MCP picker yet; `skills.content.ts` "enabling … coming soon" copy is outdated (Skills shipped). Pairs with the Skills curation rows above. |
-| **🟣 LATER · Multi-model: registry + routing/failover** | L | Phase 4. Picker is cosmetic today (hardcoded GLM/ARK). Within the **SDK 0.2.112 / ARK** constraint; per-capability key split. |
+| **🎯 NEXT · Multi-model selection (owner focus 2026-06-07)** | S–M (MVP) | Pick model per run vs the startup `ANTHROPIC_MODEL`. MVP = same-gateway (ARK) switch: curated registry + `model` plumbing (mirror `skillSlug`/`permissionTier`) + real composer picker + `query({model})`. Plan: `research/2026-06-multi-model-support-research.md`. |
+| **🟣 LATER · Multi-model: cross-provider routing + failover** | L | Phase 4 stretch (after the NEXT MVP): per-request env routing to other Anthropic-compatible gateways, DB-backed admin registry, failover, per-capability key split, capability gating. Within **SDK 0.2.112 / ARK** (Anthropic-protocol only). |
 | **🟣 LATER · Revisit `ENABLE_STRUCTURED_OUTPUTS` (off)** | M | Coupled to the artifact/structured-output strategy; Phase C now done → resolve the StructuredOutput-leak root cause instead of keeping the flag forced-off. |
 | **🟣 LATER · Wire accounting (Phase 2)** | M | `spendOneCredit` never called; persist per-run cost/tokens; enable audit log; stop logging raw message content (PII). |
 | **🟣 LATER · Email-verify self-host UX + P16 version recording + deprecated-fn cleanup** | S | The "verify your email" banner on a self-host is friction; P16 artifact version recording paused (`ENABLE_VERSION_RECORDING=false`); `syncOldUserSkills`/`getSkillStatus` are `@deprecated`. |
@@ -265,6 +266,18 @@ file → done). The earlier GLM-plan blocker is resolved.
 
 ## Decision log
 
+- **2026-06-07** — **本轮收工 + 下一焦点 = 多模型选择(owner 定)**。今天(06-06 会话)全部收口:Phase C 全部完成、
+  分享功能上线、文档对齐、changedoc 接通 ARK(见下条)。**下一步 = 让系统支持多模型选择**,已先产出调研 +
+  分阶段实施计划 `research/2026-06-multi-model-support-research.md`。要点:① 现状 = model 是启动期单一
+  `ANTHROPIC_MODEL`,UI「GLM 5.0」是死徽章,前端→worker 无任何传递;② 关键约束 = 我们驱动的是 **Claude Agent
+  SDK(钉死 0.2.112)**,只说 Anthropic 协议,故"多模型"= 跨 **Anthropic 兼容网关**的多模型(OpenAI-only 厂商需加
+  转译代理,暂不做);③ 关键使能点 = worker 是**每请求新子进程**,`ws-server` 可**按请求覆写** 其
+  `ANTHROPIC_MODEL`/`BASE_URL`/`AUTH_TOKEN` → 无需 0.3.x 即可路由到任意 provider;④ **MVP(明天)= 同网关(ARK)
+  切模型**:精选 registry + `model` 走通(照搬 `skillSlug`/`permissionTier` 链路)+ 真 composer picker +
+  `query({model})`,**不**改 baseURL/key、**不**动 DB;⑤ v2 = 会话/消息持久化 + DB registry + admin 策展
+  (照搬 Skills 目录);Phase 4 stretch = 跨 provider 路由/failover + per-capability key 拆分。参考:LibreChat
+  (spec→preset + 每消息记录 model)/ Lobe(provider card + 运行时 resolve)——借思路不抄码。
+
 - **2026-06-06 (later)** — **Phase C 收口:Path A 完成 + 预览分享上线 + changedoc 切 ARK。结论:Phase C 全部完成。**
   ① **Path A**(`docker-compose.prod.yml`)在**真 Linux VM**(Ubuntu 22.04 / Docker 29,Multipass)验证通过
   (migrate/health/WS/重定向/预览 forward-auth 全绿);此 VM run **逮到并修了 Docker 28/29 守护进程最低 API**
@@ -273,9 +286,11 @@ file → done). The earlier GLM-plan blocker is resolved.
   ② **预览体验收尾**:成果物卡**收到整轮结束**才显示(#115);**分享=公开链接切换**(#116——`/__oxy/preview/
   authorize` 对 public host 放行 + 分享期间钉住常驻 → 无 token 的 `<id>.<域名>/` 链接,任何人可开)。Mac 本机
   用 mkcert + dnsmasq 受信泛域名证书完成浏览器验证。生命周期+分享写入 README(_CN) + v1 计划 §8(#117)。
-  ③ **changedoc**:`ai-pr-docs`(ChangeDoc/AI-review)从 OpenRouter 切到 **ARK**(`/api/coding/v3`、
-  `doubao-seed-2.0-code`、`ARK_API_KEY`,#118)。注:`pull_request_target` 跑基分支版本,新配置**下个 PR 起**
-  生效;变绿还需 `ARK_API_KEY` 对 `ai-review` Environment 可见。
+  ③ **changedoc 接通**:`ai-pr-docs`(ChangeDoc/AI-review)从 OpenRouter 切到 **ARK**
+  (`/api/coding/v3`、`doubao-seed-2.0-code`,#118),secret 名按 owner 要求用通用 **`OPENAI_API_KEY`**
+  (#120)。key = 本地 `~/oxygenie-deploy/secrets.env` 的 `ANTHROPIC_AUTH_TOKEN`,已写入 `ai-review`
+  Environment(值未回显)。**已 curl 实测三件套**:`/api/coding/v3` + `doubao-seed-2.0-code` + 该 key →
+  HTTP 200。注:`pull_request_target` 跑基分支版本,故**下个 PR** 的 changedoc 才会用上新配置并变绿。
 
 - **2026-06-06** — **Phase C 真预览全链路打通 + Mac/Tunnel 部署上线 + 路线图重置**。
   ① **真预览 E2E 修复**(实测驱动):Traefik **v3 `HostRegexp`** 修预览 404 —— v2 命名组

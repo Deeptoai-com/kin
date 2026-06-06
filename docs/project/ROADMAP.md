@@ -33,6 +33,14 @@ plan for what's left. Owner-set: **Now = Slimming only.**
 one-time package→repo link); zero Mastra references ✅.
 
 ### 🔵 NEXT — Deployment completeness + capability lists
+- [ ] **🎯 Multi-model selection (owner-set focus, 2026-06-07)** — let users pick the model per run
+      instead of the single startup `ANTHROPIC_MODEL`. **MVP = same-gateway (ARK) model switch**:
+      a curated model registry + `model` plumbing that mirrors the proven `skillSlug`/`permissionTier`
+      path (store → ws-adapter `chat` msg → ws-server validate → worker) + a real composer picker
+      (replacing the cosmetic "GLM 5.0" badge) + `query({ model })`. Cross-provider env-routing,
+      DB-backed admin registry, and failover are later phases. Stays within **SDK 0.2.112 / ARK**
+      (Anthropic-compatible gateways only). Research + phased plan:
+      `research/2026-06-multi-model-support-research.md`.
 - [x] **Agent code sandbox** — fixed the registration sequencing bug (eager `ensureSandbox()`
       before the check; `state=null` → bash never registered). Verified live (srt active). *(PR #112)*
 - [x] **Path A completeness** — **`docker-compose.prod.yml`**: bundled Traefik + websecure/TLS + the
@@ -48,9 +56,10 @@ one-time package→repo link); zero Mastra references ✅.
 - **Skills / MCP curation ("lists")** — content refresh (skills-api `scrapedAt`/ETag), admin
   curation UI for the official catalog, an **MCP catalog/picker**, and fix the stale "coming soon" copy.
 
-### 🟣 LATER — Multi-model, gates, accounting, polish
-- **Multi-model** (Phase 4) — model registry + routing/failover + per-capability key split, within
-  the **SDK 0.2.112 / ARK** constraint (no 0.3.x-only features). The current picker is cosmetic.
+### 🟣 LATER — gates, accounting, polish
+- **Multi-model** — **promoted to NEXT (2026-06-07)** — see the NEXT item +
+  `research/2026-06-multi-model-support-research.md`. Phase 4 *stretch* remains: cross-provider
+  routing/**failover** + per-capability key split + capability gating (e.g. vision-only models).
 - **CI hard gates** (Phase 0 remainder) — typecheck, validate-routes (29 REST routes), test
   (Postgres service container); TS-ify `ws-server.mjs`/`ws-query-worker.mjs` + typed WS protocol.
 - **Accounting** (Phase 2 wiring) — call `spendOneCredit`, persist per-run cost/tokens, enable the
