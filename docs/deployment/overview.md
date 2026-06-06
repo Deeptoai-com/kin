@@ -20,6 +20,7 @@
 |---|---|---|---|
 | **A. Docker Compose (self-managed)** | **Anyone self-hosting on a VPS / their own box. Recommended baseline.** | The host + a reverse proxy (Traefik, bundled) | `docker-compose.yml` |
 | **B. Dokploy (managed PaaS)** | Teams who want a UI + managed Traefik/TLS/domains (this is how the maintainers run it) | A Dokploy install | `docker-compose.dokploy.yml` |
+| **C. Cloudflare Tunnel (workstation / behind NAT)** | A dev box, home server, or workstation with **no public inbound** — full-feature trials with the least infra | The host only (TLS + DNS handled by Cloudflare; tunnel is outbound-only) | `docker-compose.tunnel.yml` |
 
 Both run the **same images and the same app**. They differ only in **who runs the
 reverse proxy / TLS / DNS**:
@@ -29,6 +30,13 @@ reverse proxy / TLS / DNS**:
   You bring a domain + (for previews) a wildcard DNS record.
 - **Path B** uses Dokploy's existing Traefik. You set domains + certs in Dokploy; OxyGenie's
   containers attach to Dokploy's network.
+- **Path C** also bundles its own Traefik (like A) but adds a **`cloudflared`** container that
+  opens an *outbound* tunnel to Cloudflare — so the host needs **no public IP and no open
+  ports**. Cloudflare terminates TLS at the edge and forwards both the app host and every
+  preview subdomain to the bundled Traefik. Ideal for a workstation or anything behind NAT,
+  and the fastest way to get the **full** feature set (preview + sandbox) — a self-managed
+  host gives the elevated container privileges (`seccomp`/`apparmor=unconfined`, `NET_ADMIN`)
+  that a hardened managed PaaS may restrict.
 
 > **Legacy:** an older Dokku + GitHub-Actions flow exists (`.github/workflows/deploy.yml`,
 > `infra/deploy/`). It is not a supported path going forward — use A or B.
@@ -54,6 +62,7 @@ tears down preview containers via the Docker API (plain `docker`, no Swarm).
 
 - **Path A — [Docker Compose](docker-compose.md)** ← start here if you're self-hosting.
 - **Path B — [Dokploy](dokploy.md)** ← managed platform.
+- **Path C — [Cloudflare Tunnel](tunnel.md)** ← workstation / home server / behind NAT.
 
 ## Common requirements
 

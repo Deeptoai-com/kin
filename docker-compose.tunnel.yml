@@ -1,0 +1,495 @@
+# OxyGenie — Path C: Cloudflare Tunnel (workstation / home server / behind NAT).
+#
+# Full guide: docs/deployment/tunnel.md · configs: infra/tunnel/
+#
+# This is "Path A + a tunnel": the same app/images plus a bundled Traefik (reads container
+# labels), a `cloudflared` container that opens an OUTBOUND tunnel to Cloudflare (no public
+# IP / no open ports needed), and — on macOS only — a tiny `dockerproxy` nginx shim that
+# rewrites the docker API version Traefik pins (OrbStack/Docker Desktop reject v1.24).
+# Cloudflare terminates TLS at the edge; the tunnel→Traefik hop is plain HTTP.
+#
+# Bring up (image built natively on the host as oxygenie:local):
+#   docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .
+#   set -a; . ~/oxygenie-deploy/secrets.env; set +a
+#   export APP_IMAGE=oxygenie APP_TAG=local
+#   docker compose -f docker-compose.tunnel.yml up -d
+#
+# On a plain Linux host you can delete `dockerproxy` and point Traefik at the socket
+# directly (see docs/deployment/tunnel.md → "Running on a plain Linux host").
+
+# Image is built OFF-SERVER by CI (.github/workflows/build.yml, on push to main) and
+# pushed to GHCR; Dokploy only PULLS it. Building this heavy app on the Dokploy host
+# OOMs during the SSR bundle (rollup chunk rendering), so we never build in-place here.
+# Note: VITE_WS_URL is intentionally NOT baked — the frontend falls back to a runtime
+# wss://<current-host>/ws/agent (src/claude/adapters/ws-adapter.ts), so one image works
+# for any domain. OAuth/PostHog VITE_* can be added to build.yml build-args if needed.
+x-app-image: &app_image '${APP_IMAGE:-ghcr.io/foreveryh/oxygenie/app}:${APP_TAG:-latest}'
+
+services:
+  # PostgreSQL database with pgvector extension
+  db:
+    image: pgvector/pgvector:0.8.0-pg17
+    container_name: ${APP_NAME:-OxyGenie}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - ex0-data:/var/lib/postgresql/data
+    # Expose port internally (not to host)
+    expose:
+      - '5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - private
+
+  # MinIO S3-compatible object storage
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: ${APP_NAME:-OxyGenie}-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    command: server /data --console-address ":9001"
+    volumes:
+      - ex0-minio-data:/data
+    # Expose ports internally
+    expose:
+      - '9000' # S3 API
+      - '9001' # Web Console (optional, for admin)
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - private
+
+  # One-time MinIO bucket and policy provisioning
+  provision-minio:
+    image: minio/mc:latest
+    container_name: ${APP_NAME:-OxyGenie}-provision-minio
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      MINIO_BUCKET: ${MINIO_BUCKET:?}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \"$MINIO_ROOT_USER\" \"$MINIO_ROOT_PASSWORD\" &&
+      mc mb --ignore-existing local/\"$MINIO_BUCKET\" &&
+      mc anonymous set none local/\"$MINIO_BUCKET\" || true
+      "
+    restart: 'no'
+    networks:
+      - private
+
+  # Redis for BullMQ jobs/queues
+  redis:
+    image: redis:7-alpine
+    container_name: ${APP_NAME:-OxyGenie}-redis
+    restart: unless-stopped
+    command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
+    volumes:
+      - ex0-redis-data:/data
+    expose:
+      - '6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - private
+
+  # Meilisearch for fast lexical/symbol search
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: ${APP_NAME:-OxyGenie}-meili
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?changeme}
+    volumes:
+      - ex0-meili-data:/meili_data
+    expose:
+      - '7700'
+    healthcheck:
+      test: ['CMD', 'curl', '-sSf', 'http://localhost:7700/health']
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    networks:
+      - private
+
+  # Database migrations (runs before app starts)
+  # Uses the same image built by the app service
+  migrate:
+    image: *app_image
+    pull_policy: never
+    container_name: ${APP_NAME:-OxyGenie}-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Ensure DATABASE_URL is set (Docker Compose will fail if not set)
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
+      NODE_ENV: production
+    # Add debug output to verify DATABASE_URL is set
+    entrypoint: >
+      sh -c "
+      echo '=== Migration Debug Info ===' &&
+      echo 'DATABASE_URL is set: '$$([ -z \"$$DATABASE_URL\" ] && echo 'NO' || echo 'YES') &&
+      echo 'DATABASE_URL length: '$$(echo -n \"$$DATABASE_URL\" | wc -c) &&
+      echo 'DATABASE_URL preview: '$$(echo \"$$DATABASE_URL\" | sed 's/:[^:@]*@/:****@/') &&
+      echo '===========================' &&
+      n=0; until pnpm run db:migrate; do n=$$((n+1)); [ $$n -ge 20 ] && { echo '[migrate] FAILED after 20 attempts'; exit 1; }; echo \"[migrate] attempt $$n failed (db DNS/conn not ready yet), retrying in 3s...\"; sleep 3; done &&
+      ( pnpm run db:seed || echo '[seed] WARNING: curated skills seed failed (non-fatal); catalog may be empty' )
+      "
+    restart: 'no'
+    networks:
+      - private
+
+  # Background workers for BullMQ (cron + indexing, etc.)
+  # Uses the same image built by the app service
+  worker:
+    image: *app_image
+    pull_policy: never
+    container_name: ${APP_NAME:-OxyGenie}-worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      provision-minio:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
+      # S3-compatible config to reach MinIO inside the stack
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      S3_BUCKET: ${MINIO_BUCKET:?}
+      # Job queue + schedules
+      REDIS_URL: redis://redis:6379
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-oxygenie}
+      DAILY_CREDIT_REFILL_CRON: ${DAILY_CREDIT_REFILL_CRON:-0 3 * * *}
+      JOB_DAILY_CREDIT_REFILL_URL: ${JOB_DAILY_CREDIT_REFILL_URL:-http://app:5000/api/jobs/daily-credit-refill}
+      JOBS_SECRET: ${JOBS_SECRET:-}
+      # Search
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      SEARCH_REINDEX_ON_BOOT: ${SEARCH_REINDEX_ON_BOOT:-false}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: ['npx', 'tsx', 'src/worker/index.ts']
+    restart: unless-stopped
+    networks:
+      - private
+
+  # Main application (Nitro + WebSocket server)
+  # Dokploy builds the image locally to include VITE_* environment variables
+  # Build args are passed from Dokploy's environment configuration
+  app:
+    image: *app_image
+    pull_policy: never
+    container_name: ${APP_NAME:-OxyGenie}-app
+    # PR-C Step 0: enable srt (bubblewrap) sandbox for tool execution.
+    # srt requires unprivileged user namespaces → seccomp=unconfined.
+    # bubblewrap/socat/ripgrep are already installed in the Dockerfile (line 72-74).
+    # Verify active: docker logs <app-container> | grep '\[sandbox\]'
+    # Should show "srt: initialized" not "env-strip only".
+    security_opt:
+      - seccomp=unconfined
+      # AppArmor (Ubuntu/Debian hosts) also blocks the unprivileged user namespaces
+      # srt needs; the default docker profile must be lifted too, not just seccomp.
+      - apparmor=unconfined
+    # srt creates user/mount/net namespaces for the exec sandbox; NET_ADMIN lets it
+    # set up the sandbox network namespace where unprivileged userns alone is blocked.
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      provision-minio:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      WS_PORT: 3001
+      # Disable auto-migration in production (use migrate service instead)
+      AUTO_MIGRATE: 'false'
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
+      # S3-compatible config to reach MinIO inside the stack
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      S3_BUCKET: ${MINIO_BUCKET:?}
+      # Email provider
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@${APP_HOSTNAME}}
+      # SMTP configuration (if EMAIL_PROVIDER=smtp)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      # Resend configuration (if EMAIL_PROVIDER=resend)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Redis + Meili for app features
+      REDIS_URL: redis://redis:6379
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_API_KEY: ${MEILI_API_KEY:-${MEILI_MASTER_KEY}}
+      # Authentication
+      BETTER_AUTH_URL: https://${APP_HOSTNAME}
+      BETTER_AUTH_INTERNAL_URL: http://localhost:5000
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      # OAuth Providers (optional - GitHub & Google)
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # OAuth Providers (frontend - Client ID only)
+      VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+      # Mastra Agent (Zhipu AI GLM via Mastra built-in gateway) — optional, not used in ARK-only deploy
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      # Claude Agent SDK configuration — ARK gateway uses Bearer (ANTHROPIC_AUTH_TOKEN);
+      # do NOT set ANTHROPIC_API_KEY (it would make the SDK use x-api-key instead of Bearer).
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:?}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_DEFAULT_SONNET_MODEL: ${ANTHROPIC_DEFAULT_SONNET_MODEL:-}
+      ANTHROPIC_DEFAULT_OPUS_MODEL: ${ANTHROPIC_DEFAULT_OPUS_MODEL:-}
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: ${ANTHROPIC_DEFAULT_HAIKU_MODEL:-}
+      CLAUDE_CODE_SUBAGENT_MODEL: ${CLAUDE_CODE_SUBAGENT_MODEL:-}
+      # Gemini API for skill icon generation
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CLAUDE_SESSIONS_ROOT: /data/users
+      APP_URL: http://localhost:5000
+      # srt sandbox: explicitly ON (requires seccomp=unconfined above).
+      # SANDBOX_ENABLED was a legacy unused var; ENABLE_EXEC_SANDBOX is what the
+      # code actually reads (src/claude/execution/sandbox.js isEnabled()).
+      ENABLE_EXEC_SANDBOX: '1'
+      CLAUDE_MCP_STORE_DIR: ${CLAUDE_MCP_STORE_DIR:-src/mcp-store}
+      MCP_STORE_DIR: ${MCP_STORE_DIR:-src/mcp-store}
+      # Skills Store (must use persistent volume; otherwise installed skills are lost on redeploy)
+      SKILLS_STORE_DIR: /data/skills-store
+      PYTHON_RUNNER_TIMEOUT_MS: ${PYTHON_RUNNER_TIMEOUT_MS:-10000}
+      PYTHON_RUNNER_MAX_OUTPUT_BYTES: ${PYTHON_RUNNER_MAX_OUTPUT_BYTES:-512000}
+      PYTHON_RUNNER_MAX_CODE_BYTES: ${PYTHON_RUNNER_MAX_CODE_BYTES:-200000}
+      # Structured Outputs for Artifacts (auto-triggered on file-extension hints)
+      ENABLE_STRUCTURED_OUTPUTS: ${ENABLE_STRUCTURED_OUTPUTS:-false}
+      # Phase C real preview runtime
+      PREVIEW_CONTROLLER_URL: ${PREVIEW_CONTROLLER_URL:-http://preview-controller:5055}
+      MAX_ACTIVE_PREVIEWS: ${MAX_ACTIVE_PREVIEWS:-4}
+      PREVIEW_IDLE_TIMEOUT_MS: ${PREVIEW_IDLE_TIMEOUT_MS:-300000}
+      PREVIEW_PROTOCOL: ${PREVIEW_PROTOCOL:-https}
+      PREVIEW_HOST_TEMPLATE: ${PREVIEW_HOST_TEMPLATE:-{previewId}.${APP_HOSTNAME}}
+      PREVIEW_COOKIE_SECURE: ${PREVIEW_COOKIE_SECURE:-1}
+      PREVIEW_BOOTSTRAP_TTL_MS: ${PREVIEW_BOOTSTRAP_TTL_MS:-90000}
+      PREVIEW_COOKIE_TTL_MS: ${PREVIEW_COOKIE_TTL_MS:-900000}
+      # WebSocket URL (frontend configuration)
+      VITE_WS_URL: ${VITE_WS_URL:-wss://${APP_HOSTNAME}/ws/agent}
+      # Polar billing (optional)
+      POLAR_SERVER: ${POLAR_SERVER:-production}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+      POLAR_ORGANIZATION_ID: ${POLAR_ORGANIZATION_ID:-}
+      POLAR_PRODUCT_PRO_MONTHLY: ${POLAR_PRODUCT_PRO_MONTHLY:-}
+      POLAR_PRODUCT_BUSINESS_MONTHLY: ${POLAR_PRODUCT_BUSINESS_MONTHLY:-}
+      POLAR_PRODUCT_CREDITS_50: ${POLAR_PRODUCT_CREDITS_50:-}
+      POLAR_PRODUCT_CREDITS_100: ${POLAR_PRODUCT_CREDITS_100:-}
+      CHECKOUT_SUCCESS_URL: ${CHECKOUT_SUCCESS_URL:-https://${APP_HOSTNAME}/billing/success}
+      CHECKOUT_CANCEL_URL: ${CHECKOUT_CANCEL_URL:-https://${APP_HOSTNAME}/dashboard}
+      # Sentry (optional)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+      SENTRY_LOGGING: ${SENTRY_LOGGING:-false}
+      VITE_SENTRY_LOGGING: ${VITE_SENTRY_LOGGING:-false}
+      SENTRY_LOG_LEVEL: ${SENTRY_LOG_LEVEL:-info}
+      VITE_SENTRY_LOG_LEVEL: ${VITE_SENTRY_LOG_LEVEL:-info}
+      VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-1.0}
+      VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0.1}
+    volumes:
+      - claude-sessions:/data/users
+      - skills-store:/data/skills-store
+    # Expose ports internally (Traefik will proxy to these)
+    expose:
+      - '5000' # HTTP (Nitro server)
+      - '3001' # WebSocket server
+    # Traefik labels for routing
+    labels:
+      # Tunnel mode: Cloudflare terminates TLS at the edge; cloudflared forwards plain
+      # HTTP to Traefik's `web` entrypoint. No internal TLS, no https-redirect.
+      - "traefik.enable=true"
+      - "traefik.docker.network=oxygenie-net"
+      # Main app (everything except /ws)
+      - "traefik.http.routers.main.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main.entrypoints=web"
+      - "traefik.http.routers.main.service=main-service"
+      - "traefik.http.routers.main.priority=50"
+      - "traefik.http.services.main-service.loadbalancer.server.port=5000"
+      # WebSocket (/ws) — higher priority
+      - "traefik.http.routers.ws.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.entrypoints=web"
+      - "traefik.http.routers.ws.service=ws-service"
+      - "traefik.http.routers.ws.priority=100"
+      - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
+      # Preview forward-auth (/__oxy on any preview subdomain) → ws-server
+      - "traefik.http.routers.preview-auth.rule=HostRegexp(`{preview:[a-z0-9-]+}.${APP_HOSTNAME}`) && PathPrefix(`/__oxy`)"
+      - "traefik.http.routers.preview-auth.entrypoints=web"
+      - "traefik.http.routers.preview-auth.service=ws-service"
+      - "traefik.http.routers.preview-auth.priority=200"
+    restart: unless-stopped
+    networks:
+      - private
+      - dokploy
+
+  # Phase C preview controller. This is the only service that mounts the Docker
+  # socket; app calls it over the private network to create/remove preview
+  # containers with Traefik labels.
+  preview-controller:
+    image: *app_image
+    pull_policy: never
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
+    depends_on:
+      app:
+        condition: service_started
+    user: root
+    environment:
+      NODE_ENV: production
+      PREVIEW_CONTROLLER_PORT: ${PREVIEW_CONTROLLER_PORT:-5055}
+      PREVIEW_CONTROLLER_CONTAINER: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
+      PREVIEW_IMAGE: ${PREVIEW_IMAGE:-node:24-bookworm-slim}
+      PREVIEW_MEMORY: ${PREVIEW_MEMORY:-768m}
+      PREVIEW_CPUS: ${PREVIEW_CPUS:-1}
+      PREVIEW_PIDS: ${PREVIEW_PIDS:-256}
+      PREVIEW_CONTAINER_USER: ${PREVIEW_CONTAINER_USER:-1001:1001}
+      PREVIEW_INTERNAL_PORT: ${PREVIEW_INTERNAL_PORT:-4173}
+      PREVIEW_INSTALL_TIMEOUT_MS: ${PREVIEW_INSTALL_TIMEOUT_MS:-300000}
+      PREVIEW_BUILD_TIMEOUT_MS: ${PREVIEW_BUILD_TIMEOUT_MS:-300000}
+      PREVIEW_DOCKER_NETWORK: ${PREVIEW_DOCKER_NETWORK:-oxygenie-net}
+      PREVIEW_TRAEFIK_ENABLED: ${PREVIEW_TRAEFIK_ENABLED:-1}
+      PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-oxygenie-net}
+      # Tunnel mode: previews served over plain HTTP on Traefik's `web` entrypoint
+      # (Cloudflare terminates TLS at the edge).
+      PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-web}
+      PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-0}
+      # Empty: previews use Traefik's default cert (Cloudflare Origin CA), not Let's Encrypt
+      # (orange-cloud blocks HTTP-01). See research/2026-06-oxygenie-cc-dokploy-deployment.md §3.
+      PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-}
+      PREVIEW_FORWARD_AUTH_URL: ${PREVIEW_FORWARD_AUTH_URL:-http://app:3001/__oxy/preview/authorize}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claude-sessions:/data/users
+    command: ['node', 'src/preview/controller.mjs']
+    restart: unless-stopped
+    networks:
+      - private
+      - dokploy
+
+  # Reverse proxy. Routes by Host (app vs <id>.<domain> previews) via the Docker
+  # provider (reads container labels). cloudflared forwards plain HTTP to :80.
+  traefik:
+    image: traefik:v3.5
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=oxygenie-net"
+      # Talk to the docker API through the version-rewriting nginx proxy (OrbStack/
+      # Docker Desktop reject Traefik's pinned API v1.24). On a plain Linux host you can
+      # drop dockerproxy and use the socket directly via a volume mount instead.
+      - "--providers.docker.endpoint=tcp://dockerproxy:2375"
+      - "--entrypoints.web.address=:80"
+    depends_on:
+      - dockerproxy
+    restart: unless-stopped
+    networks:
+      - dokploy
+
+  # nginx that rewrites the docker API-version prefix so Traefik (v1.24) works against
+  # OrbStack / Docker Desktop (min API 1.40). Uses a full nginx.conf with `user root;`
+  # (the docker socket is root-owned). See infra/tunnel/nginx.conf.
+  dockerproxy:
+    image: nginx:alpine
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-dockerproxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./infra/tunnel/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    networks:
+      - dokploy
+
+  # Cloudflare Tunnel: outbound-only connection to Cloudflare (no inbound ports).
+  # Ingress (oxygenie.cc + *.oxygenie.cc → http://traefik:80) + credentials live in
+  # ./infra/tunnel/{config.yml,credentials.json} (generated from the tunnel token).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-cloudflared
+    command: ['tunnel', '--no-autoupdate', '--config', '/etc/cloudflared/config.yml', 'run']
+    volumes:
+      - ./infra/tunnel:/etc/cloudflared:ro
+    depends_on:
+      - traefik
+    restart: unless-stopped
+    networks:
+      - dokploy
+
+# Docker networks
+networks:
+  # Internal-only network for stateful services (db/redis/minio/meili).
+  private:
+    driver: bridge
+    name: ${APP_NAME_SANITIZED:-oxygenie}-private
+  # Proxy network: Traefik + cloudflared + app + preview-controller + the dynamic
+  # preview containers all live here. Self-managed (no Dokploy). The compose key is
+  # kept as `dokploy` so service `networks:` lists don't all need editing; its real
+  # name is oxygenie-net (must match the Traefik labels + PREVIEW_*_NETWORK).
+  dokploy:
+    driver: bridge
+    name: oxygenie-net
+
+# Persistent volumes
+# Note: Volume names must not contain spaces or special characters
+# Using fixed names to avoid issues with APP_NAME containing spaces
+# Format: [a-zA-Z0-9][a-zA-Z0-9_.-] are allowed
+volumes:
+  ex0-data:
+    name: ${APP_NAME_SANITIZED:-oxygenie}-data
+  ex0-minio-data:
+    name: ${APP_NAME_SANITIZED:-oxygenie}-minio-data
+  ex0-redis-data:
+    name: ${APP_NAME_SANITIZED:-oxygenie}-redis-data
+  ex0-meili-data:
+    name: ${APP_NAME_SANITIZED:-oxygenie}-meili-data
+  claude-sessions:
+    name: ${APP_NAME_SANITIZED:-oxygenie}-claude-sessions
+  skills-store:
+    name: ${APP_NAME_SANITIZED:-oxygenie}-skills-store
