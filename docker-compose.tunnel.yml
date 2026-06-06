@@ -362,7 +362,10 @@ services:
       - "traefik.http.routers.ws.priority=100"
       - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
       # Preview forward-auth (/__oxy on any preview subdomain) → ws-server
-      - "traefik.http.routers.preview-auth.rule=HostRegexp(`{preview:[a-z0-9-]+}.${APP_HOSTNAME}`) && PathPrefix(`/__oxy`)"
+      # Traefik v3 Go-regexp syntax. The v2 form HostRegexp(`{name:regexp}`) is NOT
+      # supported in v3 (router silently never matches → preview /__oxy auth 404s).
+      # `\\.` → `\.` after YAML; `$$` → `$` after compose interpolation (regex end-anchor).
+      - "traefik.http.routers.preview-auth.rule=HostRegexp(`^[a-z0-9-]+\\.${APP_HOSTNAME}$$`) && PathPrefix(`/__oxy`)"
       - "traefik.http.routers.preview-auth.entrypoints=web"
       - "traefik.http.routers.preview-auth.service=ws-service"
       - "traefik.http.routers.preview-auth.priority=200"
