@@ -51,16 +51,19 @@ jobs:
 
       - name: Configure Qwen Code provider & model
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }} # add this as an Environment secret on 'ai-review'
+          # Volcengine ARK coding gateway, OpenAI-compatible path (/api/coding/v3).
+          # Reuses the existing ARK_API_KEY secret (ARK Bearer token); ensure it's
+          # available to the 'ai-review' environment (repo- or env-level secret).
+          OPENAI_API_KEY: ${{ secrets.ARK_API_KEY }}
         run: |
           echo "::add-mask::${OPENAI_API_KEY}"
           {
             echo "OPENAI_API_KEY=${OPENAI_API_KEY}"
-            echo "OPENAI_BASE_URL=https://openrouter.ai/api/v1"
-            echo "OPENAI_MODEL=qwen/qwen3-coder"
-            # To use Alibaba DashScope instead, replace the two lines above with:
-            # echo "OPENAI_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-            # echo "OPENAI_MODEL=qwen3-coder-plus"
+            echo "OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3"
+            echo "OPENAI_MODEL=doubao-seed-2.0-code"
+            # Other providers (swap base_url + model + the secret above):
+            #   OpenRouter: https://openrouter.ai/api/v1                          | qwen/qwen3-coder
+            #   DashScope:  https://dashscope-intl.aliyuncs.com/compatible-mode/v1 | qwen3-coder-plus
           } >> $GITHUB_ENV
 
       - name: Build prompts
