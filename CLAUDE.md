@@ -828,6 +828,11 @@ services:
 8. **GHCR 包设 public**(或给 Dokploy 加 registry 凭据),否则拉不到。
 9. `VITE_WS_URL` **无需**烤进镜像 —— 前端运行期按 `wss://<当前域名>/ws/agent` 自算(`ws-adapter.ts`)。
 10. **preview-controller** 已硬化(`CapAdd:['CHOWN']` + detached serve + 自写容器内 pid)。
+11. **预览鉴权路由必须用 Traefik v3 正则语法**。`preview-auth` 路由的 `HostRegexp` 用 v3 Go 正则
+    `HostRegexp(`^[a-z0-9-]+\.${APP_HOSTNAME}$`)`,**不可**用 v2 命名组 `HostRegexp(`{name:regexp}`)`——
+    Dokploy/隧道都是 **traefik v3**,v2 语法**静默永不匹配**,导致 `<id>.域名/__oxy/preview/auth?t=…`
+    直接 404、预览打不开(此前被误判为 Dokploy-Swarm 路由问题)。compose 里写 `\\.`(YAML→`\.`)、
+    `$$`(compose 插值→`$` 末尾锚)。已修于 `docker-compose.{tunnel,dokploy}.yml`。
 
 > **遗留**:CI(7G runner)构建仍会 OOM → 待砍 Mastra + playwright + libreoffice 瘦身后,恢复
 > `build.yml` push-main 自动构建 GHCR(开源贡献者就不必本地 16G 构建)。

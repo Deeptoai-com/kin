@@ -1,21 +1,21 @@
-# Docker Compose configuration for Dokploy deployment
-# 
-# This file is optimized for Dokploy with Traefik reverse proxy.
-# Traefik will handle HTTPS, SSL certificates, and routing.
+# OxyGenie — Path C: Cloudflare Tunnel (workstation / home server / behind NAT).
 #
-# Usage in Dokploy:
-# 1. Create a new application in Dokploy
-# 2. Upload this docker-compose.yml file
-# 3. Configure environment variables in Dokploy UI
-# 4. Add Traefik labels (see infra/deploy/dokploy-traefik-labels.yml)
+# Full guide: docs/deployment/tunnel.md · configs: infra/tunnel/
 #
-# Key differences from docker-compose.yml:
-# - Uses `expose` instead of `ports` (Traefik handles external access)
-# - Includes Traefik labels for routing
-# - Optimized for single-host deployment
-# - Internal service communication via Docker network
-
-version: '3.8'
+# This is "Path A + a tunnel": the same app/images plus a bundled Traefik (reads container
+# labels), a `cloudflared` container that opens an OUTBOUND tunnel to Cloudflare (no public
+# IP / no open ports needed), and — on macOS only — a tiny `dockerproxy` nginx shim that
+# rewrites the docker API version Traefik pins (OrbStack/Docker Desktop reject v1.24).
+# Cloudflare terminates TLS at the edge; the tunnel→Traefik hop is plain HTTP.
+#
+# Bring up (image built natively on the host as oxygenie:local):
+#   docker build --build-arg INSTALL_BROWSER=false --build-arg INSTALL_OFFICE=false -t oxygenie:local .
+#   set -a; . ~/oxygenie-deploy/secrets.env; set +a
+#   export APP_IMAGE=oxygenie APP_TAG=local
+#   docker compose -f docker-compose.tunnel.yml up -d
+#
+# On a plain Linux host you can delete `dockerproxy` and point Traefik at the socket
+# directly (see docs/deployment/tunnel.md → "Running on a plain Linux host").
 
 # Image is built OFF-SERVER by CI (.github/workflows/build.yml, on push to main) and
 # pushed to GHCR; Dokploy only PULLS it. Building this heavy app on the Dokploy host
@@ -134,7 +134,7 @@ services:
   # Uses the same image built by the app service
   migrate:
     image: *app_image
-    pull_policy: always
+    pull_policy: never
     container_name: ${APP_NAME:-OxyGenie}-migrate
     depends_on:
       db:
@@ -162,7 +162,7 @@ services:
   # Uses the same image built by the app service
   worker:
     image: *app_image
-    pull_policy: always
+    pull_policy: never
     container_name: ${APP_NAME:-OxyGenie}-worker
     depends_on:
       db:
@@ -206,7 +206,7 @@ services:
   # Build args are passed from Dokploy's environment configuration
   app:
     image: *app_image
-    pull_policy: always
+    pull_policy: never
     container_name: ${APP_NAME:-OxyGenie}-app
     # PR-C Step 0: enable srt (bubblewrap) sandbox for tool execution.
     # srt requires unprivileged user namespaces → seccomp=unconfined.
@@ -218,6 +218,10 @@ services:
       # AppArmor (Ubuntu/Debian hosts) also blocks the unprivileged user namespaces
       # srt needs; the default docker profile must be lifted too, not just seccomp.
       - apparmor=unconfined
+    # srt creates user/mount/net namespaces for the exec sandbox; NET_ADMIN lets it
+    # set up the sandbox network namespace where unprivileged userns alone is blocked.
+    cap_add:
+      - NET_ADMIN
     depends_on:
       db:
         condition: service_healthy
@@ -341,56 +345,30 @@ services:
       - '3001' # WebSocket server
     # Traefik labels for routing
     labels:
-      # Base Traefik toggle + network
+      # Tunnel mode: Cloudflare terminates TLS at the edge; cloudflared forwards plain
+      # HTTP to Traefik's `web` entrypoint. No internal TLS, no https-redirect.
       - "traefik.enable=true"
-      - "traefik.docker.network=dokploy-network"
-
-      # ---------------------------------------------------------
-      # 1. Main HTTP service (Web) - exclude /ws
-      # ---------------------------------------------------------
-      # HTTP router (port 80) -> redirect to HTTPS
-      - "traefik.http.routers.main-web.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
-      - "traefik.http.routers.main-web.entrypoints=web"
-      - "traefik.http.routers.main-web.middlewares=redirect-to-https@file"
-      - "traefik.http.routers.main-web.service=main-service"
-      - "traefik.http.routers.main-web.priority=50"
-
-      # HTTPS router (port 443)
-      - "traefik.http.routers.main-websecure.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
-      - "traefik.http.routers.main-websecure.entrypoints=websecure"
-      - "traefik.http.routers.main-websecure.tls=true"
-      - "traefik.http.routers.main-websecure.service=main-service"
-      - "traefik.http.routers.main-websecure.priority=50"
-
-      # Main service (Nitro)
+      - "traefik.docker.network=oxygenie-net"
+      # Main app (everything except /ws)
+      - "traefik.http.routers.main.rule=Host(`${APP_HOSTNAME}`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.main.entrypoints=web"
+      - "traefik.http.routers.main.service=main-service"
+      - "traefik.http.routers.main.priority=50"
       - "traefik.http.services.main-service.loadbalancer.server.port=5000"
-
-      # ---------------------------------------------------------
-      # 2. WebSocket service (WS) - exclusive /ws + higher priority
-      # ---------------------------------------------------------
-      - "traefik.http.routers.ws-router.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
-      - "traefik.http.routers.ws-router.entrypoints=websecure"
-      - "traefik.http.routers.ws-router.tls=true"
-      - "traefik.http.routers.ws-router.priority=100"
-      - "traefik.http.routers.ws-router.service=ws-service"
-
-      # WS service (ws-server)
+      # WebSocket (/ws) — higher priority
+      - "traefik.http.routers.ws.rule=Host(`${APP_HOSTNAME}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.entrypoints=web"
+      - "traefik.http.routers.ws.service=ws-service"
+      - "traefik.http.routers.ws.priority=100"
       - "traefik.http.services.ws-service.loadbalancer.server.port=3001"
-
-      # ---------------------------------------------------------
-      # 3. Preview auth bootstrap/forward-auth endpoints
-      # ---------------------------------------------------------
-      # Preview content is served by dynamic preview containers. Their /__oxy/*
-      # auth paths must route back to the ws-server (same process that issued the
-      # one-time token and owns preview cookie sessions).
+      # Preview forward-auth (/__oxy on any preview subdomain) → ws-server
       # Traefik v3 Go-regexp syntax. The v2 form HostRegexp(`{name:regexp}`) is NOT
       # supported in v3 (router silently never matches → preview /__oxy auth 404s).
       # `\\.` → `\.` after YAML; `$$` → `$` after compose interpolation (regex end-anchor).
       - "traefik.http.routers.preview-auth.rule=HostRegexp(`^[a-z0-9-]+\\.${APP_HOSTNAME}$$`) && PathPrefix(`/__oxy`)"
-      - "traefik.http.routers.preview-auth.entrypoints=websecure"
-      - "traefik.http.routers.preview-auth.tls=true"
-      - "traefik.http.routers.preview-auth.priority=200"
+      - "traefik.http.routers.preview-auth.entrypoints=web"
       - "traefik.http.routers.preview-auth.service=ws-service"
+      - "traefik.http.routers.preview-auth.priority=200"
     restart: unless-stopped
     networks:
       - private
@@ -401,7 +379,7 @@ services:
   # containers with Traefik labels.
   preview-controller:
     image: *app_image
-    pull_policy: always
+    pull_policy: never
     container_name: ${APP_NAME_SANITIZED:-oxygenie}-preview-controller
     depends_on:
       app:
@@ -419,11 +397,13 @@ services:
       PREVIEW_INTERNAL_PORT: ${PREVIEW_INTERNAL_PORT:-4173}
       PREVIEW_INSTALL_TIMEOUT_MS: ${PREVIEW_INSTALL_TIMEOUT_MS:-300000}
       PREVIEW_BUILD_TIMEOUT_MS: ${PREVIEW_BUILD_TIMEOUT_MS:-300000}
-      PREVIEW_DOCKER_NETWORK: ${PREVIEW_DOCKER_NETWORK:-dokploy-network}
+      PREVIEW_DOCKER_NETWORK: ${PREVIEW_DOCKER_NETWORK:-oxygenie-net}
       PREVIEW_TRAEFIK_ENABLED: ${PREVIEW_TRAEFIK_ENABLED:-1}
-      PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-dokploy-network}
-      PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-websecure}
-      PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-1}
+      PREVIEW_TRAEFIK_NETWORK: ${PREVIEW_TRAEFIK_NETWORK:-oxygenie-net}
+      # Tunnel mode: previews served over plain HTTP on Traefik's `web` entrypoint
+      # (Cloudflare terminates TLS at the edge).
+      PREVIEW_TRAEFIK_ENTRYPOINTS: ${PREVIEW_TRAEFIK_ENTRYPOINTS:-web}
+      PREVIEW_TRAEFIK_TLS: ${PREVIEW_TRAEFIK_TLS:-0}
       # Empty: previews use Traefik's default cert (Cloudflare Origin CA), not Let's Encrypt
       # (orange-cloud blocks HTTP-01). See research/2026-06-oxygenie-cc-dokploy-deployment.md §3.
       PREVIEW_TRAEFIK_CERTRESOLVER: ${PREVIEW_TRAEFIK_CERTRESOLVER:-}
@@ -437,15 +417,67 @@ services:
       - private
       - dokploy
 
+  # Reverse proxy. Routes by Host (app vs <id>.<domain> previews) via the Docker
+  # provider (reads container labels). cloudflared forwards plain HTTP to :80.
+  traefik:
+    image: traefik:v3.5
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=oxygenie-net"
+      # Talk to the docker API through the version-rewriting nginx proxy (OrbStack/
+      # Docker Desktop reject Traefik's pinned API v1.24). On a plain Linux host you can
+      # drop dockerproxy and use the socket directly via a volume mount instead.
+      - "--providers.docker.endpoint=tcp://dockerproxy:2375"
+      - "--entrypoints.web.address=:80"
+    depends_on:
+      - dockerproxy
+    restart: unless-stopped
+    networks:
+      - dokploy
+
+  # nginx that rewrites the docker API-version prefix so Traefik (v1.24) works against
+  # OrbStack / Docker Desktop (min API 1.40). Uses a full nginx.conf with `user root;`
+  # (the docker socket is root-owned). See infra/tunnel/nginx.conf.
+  dockerproxy:
+    image: nginx:alpine
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-dockerproxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./infra/tunnel/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    networks:
+      - dokploy
+
+  # Cloudflare Tunnel: outbound-only connection to Cloudflare (no inbound ports).
+  # Ingress (oxygenie.cc + *.oxygenie.cc → http://traefik:80) + credentials live in
+  # ./infra/tunnel/{config.yml,credentials.json} (generated from the tunnel token).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ${APP_NAME_SANITIZED:-oxygenie}-cloudflared
+    command: ['tunnel', '--no-autoupdate', '--config', '/etc/cloudflared/config.yml', 'run']
+    volumes:
+      - ./infra/tunnel:/etc/cloudflared:ro
+    depends_on:
+      - traefik
+    restart: unless-stopped
+    networks:
+      - dokploy
+
 # Docker networks
 networks:
+  # Internal-only network for stateful services (db/redis/minio/meili).
   private:
     driver: bridge
-    # Network name must not contain spaces
-    name: ${APP_NAME_SANITIZED:-oxygenie}-network
+    name: ${APP_NAME_SANITIZED:-oxygenie}-private
+  # Proxy network: Traefik + cloudflared + app + preview-controller + the dynamic
+  # preview containers all live here. Self-managed (no Dokploy). The compose key is
+  # kept as `dokploy` so service `networks:` lists don't all need editing; its real
+  # name is oxygenie-net (must match the Traefik labels + PREVIEW_*_NETWORK).
   dokploy:
-    external: true
-    name: dokploy-network
+    driver: bridge
+    name: oxygenie-net
 
 # Persistent volumes
 # Note: Volume names must not contain spaces or special characters

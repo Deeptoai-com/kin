@@ -267,11 +267,21 @@ export function useArtifactDetection(messageId: string, content: ContentPart[] |
                 toolName: target.toolName,
               })
               artifactId = existing.id
-            } else if (artifact && artifact.isTemporary && !artifact.sourceFilePath) {
-              // A3 dedup: the text code-block fallback (Method 2) already created a
-              // temporary card for this message before the Write tool finished. Upgrade
-              // that card in place to the file-backed artifact instead of creating a
-              // second "HTML 成果物" card for the same turn.
+            } else if (
+              artifact &&
+              (
+                (artifact.isTemporary && !artifact.sourceFilePath) ||
+                // A3: keep ONE card per message, showing the most previewable file.
+                // While streaming, an earlier inferior write (e.g. package.json) creates
+                // the card first; when a higher-ranked entry (e.g. index.html) lands later,
+                // retarget the SAME card instead of spawning a second one — otherwise the
+                // inline card stays stuck on package.json and the 运行预览 CTA (HTML-only)
+                // never shows.
+                (artifact.sourceFilePath !== target.filePath &&
+                  (TYPE_RANK[target.type] ?? 0) > (TYPE_RANK[artifact.type as ArtifactType] ?? 0))
+              )
+            ) {
+              // Upgrade/retarget the message's single primary card in place.
               updateArtifact(artifact.id, {
                 sourceFilePath: target.filePath,
                 content: contentToUse,

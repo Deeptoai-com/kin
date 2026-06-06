@@ -123,3 +123,8 @@ test-advanced-features-results.json
 
 # S5 load-test output (local results, never committed)
 loadtest-results/
+
+# Cloudflare Tunnel: per-deploy config (holds your tunnel id) + the secret credentials.
+# Both are generated from your tunnel token — commit only config.yml.example.
+infra/tunnel/credentials.json
+infra/tunnel/config.yml

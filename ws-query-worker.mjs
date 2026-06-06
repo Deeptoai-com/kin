@@ -652,7 +652,24 @@ Example bad operations:
 - Write("/app/src/file.ts", "...")  ← DON'T write to /app
 - glob("../outside/*.ts")            ← DON'T go outside boundaries
 - Read("/etc/passwd")                ← DON'T access system files
-- Write(".claude/skills/my-skill/SKILL.md", "...")  ← DON'T write to skills`;
+- Write(".claude/skills/my-skill/SKILL.md", "...")  ← DON'T write to skills
+
+RUNNABLE WEB APPS — DO NOT INSTALL OR BUILD THEM YOURSELF:
+
+For projects meant to RUN in the browser (Vite/React/Vue, or any multi-file app with a
+package.json + index.html), your job is to WRITE THE PROJECT FILES ONLY. Do NOT run
+\`npm install\`, \`pnpm install\`, \`npm run build\`, dev servers, or test runners.
+
+WHY: the bash sandbox is network-isolated by design — dependency installs cannot reach the
+registry and will hang or fail. Installing, building, and serving the app is handled by the
+**Preview engine**, which runs the app in a separate, network-enabled per-session sandbox.
+
+WHAT TO DO INSTEAD:
+- Write a complete, correct project (package.json with deps + scripts, index.html, src/...).
+- Then STOP and tell the user the app is ready and to click **「运行预览」(Run preview)** on the
+  index.html artifact — that installs deps, builds, and serves the live, interactive app.
+- Do NOT add plan/todo steps like "install dependencies", "build", or "test the app". Finishing
+  the files IS done. (Static single-file HTML previews automatically with no preview step.)`;
 
     // The skill is already materialized in .claude/skills and surfaced to the
     // model via the SDK's progressive disclosure (name + description). When the
