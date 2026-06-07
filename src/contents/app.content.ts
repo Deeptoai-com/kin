@@ -369,12 +369,12 @@ const appContent = {
         'zh-Hant': '面向小團隊的私有化 Claude-Agent 工作台——基於 ARK 網關多模型、全沙盒：串流對話、精選技能、Artifacts 真預覽與會話管理。',
       }),
       keywords: t({
-        en: 'AI, Claude Agent, Chat, Skills, Artifacts, AI Workspace',
-        'zh-Hans': 'AI, Claude Agent, Chat, Skills, Artifacts, AI Workspace',
-        fr: 'AI, Claude Agent, Chat, Skills, Artifacts, AI Workspace',
-        ja: 'AI, Claude Agent, Chat, Skills, Artifacts, AI Workspace',
-        ko: 'AI, Claude Agent, Chat, Skills, Artifacts, AI Workspace',
-        'zh-Hant': 'AI, Claude Agent, Chat, Skills, Artifacts, AI Workspace',
+        en: 'OxyGenie, self-hosted, multi-model, Claude Agent SDK, Skills, Artifacts, AI Workspace',
+        'zh-Hans': 'OxyGenie, self-hosted, multi-model, Claude Agent SDK, Skills, Artifacts, AI Workspace',
+        fr: 'OxyGenie, self-hosted, multi-model, Claude Agent SDK, Skills, Artifacts, AI Workspace',
+        ja: 'OxyGenie, self-hosted, multi-model, Claude Agent SDK, Skills, Artifacts, AI Workspace',
+        ko: 'OxyGenie, self-hosted, multi-model, Claude Agent SDK, Skills, Artifacts, AI Workspace',
+        'zh-Hant': 'OxyGenie, self-hosted, multi-model, Claude Agent SDK, Skills, Artifacts, AI Workspace',
       }),
     },
     charts: {
