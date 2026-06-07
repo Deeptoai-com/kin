@@ -47,9 +47,6 @@ export function Header() {
         </Link>
 
         <nav className="flex items-center gap-6">
-          <Link to="/agents/claude-chat" className={navLink}>
-            {content.nav.claudeChat}
-          </Link>
           <Link to="/agents/skills" className={navLink}>
             {content.nav.skillsStore}
           </Link>
