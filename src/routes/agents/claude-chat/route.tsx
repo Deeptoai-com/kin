@@ -1102,6 +1102,8 @@ function ClaudeChatSurface({
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showSessionFiles, setShowSessionFiles] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+  const pendingComposerText = useChatSessionStore((state) => state.pendingComposerText);
+  const setPendingComposerText = useChatSessionStore((state) => state.setPendingComposerText);
   const { loadSessionAttachments } = useMessageAttachments();
   const [attachmentsByMessage, setAttachmentsByMessage] = useState<Map<string, MessageAttachment[]>>(
     new Map()
@@ -1397,6 +1399,15 @@ function ClaudeChatSurface({
     composerRef.current?.focus();
   }, []);
 
+  // Apply the starter prompt stashed by A2Composer's "open new chat & load" once
+  // the freshly-created session is ready (the just-enabled skill is now loaded).
+  useEffect(() => {
+    if (currentSessionId && !isInitializingSession && pendingComposerText) {
+      handleSetComposerText(pendingComposerText);
+      setPendingComposerText(undefined);
+    }
+  }, [currentSessionId, isInitializingSession, pendingComposerText, handleSetComposerText, setPendingComposerText]);
+
   const handleSelectSkill = useCallback((skill: { slug: string; name?: string }) => {
     setSelectedSkill(skill);
   }, []);
@@ -1539,6 +1550,7 @@ function ClaudeChatSurface({
                     onReset={handleA2ComposerReset}
                     onOpenChange={handleA2ComposerOpenChange}
                     onSkillSelect={handleSelectSkill}
+                    onOpenNewConversation={onStartSession}
                   />
                 </div>
 
