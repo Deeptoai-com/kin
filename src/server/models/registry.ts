@@ -181,3 +181,71 @@ export async function getDefaultModelId(): Promise<string | null> {
     .limit(1);
   return def?.id ?? selectable[0].id;
 }
+
+// ── Admin board (PR6) ─────────────────────────────────────────────────────────
+
+/** A model row for the admin board: full state incl. disabled/unhealthy. No token. */
+export type AdminModelRow = {
+  id: string;
+  label: string;
+  model: string;
+  tags: string[];
+  enabled: boolean;
+  isDefault: boolean;
+  connectionId: string;
+  connectionLabel: string;
+  baseUrl: string;
+  authStyle: AuthStyle;
+  tokenEnv: string;
+  tokenResolved: boolean; // whether process.env[tokenEnv] is set (server-side; value never shown)
+  health: 'healthy' | 'unhealthy' | 'unknown';
+  lastProbeAt: Date | null;
+  probeError: string | null;
+  latencyMs: number | null;
+};
+
+/** All models (incl. disabled/unhealthy) for the admin board. Token-free. */
+export async function listModelsAdmin(): Promise<AdminModelRow[]> {
+  const rows = await db
+    .select({
+      id: modelDefinition.id,
+      label: modelDefinition.label,
+      model: modelDefinition.model,
+      tags: modelDefinition.tags,
+      enabled: modelDefinition.enabled,
+      isDefault: modelDefinition.isDefault,
+      defSort: modelDefinition.sort,
+      connectionId: modelConnection.id,
+      connectionLabel: modelConnection.label,
+      connSort: modelConnection.sort,
+      baseUrl: modelConnection.baseUrl,
+      authStyle: modelConnection.authStyle,
+      tokenEnv: modelConnection.tokenEnv,
+      health: modelHealth.health,
+      lastProbeAt: modelHealth.lastProbeAt,
+      probeError: modelHealth.probeError,
+      latencyMs: modelHealth.latencyMs,
+    })
+    .from(modelDefinition)
+    .innerJoin(modelConnection, eq(modelDefinition.connectionId, modelConnection.id))
+    .leftJoin(modelHealth, eq(modelHealth.modelId, modelDefinition.id));
+
+  return rows
+    .sort((a, b) => a.connSort - b.connSort || a.defSort - b.defSort)
+    .map(({ connSort: _c, defSort: _d, ...r }) => ({
+      ...r,
+      tokenResolved: !!process.env[r.tokenEnv],
+      health: r.health ?? 'unknown',
+    }));
+}
+
+/** Toggle a model's enabled flag. */
+export async function setModelEnabled(id: string, enabled: boolean): Promise<void> {
+  await db.update(modelDefinition).set({ enabled }).where(eq(modelDefinition.id, id));
+}
+
+/** Make `id` the single default model (clears the previous default). */
+export async function setDefaultModelById(id: string): Promise<void> {
+  await db.update(modelDefinition).set({ isDefault: false }).where(eq(modelDefinition.isDefault, true));
+  await db.update(modelDefinition).set({ isDefault: true }).where(eq(modelDefinition.id, id));
+}
