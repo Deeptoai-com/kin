@@ -6,12 +6,13 @@
 
 import { createFileRoute } from '@tanstack/react-router';
 import { eq, and } from 'drizzle-orm';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { db } from '~/db/db-config';
 import { agentSession, sessionDocument, files, knowledgeBases, kbDocuments } from '~/db/schema';
 import { requireUser } from '~/server/require-user';
 import { S3StaticFileImpl } from '~/server/s3/s3';
+import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
 
 const fileService = new S3StaticFileImpl();
 
@@ -181,13 +182,34 @@ export const Route = createFileRoute('/api/workspace/$sessionId/knowledge-bases'
             await writeFile(workspaceFilePath, Buffer.from(fileContent));
             console.log(`[POST] File written successfully`);
 
+            // F3/F4: parse rich docs → markdown the Agent can read, then move the original
+            // binary OUT of the Agent-visible workspace into a hidden .uploads/ dir.
+            // Non-fatal on failure. The session_document record points at the .md on success.
+            let recordedFilePath = relativeFilePath;
+            if (needsParse(prefixedFilename)) {
+              try {
+                const parsed = await parseToMarkdown(workspaceFilePath, prefixedFilename, fileContent.length);
+                if (parsed.ok) {
+                  await writeFile(`${workspaceFilePath}.md`, parsed.markdown, 'utf8');
+                  const hiddenAbs = path.join(knowledgeBasePath, '.uploads', prefixedFilename);
+                  await mkdir(path.dirname(hiddenAbs), { recursive: true });
+                  await rename(workspaceFilePath, hiddenAbs);
+                  recordedFilePath = `${relativeFilePath}.md`;
+                } else {
+                  console.error(`[POST] Parse skipped/failed for ${prefixedFilename}: ${parsed.error}`);
+                }
+              } catch (parseError) {
+                console.error('[POST] Parse error:', parseError);
+              }
+            }
+
             // Create session_document record
             const [sessionDoc] = await db
               .insert(sessionDocument)
               .values({
                 sessionId: session.id,
                 fileId: file.id,
-                filePath: relativeFilePath,
+                filePath: recordedFilePath,
                 syncedAt: new Date(),
               })
               .returning();
@@ -197,7 +219,7 @@ export const Route = createFileRoute('/api/workspace/$sessionId/knowledge-bases'
               fileId: file.id,
               fileName: file.name,
               workspaceFileName: prefixedFilename,
-              filePath: relativeFilePath,
+              filePath: recordedFilePath,
               syncedAt: sessionDoc.syncedAt?.toISOString() || new Date().toISOString(),
             });
 

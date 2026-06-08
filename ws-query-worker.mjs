@@ -301,6 +301,25 @@ async function startRun(request) {
       // 1) Path/tenant security always runs first; a security deny is hard.
       const base = await baseCanUseTool(toolName, input, options);
       if (base.behavior === 'deny') return base;
+      // 1.5) The SDK's Read tool encodes a PDF/Office doc as a `document` content block,
+      // but the ARK gateway rejects `document` (only text/thinking/image/tool_use/
+      // tool_result) → reading a raw binary doc 400s the WHOLE turn. Redirect the model
+      // to the parsed markdown sibling (`<file>.md`, written on upload by the document
+      // parser). Soft deny (interrupt:false) so the loop continues and re-reads the .md.
+      if (String(toolName || '').toLowerCase() === 'read') {
+        const target = String(input?.file_path ?? input?.path ?? '');
+        if (/\.(pdf|docx?|pptx?|xlsx?|rtf|odt|epub)$/i.test(target)) {
+          return {
+            behavior: 'deny',
+            interrupt: false,
+            message:
+              `Do not Read "${target}" directly — it is a binary document and the model ` +
+              `gateway rejects PDF/Office content. A plain-text Markdown version is ` +
+              `generated on upload: Read "${target}.md" instead. If that .md does not ` +
+              `exist, tell the user the document could not be parsed (do not retry the binary).`,
+          };
+        }
+      }
       // 2) Act mode, or a read-only tool in Ask mode → allow (no prompt).
       if (!isAskMode || AUTO_ALLOW_TOOLS.has(String(toolName || '').toLowerCase())) {
         return base;
