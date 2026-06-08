@@ -287,7 +287,7 @@ export function PermissionSettingsSection({
                   <Label htmlFor="allowBash">启用 Bash 工具</Label>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <InfoIcon className="h-3 w-3" />
-                    <span>允许 Claude 执行 Shell 命令</span>
+                    <span>允许 OxyGenie 执行 Shell 命令</span>
                   </div>
                 </div>
                 <Switch
@@ -305,7 +305,7 @@ export function PermissionSettingsSection({
             <Alert variant="destructive">
               <ShieldAlertIcon className="h-4 w-4" />
               <AlertDescription>
-                <strong>警告：</strong> 您正在启用 Bypass + Bash 模式。这将允许 Claude
+                <strong>警告：</strong> 您正在启用 Bypass + Bash 模式。这将允许 OxyGenie
                 执行所有操作而无需权限确认，包括执行 Bash 命令。请确保您信任当前环境。
               </AlertDescription>
             </Alert>

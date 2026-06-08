@@ -2,19 +2,19 @@ import type { Dictionary } from 'intlayer';
 import { t } from 'intlayer';
 
 /**
- * Claude Chat interface content dictionary
- * Contains all text labels for the Claude Agent Chat interface
+ * OxyGenie interface content dictionary
+ * Contains all text labels for the OxyGenie Agent Chat interface
  */
 const claudeChatContent = {
   content: {
     header: {
       title: t({
-        en: 'Claude Chat',
-        'zh-Hans': 'Claude Chat',
-        fr: 'Claude Chat',
-        ja: 'Claude Chat',
-        ko: 'Claude Chat',
-        'zh-Hant': 'Claude Chat',
+        en: 'OxyGenie',
+        'zh-Hans': 'OxyGenie',
+        fr: 'OxyGenie',
+        ja: 'OxyGenie',
+        ko: 'OxyGenie',
+        'zh-Hant': 'OxyGenie',
       }),
       newChat: t({
         en: 'New Chat',
@@ -101,12 +101,12 @@ const claudeChatContent = {
     },
     chatInput: {
       placeholder: t({
-        en: 'Send a message to Claude...',
-        'zh-Hans': '向 Claude 发送消息...',
-        fr: 'Envoyer un message à Claude...',
-        ja: 'Claude にメッセージを送信...',
-        ko: 'Claude에게 메시지 보내기...',
-        'zh-Hant': '向 Claude 傳送訊息...',
+        en: 'Send a message to OxyGenie...',
+        'zh-Hans': '向 OxyGenie 发送消息...',
+        fr: 'Envoyer un message à OxyGenie...',
+        ja: 'OxyGenie にメッセージを送信...',
+        ko: 'OxyGenie에게 메시지 보내기...',
+        'zh-Hant': '向 OxyGenie 傳送訊息...',
       }),
       placeholderGreeting: t({
         en: 'How can I help you today?',
@@ -151,12 +151,12 @@ const claudeChatContent = {
         'zh-Hant': '您',
       }),
       assistant: t({
-        en: 'Claude',
-        'zh-Hans': 'Claude',
-        fr: 'Claude',
-        ja: 'Claude',
-        ko: 'Claude',
-        'zh-Hant': 'Claude',
+        en: 'OxyGenie',
+        'zh-Hans': 'OxyGenie',
+        fr: 'OxyGenie',
+        ja: 'OxyGenie',
+        ko: 'OxyGenie',
+        'zh-Hant': 'OxyGenie',
       }),
       copy: t({
         en: 'Copy',
@@ -653,12 +653,12 @@ const claudeChatContent = {
     },
     status: {
       connecting: t({
-        en: 'Connecting to Claude...',
-        'zh-Hans': '正在连接 Claude...',
-        fr: 'Connexion à Claude...',
-        ja: 'Claude に接続中...',
-        ko: 'Claude 연결 중...',
-        'zh-Hant': '正在連線 Claude...',
+        en: 'Connecting to OxyGenie...',
+        'zh-Hans': '正在连接 OxyGenie...',
+        fr: 'Connexion à OxyGenie...',
+        ja: 'OxyGenie に接続中...',
+        ko: 'OxyGenie 연결 중...',
+        'zh-Hant': '正在連線 OxyGenie...',
       }),
       connected: t({
         en: 'Connected',
@@ -701,20 +701,20 @@ const claudeChatContent = {
         'zh-Hant': '正在初始化會話',
       }),
       pleaseWait: t({
-        en: 'Setting up your Claude environment...',
-        'zh-Hans': '正在配置 Claude 环境...',
-        fr: 'Configuration de l\'environnement Claude...',
-        ja: 'Claude 環境を設定中...',
-        ko: 'Claude 환경 설정 중...',
-        'zh-Hant': '正在設定 Claude 環境...',
+        en: 'Setting up your OxyGenie environment...',
+        'zh-Hans': '正在配置 OxyGenie 环境...',
+        fr: 'Configuration de l\'environnement OxyGenie...',
+        ja: 'OxyGenie 環境を設定中...',
+        ko: 'OxyGenie 환경 설정 중...',
+        'zh-Hant': '正在設定 OxyGenie 環境...',
       }),
       escInterrupt: t({
-        en: 'Press Esc again to interrupt Claude',
-        'zh-Hans': '再次按 Esc 键中断 Claude',
+        en: 'Press Esc again to interrupt OxyGenie',
+        'zh-Hans': '再次按 Esc 键中断 OxyGenie',
         fr: 'Appuyez à nouveau sur Échap pour interrompre',
-        ja: 'Esc をもう一度押して Claude を中断',
-        ko: 'Esc를 다시 눌러 Claude 중단',
-        'zh-Hant': '再次按 Esc 鍵中斷 Claude',
+        ja: 'Esc をもう一度押して OxyGenie を中断',
+        ko: 'Esc를 다시 눌러 OxyGenie 중단',
+        'zh-Hant': '再次按 Esc 鍵中斷 OxyGenie',
       }),
       stopEsc: t({
         en: 'Stop (Esc)',
@@ -735,12 +735,12 @@ const claudeChatContent = {
     },
     errors: {
       notConnected: t({
-        en: 'Not connected to Claude. Please wait or refresh.',
-        'zh-Hans': '未连接到 Claude。请等待或刷新页面。',
-        fr: 'Non connecté à Claude. Veuillez patienter ou actualiser.',
-        ja: 'Claude に接続されていません。待つかページを更新してください。',
-        ko: 'Claude에 연결되지 않았습니다. 잠시 기다리거나 새로고침하세요.',
-        'zh-Hant': '未連線至 Claude。請等待或重新整理頁面。',
+        en: 'Not connected to OxyGenie. Please wait or refresh.',
+        'zh-Hans': '未连接到 OxyGenie。请等待或刷新页面。',
+        fr: 'Non connecté à OxyGenie. Veuillez patienter ou actualiser.',
+        ja: 'OxyGenie に接続されていません。待つかページを更新してください。',
+        ko: 'OxyGenie에 연결되지 않았습니다. 잠시 기다리거나 새로고침하세요.',
+        'zh-Hant': '未連線至 OxyGenie。請等待或重新整理頁面。',
       }),
       messageFailed: t({
         en: 'Failed to send message. Please try again.',
@@ -802,29 +802,29 @@ const claudeChatContent = {
       }),
     },
     disclaimer: t({
-      en: 'Claude can make mistakes. Please double-check responses.',
-      'zh-Hans': 'Claude 可能会出错，请仔细核对回复内容。',
-      fr: 'Claude peut se tromper. Vérifiez les réponses.',
-      ja: 'Claude は誤りを犯すことがあります。回答はご確認ください。',
-      ko: 'Claude가 실수할 수 있습니다. 응답을 꼭 확인하세요.',
-      'zh-Hant': 'Claude 可能會出錯，請仔細核對回覆內容。',
+      en: 'OxyGenie can make mistakes. Please double-check responses.',
+      'zh-Hans': 'OxyGenie 可能会出错，请仔细核对回复内容。',
+      fr: 'OxyGenie peut se tromper. Vérifiez les réponses.',
+      ja: 'OxyGenie は誤りを犯すことがあります。回答はご確認ください。',
+      ko: 'OxyGenie가 실수할 수 있습니다. 응답을 꼭 확인하세요.',
+      'zh-Hant': 'OxyGenie 可能會出錯，請仔細核對回覆內容。',
     }),
     emptyState: {
       title: t({
-        en: 'Start a conversation with Claude',
-        'zh-Hans': '开始与 Claude 对话',
-        fr: 'Commencez une conversation avec Claude',
-        ja: 'Claude と会話を始めましょう',
-        ko: 'Claude와 대화를 시작하세요',
-        'zh-Hant': '開始與 Claude 對話',
+        en: 'Start a conversation with OxyGenie',
+        'zh-Hans': '开始与 OxyGenie 对话',
+        fr: 'Commencez une conversation avec OxyGenie',
+        ja: 'OxyGenie と会話を始めましょう',
+        ko: 'OxyGenie와 대화를 시작하세요',
+        'zh-Hant': '開始與 OxyGenie 對話',
       }),
       subtitle: t({
-        en: 'Claude can help you with coding, writing, analysis, and more.',
-        'zh-Hans': 'Claude 可以帮助您进行编码、写作、分析等。',
-        fr: 'Claude vous aide pour le code, l\'écriture, l\'analyse et plus.',
-        ja: 'Claude はコーディング、執筆、分析などでお手伝いします。',
-        ko: 'Claude가 코딩, 글쓰기, 분석 등으로 도와드립니다.',
-        'zh-Hant': 'Claude 可以協助您編碼、寫作、分析等。',
+        en: 'OxyGenie can help you with coding, writing, analysis, and more.',
+        'zh-Hans': 'OxyGenie 可以帮助您进行编码、写作、分析等。',
+        fr: 'OxyGenie vous aide pour le code, l\'écriture, l\'analyse et plus.',
+        ja: 'OxyGenie はコーディング、執筆、分析などでお手伝いします。',
+        ko: 'OxyGenie가 코딩, 글쓰기, 분석 등으로 도와드립니다.',
+        'zh-Hant': 'OxyGenie 可以協助您編碼、寫作、分析等。',
       }),
       startChat: t({
         en: 'Start New Session',
@@ -1282,12 +1282,12 @@ const claudeChatContent = {
     // Knowledge Base Panel Component
     knowledgeBase: {
       description: t({
-        en: 'Select documents from the library to add to the current session. Claude can use grep/read tools to search and reference these documents.',
-        'zh-Hans': '从文档库中选择文档添加到当前会话，Claude 可以使用 grep/read 工具搜索和引用这些文档。',
-        fr: 'Sélectionnez des documents de la bibliothèque pour les ajouter à la session. Claude peut les rechercher et les référencer via grep/read.',
-        ja: 'ライブラリからドキュメントを選んで現在のセッションに追加。Claude は grep/read で検索・参照できます。',
-        ko: '라이브러리에서 문서를 선택해 현재 세션에 추가하세요. Claude가 grep/read로 검색·참조할 수 있습니다.',
-        'zh-Hant': '從文件庫選擇文件加入目前會話，Claude 可使用 grep/read 工具搜尋與引用這些文件。',
+        en: 'Select documents from the library to add to the current session. OxyGenie can use grep/read tools to search and reference these documents.',
+        'zh-Hans': '从文档库中选择文档添加到当前会话，OxyGenie 可以使用 grep/read 工具搜索和引用这些文档。',
+        fr: 'Sélectionnez des documents de la bibliothèque pour les ajouter à la session. OxyGenie peut les rechercher et les référencer via grep/read.',
+        ja: 'ライブラリからドキュメントを選んで現在のセッションに追加。OxyGenie は grep/read で検索・参照できます。',
+        ko: '라이브러리에서 문서를 선택해 현재 세션에 추가하세요. OxyGenie가 grep/read로 검색·참조할 수 있습니다.',
+        'zh-Hant': '從文件庫選擇文件加入目前會話，OxyGenie 可使用 grep/read 工具搜尋與引用這些文件。',
       }),
       addDocuments: t({
         en: 'Add Documents',
