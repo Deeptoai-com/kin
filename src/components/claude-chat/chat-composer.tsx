@@ -191,7 +191,12 @@ export function ChatComposer({
   const composerRunConfig = useAssistantState(({ composer }) => composer.runConfig);
   const composerIsEditing = useAssistantState(({ composer }) => composer.isEditing);
   const isRunning = useThread((state) => state.isRunning);
-  const threadMessages = useThread((state) => state.messages);
+  // Persist attachments against the SAME message list the thread renders from
+  // (the chat-session store, whose user-message id is minted in route `onNew`).
+  // The assistant-ui runtime thread (`useThread`) mints a *different* id, so
+  // keying off it would store attachments under an id the renderer never looks
+  // up — the file chip would never appear.
+  const storeMessages = useChatSessionStore((state) => state.messages);
 
   const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -248,7 +253,7 @@ export function ChatComposer({
     const pending = pendingAttachmentsRef.current;
     if (!pending || pending.length === 0) return;
 
-    const lastUserMessage = [...threadMessages].reverse().find((msg) => msg.role === 'user');
+    const lastUserMessage = [...storeMessages].reverse().find((msg) => msg.role === 'user');
     if (!lastUserMessage || lastUserMessage.id === lastPersistedMessageIdRef.current) return;
 
     persistAttachments(currentSessionId, lastUserMessage.id, pending).then(() => {
@@ -258,7 +263,7 @@ export function ChatComposer({
       setUploadError(null);
       onAttachmentsPersisted?.();
     });
-  }, [currentSessionId, threadMessages, persistAttachments, onAttachmentsPersisted]);
+  }, [currentSessionId, storeMessages, persistAttachments, onAttachmentsPersisted]);
 
   const handleClearInput = useCallback(async () => {
     setUploadedFiles([]);
