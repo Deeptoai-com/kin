@@ -110,6 +110,9 @@ export interface ChatComposerProps {
   onClearSelectedSkill?: () => void;
   /** Select a skill from composer UI */
   onSkillSelect?: (skill: { slug: string; name: string }) => void;
+  /** Called after a sent message's attachments are persisted (so the thread can
+   *  refresh and show the file chip live, not only after a session switch). */
+  onAttachmentsPersisted?: () => void;
 }
 
 /**
@@ -177,6 +180,7 @@ export function ChatComposer({
   selectedSkill,
   onClearSelectedSkill,
   onSkillSelect,
+  onAttachmentsPersisted,
 }: ChatComposerProps) {
   const content = useIntlayer('claude-chat');
   const api = useAssistantApi();
@@ -249,8 +253,9 @@ export function ChatComposer({
       pendingAttachmentsRef.current = null;
       setUploadedFiles([]);
       setUploadError(null);
+      onAttachmentsPersisted?.();
     });
-  }, [currentSessionId, threadMessages, persistAttachments]);
+  }, [currentSessionId, threadMessages, persistAttachments, onAttachmentsPersisted]);
 
   const handleClearInput = useCallback(async () => {
     setUploadedFiles([]);
