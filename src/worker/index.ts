@@ -6,6 +6,8 @@ import { logger } from '~/lib/logger'
 import { runDailyCreditRefill } from './processors/dailyCreditRefill.ts'
 import { reindexDocuments } from './processors/reindexDocuments.ts'
 import { probeModels } from './processors/probeModels.ts'
+import { ingestDocument } from '~/server/rag/ingest'
+import { RAG_QUEUE, RAG_INGEST_JOB } from '~/server/rag/queue'
 
 const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
@@ -38,6 +40,28 @@ const worker = new Worker(
 
 worker.on('ready', () => logger.info('[worker] ready'))
 worker.on('error', (err) => logger.error('[worker] error', { error: err }))
+
+// RAG ingest worker — its own queue (final spec D4): an older deployed image, which
+// doesn't know this queue, leaves its jobs untouched instead of swallowing them via the
+// 'system' default branch above. Concurrency 1: ingest is batch-embedding heavy and the
+// Zhipu client already parallelizes nothing it shouldn't.
+const ragWorker = new Worker(
+  RAG_QUEUE,
+  async (job) => {
+    if (job.name !== RAG_INGEST_JOB) {
+      logger.warn(`[worker:rag] Unknown job "${job.name}" - ignoring`)
+      return
+    }
+    const { documentId } = job.data as { documentId: string }
+    logger.info('[worker:rag] ingesting document', { documentId })
+    const result = await ingestDocument(documentId)
+    logger.info('[worker:rag] ingest finished', { documentId, ...result })
+    return result
+  },
+  { connection, prefix, concurrency: 1 }
+)
+ragWorker.on('ready', () => logger.info('[worker:rag] ready'))
+ragWorker.on('error', (err) => logger.error('[worker:rag] error', { error: err }))
 
 // Events
 const events = new QueueEvents(queueName, { connection, prefix })
