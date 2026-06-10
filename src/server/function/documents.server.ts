@@ -11,6 +11,9 @@ import { documents } from '~/db/schema/document.schema';
 import { auth } from '~/server/auth.server';
 import { S3StaticFileImpl } from '~/server/s3/s3';
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import { estimateTokens, routeTier } from '~/server/rag/tier';
+import { scheduleRagIngest } from '~/server/rag/queue';
+import { canAccessDocument } from '~/server/projects/access';
 
 const fileService = new S3StaticFileImpl();
 
@@ -244,7 +247,13 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
     const shouldCreateDocument =
       !!input.addToKnowledgeBase || Boolean(input.content?.trim().length);
 
-    const fileRecord = await db.transaction(async (tx) => {
+    // RAG R1 (final spec D5): tier the document at creation — only 'rag'-tier content
+    // enters the embed pipeline; small docs stay on the free Read/Grep path.
+    const content = input.content ?? '';
+    const tokenEstimate = content ? estimateTokens(content) : 0;
+    const ragTier = content ? routeTier(tokenEstimate) : null;
+
+    const { fileRecord, ragDocumentId } = await db.transaction(async (tx) => {
       const [createdFile] = await tx
         .insert(files)
         .values({
@@ -262,30 +271,78 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
         throw new Error('Failed to create file record');
       }
 
+      let createdRagDocId: string | null = null;
       if (shouldCreateDocument) {
-        await tx.insert(documents).values({
-          title: input.title?.trim() || originalName,
-          content: input.content ?? '',
-          fileType: mimeType,
-          filename: originalName,
-          totalCharCount: input.content?.length ?? null,
-          totalLineCount: input.content ? input.content.split(/\r?\n/).length : null,
-          sourceType: input.addToKnowledgeBase ? 'knowledge-base' : 'upload',
-          source: key,
-          fileId: createdFile.id,
-          userId: user.id,
-          clientId: user.id,
-        });
+        const [createdDoc] = await tx
+          .insert(documents)
+          .values({
+            title: input.title?.trim() || originalName,
+            content,
+            fileType: mimeType,
+            filename: originalName,
+            totalCharCount: input.content?.length ?? null,
+            totalLineCount: input.content ? input.content.split(/\r?\n/).length : null,
+            sourceType: input.addToKnowledgeBase ? 'knowledge-base' : 'upload',
+            source: key,
+            fileId: createdFile.id,
+            userId: user.id,
+            clientId: user.id,
+            tokenEstimate: tokenEstimate || null,
+            ragTier,
+            ingestStatus: ragTier === 'rag' ? 'pending' : 'none',
+          })
+          .returning({ id: documents.id });
+        if (ragTier === 'rag') createdRagDocId = createdDoc?.id ?? null;
       }
 
-      return createdFile;
+      return { fileRecord: createdFile, ragDocumentId: createdRagDocId };
     });
+
+    // After the tx so a queue/inline failure can never roll back the upload itself.
+    if (ragDocumentId) {
+      await scheduleRagIngest(ragDocumentId);
+    }
 
     const uploadUrl = fileService.isPresignedEnabled()
       ? await fileService.createUploadPreSignedUrl(key)
       : null;
 
     return { id: fileRecord.id, key, uploadUrl };
+  });
+
+/**
+ * Manually (re)ingest a document into the RAG pipeline — used by the documents UI and
+ * for backfilling docs created before R1. Forces tier re-routing from current content.
+ */
+export const reingestDocument = createServerFn({ method: 'POST' })
+  .inputValidator((input: unknown) => {
+    const data = (input && typeof input === 'object' && 'data' in (input as Record<string, unknown>))
+      ? (input as { data: unknown }).data
+      : input;
+    return z.object({ documentId: z.string().min(1) }).parse(data);
+  })
+  .handler(async ({ data }) => {
+    const user = await requireUser();
+    const [doc] = await db
+      .select({ id: documents.id, userId: documents.userId, projectId: documents.projectId, content: documents.content })
+      .from(documents)
+      .where(eq(documents.id, data.documentId))
+      .limit(1);
+    if (!doc) throw new Error('Document not found');
+    if (!(await canAccessDocument(user.id, doc))) throw new Error('FORBIDDEN');
+
+    const tokenEstimate = estimateTokens(doc.content ?? '');
+    const ragTier = routeTier(tokenEstimate);
+    await db
+      .update(documents)
+      .set({ tokenEstimate, ragTier, ingestStatus: ragTier === 'rag' ? 'pending' : 'none' })
+      .where(eq(documents.id, doc.id));
+
+    if (ragTier !== 'rag') {
+      return { scheduled: false as const, ragTier, tokenEstimate };
+    }
+    const mode = await scheduleRagIngest(doc.id);
+    return { scheduled: true as const, ragTier, tokenEstimate, mode };
   });
 
 export const completeDocumentUpload = createServerFn({ method: 'POST' })
