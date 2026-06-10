@@ -14,14 +14,15 @@ import {
   type ThreadMessageLike,
 } from '@assistant-ui/react';
 import * as Avatar from '@radix-ui/react-avatar';
+import { LetterAvatar } from '~/components/ui/letter-avatar';
 import {
   ClipboardIcon,
 } from '@radix-ui/react-icons';
 import { AuthLoading, RedirectToSignIn, SignedIn } from '@daveyplate/better-auth-ui';
-import { createFileRoute } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ThumbsDown, ThumbsUp, Layers, Paperclip, PanelLeftClose, PanelLeftOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, memo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
@@ -50,7 +51,6 @@ import { fetchArtifactRegistry, readWorkspaceFile, readWorkspaceBinaryFile, getM
 import { isImageFilePath } from '~/lib/artifacts/image-utils';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
 import type { MessageAttachment } from '~/db/schema/message-attachment.schema';
-import { getPermissionInfo } from '~/server/permissions.server';
 // Use WebSocket adapter for more reliable real-time communication
 import {
   runChat,
@@ -73,7 +73,10 @@ import {
   type TextContentPart,
   type ContentPart,
 } from '~/lib/chat-session-store';
-import { disableUserSkillsFn, ensureDefaultSkillsFn } from '~/server/function/skills.server';
+import { disableUserSkillsFn } from '~/server/function/skills.server';
+import { assignSessionToProject } from '~/server/function/projects.server';
+import { useSessionBranchInfo } from '~/lib/hooks/use-session-branch-info';
+import { BranchReplyBanner, BranchedFromDivider } from '~/components/claude-chat/branch-indicators';
 import {
   trackClaudeAgentSessionCreated,
   trackClaudeAgentSessionSwitched,
@@ -186,30 +189,47 @@ const FileHandlersContext = createContext<FileHandlersContextType>({
 
 const useFileHandlers = () => useContext(FileHandlersContext);
 
-export const Route = createFileRoute('/agents/claude-chat')({
-  component: RouteComponent,
-  loader: async () => {
-    // Fetch permission info + ensure default skills are installed (idempotent,
-    // best-effort: a materialization hiccup must not block the chat page).
-    const [permissionInfo] = await Promise.all([
-      getPermissionInfo(),
-      ensureDefaultSkillsFn().catch((error) => {
-        console.warn('[Skills] ensureDefaultSkills failed (non-fatal):', error);
-        return null;
-      }),
-    ]);
-    return { permissionInfo };
-  },
-});
+export interface ClaudeChatControllerProps {
+  permissionInfo: PermissionInfo;
+  /** Session to load on mount (sdkSessionId), from the URL. Null = use store / new. (Phase 1 hybrid bootstrap, P1d.) */
+  urlSessionId?: string | null;
+  /** Project context when this chat lives inside a Project (URL-driven). */
+  projectId?: string | null;
+  /** Render the controller's own SessionList rail. False when an outer rail is present (e.g. ProjectsRail). */
+  showInternalSessionList?: boolean;
+  /** New-chat landing (no urlSessionId yet): show a blank composer WITHOUT creating a
+   *  session. The session is created lazily on the first send (the first real message
+   *  doubles as the init turn), then onSessionInit mirrors the URL to /agents/c/$id
+   *  (solo) or the project chat URL. (Phase 2 P1.5, lazy-create.) */
+  newChat?: boolean;
+}
 
-function RouteComponent() {
-  // Get permission info from loader
-  const { permissionInfo } = Route.useLoaderData();
+/**
+ * Chat surface controller — owns the session lifecycle (URL bootstrap / onSessionInit /
+ * performSessionSwitch / reconnection / artifacts) and the chat UI. Reused by solo chat
+ * routes (/agents/c*) and project chat routes (/agents/projects/$id/c*).
+ * See docs/project/research/2026-06-09-projects-chat-nav-unification-plan.md (Phase 1, R2.5).
+ */
+export function ClaudeChatController({
+  permissionInfo,
+  urlSessionId = null,
+  projectId: urlProjectId = null,
+  showInternalSessionList = true,
+  newChat = false,
+}: ClaudeChatControllerProps) {
 
   // Get i18n content - must be at top level before any returns
   const content = useIntlayer('claude-chat');
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  // Synchronous mirror of the active session id (Codex Q-C). Written BEFORE navigate in
+  // onSessionInit so the URL bootstrap never re-switches a freshly-initialized / streaming
+  // session, regardless of React-state/store/navigate timing.
+  const currentSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
   // Key to force re-mount of chat surface when session changes
   const [chatKey, setChatKey] = useState(0);
   // Session list expand/collapse state
@@ -257,6 +277,9 @@ function RouteComponent() {
   const { loadHistoricalMessages, clearMessages, setSessionId, temporarySkills, clearTemporarySkills } = useChatSessionStore();
   const disableUserSkills = useServerFn(disableUserSkillsFn);
   const invalidateSessions = useInvalidateSessions();
+  // Projects P1: bind a freshly-created session to the Project armed by "new chat in <project>".
+  const assignToProject = useServerFn(assignSessionToProject);
+  const projectQueryClient = useQueryClient();
 
   // Artifacts state - controls layout behavior
   const activeArtifactId = useArtifactsStore((state) => state.activeArtifactId);
@@ -289,6 +312,14 @@ function RouteComponent() {
   // already active, resume it to reload the conversation — otherwise the user returns
   // to an empty page even though the session is still "selected".
   useEffect(() => {
+    // URL deep-link wins (Phase 1 hybrid bootstrap): when a session is addressed via the URL,
+    // the bootstrap effect below loads it — skip this store-based mount resume to avoid a
+    // double load (Codex landmine #1). Phase 2: a new-chat landing (newChat) also skips it,
+    // so the store's last session isn't resumed while the arm creates a fresh one.
+    if (urlSessionId || newChat) return;
+    // Arriving from "new chat in <project>": don't resume the previous session — the
+    // arm effect below creates a fresh session and binds it to the armed Project.
+    if (useChatSessionStore.getState().pendingProjectId) return;
     const sessionId = getSessionId();
     if (sessionId) {
       setCurrentSessionId(sessionId);
@@ -308,13 +339,31 @@ function RouteComponent() {
   useEffect(() => {
     const unsubscribe = onSessionInit((sessionId: string) => {
       console.log('[Route] Session initialized, updating state:', sessionId);
+      // Codex Q-C: write the synchronous ref BEFORE navigate, so the URL bootstrap effect's
+      // already-current guard sees this session and never re-switches (clearing) a
+      // freshly-initialized / streaming session (landmine #2).
+      currentSessionIdRef.current = sessionId;
       setCurrentSessionId(sessionId);
       setSessionId(sessionId);
       // Invalidate sessions list to refresh titles (especially for new sessions)
       invalidateSessions();
+      // Projects C#2 (Codex Q2): also refresh project session lists so a freshly-branched
+      // D2 (or a new project chat) appears in its project's Chats tab without a manual reload.
+      projectQueryClient.invalidateQueries({ queryKey: ['project-sessions'] });
+      // Mirror the active session into the URL (deep-linkable, Phase 2 = URL is the truth).
+      // In a project → project-chat URL; solo → /agents/c/$id. `replace` so it doesn't spam history.
+      if (urlProjectId) {
+        navigate({
+          to: '/agents/projects/$projectId/c/$sessionId',
+          params: { projectId: urlProjectId, sessionId },
+          replace: true,
+        });
+      } else {
+        navigate({ to: '/agents/c/$sessionId', params: { sessionId }, replace: true });
+      }
     });
     return unsubscribe;
-  }, [setSessionId, invalidateSessions]);
+  }, [setSessionId, invalidateSessions, projectQueryClient, navigate, urlProjectId]);
 
   // Handle WebSocket reconnection - resume current session if any
   useReconnectionRecovery(useCallback(() => {
@@ -376,13 +425,33 @@ function RouteComponent() {
       setSessionId(null);
       clearMessages();
       try {
-        const newSessionId = await createSession();
+        // Capture the armed Project BEFORE the async create so a remount/unmount-clear
+        // can't lose it mid-flight, and pass it into create_session so ws-server binds
+        // the session to the Project at creation time (race-free).
+        // Project chat page: the URL's project wins so a "new chat" here is bound to THIS
+        // project at creation (Codex) — avoids a loose session whose URL is later mirrored to a
+        // project path (fake binding). Loose "new chat in <project>" still uses the arm.
+        const armedProjectId = urlProjectId ?? useChatSessionStore.getState().pendingProjectId;
+        const newSessionId = await createSession(armedProjectId ?? undefined);
         console.log('[Route] New session created:', newSessionId);
         setCurrentSessionId(newSessionId);
         setSessionId(newSessionId);
         setChatKey((k) => k + 1);
         await initSession(newSessionId);
         trackClaudeAgentSessionCreated({ sessionId: newSessionId });
+
+        // Fallback bind (idempotent): ensures the link even if the create-time bind was
+        // skipped; a failure degrades gracefully to a loose chat.
+        if (armedProjectId) {
+          try {
+            await assignToProject({ data: { sdkSessionId: newSessionId, projectId: armedProjectId } });
+            projectQueryClient.invalidateQueries({ queryKey: ['project-sessions', armedProjectId] });
+          } catch (bindError) {
+            console.warn('[Route] Failed to bind new session to project:', bindError);
+          } finally {
+            useChatSessionStore.getState().setPendingProjectId(undefined);
+          }
+        }
       } catch (error) {
         console.error('[Route] Failed to create session:', error);
       } finally {
@@ -400,7 +469,7 @@ function RouteComponent() {
       await resumeSession(sdkSessionId);
       trackClaudeAgentSessionSwitched({ sessionId: sdkSessionId, isResume: true });
     }
-  }, [setSessionId, clearMessages, temporarySkills, clearTemporarySkills, disableUserSkills]);
+  }, [setSessionId, clearMessages, temporarySkills, clearTemporarySkills, disableUserSkills, assignToProject, projectQueryClient, urlProjectId]);
 
   const handleSelectSession = useCallback(async (sdkSessionId: string) => {
     // Check both route state and adapter state for current session
@@ -429,6 +498,12 @@ function RouteComponent() {
   }, [currentSessionId, performSessionSwitch]);
 
   const handleNewSession = useCallback(() => {
+    // Lazy newChat landing with no session yet: this IS already a blank new chat — an
+    // explicit "new chat" click must not eagerly create the very session lazy-create avoids.
+    if (newChat && !currentSessionIdRef.current && !getSessionId()) {
+      console.log('[Route] Already on a blank new chat, skipping create');
+      return;
+    }
     // Check if a query is currently running
     if (checkIsQueryRunning()) {
       console.log('[Route] Query running, showing confirmation dialog for new session');
@@ -437,7 +512,104 @@ function RouteComponent() {
     }
 
     performSessionSwitch(null, true);
-  }, [performSessionSwitch]);
+  }, [performSessionSwitch, newChat]);
+
+  // Hybrid URL bootstrap (Phase 1, Codex Q2/Q-C): when a session is addressed via the URL,
+  // load it ONCE. Reuses handleSelectSession (honors a running query → confirmation, and skips
+  // if already active). The ref/store guard means an onSessionInit→navigate (e.g. a fresh branch
+  // D2) is recognized as already-current and never re-switched/cleared. Client-only; the SSR
+  // loader never resumes (landmine #5).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !urlSessionId) return;
+    if (urlSessionId === currentSessionIdRef.current || urlSessionId === getSessionId()) return;
+    void handleSelectSession(urlSessionId);
+    // One-time URL gate keyed on urlSessionId; handleSelectSession is intentionally excluded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSessionId]);
+
+  // Phase 2 P1.5 (lazy-create): a new-chat landing shows a blank composer WITHOUT creating
+  // a session — no DB row, no init model call on login/Header/marketing-CTA landings. The
+  // session is created on the first send (ensureSessionForSend below). On mount we only
+  // reset leftover chat state: the previous session survives SPA navigation in the
+  // module-level adapter + store, and without this reset the first send would land in it.
+  const newChatResetRef = useRef(false);
+  useEffect(() => {
+    if (!newChat || newChatResetRef.current) return;
+    newChatResetRef.current = true;
+    // A previous turn is still streaming (navigated here mid-run): reuse the existing
+    // interrupt/cancel dialog instead of silently clearing it — the same protection the
+    // eager arm path had via handleNewSession's running-query guard.
+    if (checkIsQueryRunning()) {
+      setPendingSessionSwitch({ targetSessionId: null, isNewSession: true });
+      return;
+    }
+    fireSessionSummaryIfNeeded();
+    const { temporarySkills: leftoverTempSkills } = useChatSessionStore.getState();
+    if (leftoverTempSkills.length > 0) {
+      disableUserSkills({ data: { skillNames: leftoverTempSkills } }).catch((error) => {
+        console.warn('[Route] Failed to disable temporary skills:', error);
+      });
+      clearTemporarySkills();
+    }
+    newSession();
+    setCurrentSessionId(null);
+    setSessionId(null);
+    clearMessages();
+    // pendingProjectId stays armed: the first send's create consumes it, and the unmount
+    // cleanup below clears it if the user leaves without sending.
+    // Run once per mount; store actions are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newChat]);
+
+  // Lazy-create (Phase 2 P1.5): create the session at FIRST SEND on a new-chat landing.
+  // The first real message doubles as the init turn — ws-server's `chat` and `init_session`
+  // share handleChat, and a real run emits system.init → sessionMetadata — so no separate
+  // 1-char init call. create_session{projectId} binds the Project at creation (race-free);
+  // onSessionInit (above) then mirrors the URL. The route remount that navigate triggers is
+  // safe mid-stream: the run loop, session id and message store all live at module level.
+  const pendingLazyCreateRef = useRef<Promise<string> | null>(null);
+  const ensureSessionForSend = useCallback(async () => {
+    if (!newChat) return;
+    if (currentSessionIdRef.current || getSessionId()) return;
+    if (!pendingLazyCreateRef.current) {
+      const creating = (async () => {
+        // Capture the armed Project BEFORE the async create so a remount/unmount-clear
+        // can't lose it mid-flight. The URL's project wins; loose arm is the fallback.
+        const armedProjectId = urlProjectId ?? useChatSessionStore.getState().pendingProjectId;
+        const newSessionId = await createSession(armedProjectId ?? undefined);
+        trackClaudeAgentSessionCreated({ sessionId: newSessionId });
+        // Fallback bind (idempotent), same as the eager path: ensures the link even if the
+        // create-time bind was skipped; a failure degrades gracefully to a loose chat.
+        if (armedProjectId) {
+          try {
+            await assignToProject({ data: { sdkSessionId: newSessionId, projectId: armedProjectId } });
+            projectQueryClient.invalidateQueries({ queryKey: ['project-sessions', armedProjectId] });
+          } catch (bindError) {
+            console.warn('[Route] Failed to bind new session to project:', bindError);
+          } finally {
+            useChatSessionStore.getState().setPendingProjectId(undefined);
+          }
+        }
+        return newSessionId;
+      })();
+      pendingLazyCreateRef.current = creating;
+      // Clear once settled: success short-circuits via getSessionId() on the next send,
+      // failure stays retriable. Swallow here only — callers still see the rejection.
+      creating.catch(() => {}).finally(() => {
+        if (pendingLazyCreateRef.current === creating) pendingLazyCreateRef.current = null;
+      });
+    }
+    await pendingLazyCreateRef.current;
+  }, [newChat, urlProjectId, assignToProject, projectQueryClient]);
+
+  // Clear an un-consumed arm on unmount so a stale pendingProjectId can't hijack the
+  // next chat open (e.g. armed "new chat in X" then navigated away mid-create).
+  useEffect(() => {
+    return () => {
+      const store = useChatSessionStore.getState();
+      if (store.pendingProjectId) store.setPendingProjectId(undefined);
+    };
+  }, []);
 
   const handleCancelSwitch = useCallback(() => {
     console.log('[Route] User cancelled session switch');
@@ -462,8 +634,9 @@ function RouteComponent() {
 
   const isDev = process.env.NODE_ENV !== 'production';
 
-  // Empty state: no sessions at all, show big "Start New Session" button
-  if (isSessionsEmpty && !currentSessionId) {
+  // Empty state: no sessions at all, show big "Start New Session" button.
+  // A lazy new-chat landing skips it — the blank composer IS the start-a-chat surface.
+  if (isSessionsEmpty && !currentSessionId && !newChat) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-6 text-center">
@@ -533,11 +706,13 @@ function RouteComponent() {
         <ClaudeChatSurface
           key={chatKey}
           permissionInfo={permissionInfo}
-          hasSession={!!currentSessionId}
+          hasSession={!!currentSessionId || newChat}
           isInitializingSession={isInitializingSession}
           onStartSession={handleNewSession}
           isCreatingSession={isCreatingSession}
           hideScrollbars={Boolean(activeArtifactId)}
+          newChat={newChat}
+          ensureSession={ensureSessionForSend}
         />
       </>
     );
@@ -545,8 +720,8 @@ function RouteComponent() {
     return (
       <div className="h-full">
         <div className={cn('flex h-full', activeArtifactId && 'group')} ref={artifactSplitRef}>
-          {/* Session List - only show when no artifact AND user has sessions */}
-          {!activeArtifactId && (
+          {/* Session List — hidden when an outer rail (ProjectsRail) is present. */}
+          {!activeArtifactId && showInternalSessionList && (
             <SessionList
               currentSessionId={currentSessionId}
               onSelectSession={handleSelectSession}
@@ -644,8 +819,9 @@ function RouteComponent() {
       <RedirectToSignIn />
 
       <SignedIn>
-        {/* Empty state: no sessions at all, show big "Start New Session" button */}
-        {isSessionsEmpty && !currentSessionId ? (
+        {/* Empty state: no sessions at all, show big "Start New Session" button.
+            A lazy new-chat landing skips it — the blank composer IS the start surface. */}
+        {isSessionsEmpty && !currentSessionId && !newChat ? (
           <EmptyStateContent
             isCreatingSession={isCreatingSession}
             onNewSession={handleNewSession}
@@ -672,6 +848,9 @@ function RouteComponent() {
               pendingSessionSwitch={pendingSessionSwitch}
               handleCancelSwitch={handleCancelSwitch}
               handleInterruptSwitch={handleInterruptSwitch}
+              showInternalSessionList={showInternalSessionList}
+              newChat={newChat}
+              ensureSession={ensureSessionForSend}
             />
           </>
         )}
@@ -753,6 +932,9 @@ const MainContent: FC<{
   } | null;
   handleCancelSwitch: () => void;
   handleInterruptSwitch: () => void;
+  showInternalSessionList: boolean;
+  newChat: boolean;
+  ensureSession: () => Promise<void>;
 }> = ({
   activeArtifactId,
   artifactSplitRef,
@@ -773,6 +955,9 @@ const MainContent: FC<{
   pendingSessionSwitch,
   handleCancelSwitch,
   handleInterruptSwitch,
+  showInternalSessionList,
+  newChat,
+  ensureSession,
 }) => {
   const content = useIntlayer('claude-chat');
   const chatPanel = (
@@ -810,6 +995,8 @@ const MainContent: FC<{
         onStartSession={handleNewSession}
         isCreatingSession={isCreatingSession}
         hideScrollbars={Boolean(activeArtifactId)}
+        newChat={newChat}
+        ensureSession={ensureSession}
       />
     </>
   );
@@ -817,8 +1004,8 @@ const MainContent: FC<{
   return (
     <>
       <div className={cn('flex h-full', activeArtifactId && 'group')} ref={artifactSplitRef}>
-        {/* Session List - only show when no artifact AND user has sessions */}
-        {!activeArtifactId && (
+        {/* Session List — hidden when an outer rail (ProjectsRail) is present. */}
+        {!activeArtifactId && showInternalSessionList && (
           <SessionList
             currentSessionId={currentSessionId}
             onSelectSession={handleSelectSession}
@@ -1054,6 +1241,8 @@ function ClaudeChatSurface({
   onStartSession,
   isCreatingSession,
   hideScrollbars = false,
+  newChat = false,
+  ensureSession,
 }: {
   permissionInfo: PermissionInfo;
   hasSession: boolean;
@@ -1061,6 +1250,10 @@ function ClaudeChatSurface({
   onStartSession?: () => void;
   isCreatingSession?: boolean;
   hideScrollbars?: boolean;
+  /** Lazy new-chat landing: composer is live before any session exists. */
+  newChat?: boolean;
+  /** Lazy-create hook: called before running a send so the first message creates the session. */
+  ensureSession?: () => Promise<void>;
 }) {
   const content = useIntlayer('claude-chat');
 
@@ -1088,6 +1281,24 @@ function ClaudeChatSurface({
         createdAt: new Date(),
         status: { type: 'complete' },
       });
+      // Lazy-create (Phase 2 P1.5): on a new-chat landing no session exists yet — create
+      // it now so this first message rides the normal run path (and doubles as init).
+      // The store message above survives the create + URL-mirror remount (global store).
+      if (ensureSession) {
+        try {
+          await ensureSession();
+        } catch (error) {
+          console.error('[Route] Failed to create session for first send:', error);
+          useChatSessionStore.getState().addMessage({
+            id: genMessageId(),
+            role: 'assistant',
+            content: [],
+            createdAt: new Date(),
+            status: { type: 'incomplete', reason: 'error' },
+          });
+          return;
+        }
+      }
       await runChat(text, { runConfig: message.runConfig });
     },
     onCancel: async () => {
@@ -1103,6 +1314,9 @@ function ClaudeChatSurface({
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showSessionFiles, setShowSessionFiles] = useState(false);
   const currentSessionId = useChatSessionStore((state) => state.currentSessionId);
+  // Projects C#2: branch-on-reply affordances. isViewingNonOwned → "reply will branch"
+  // banner; branchedFrom → "从 <源> 建立的分支" indicator. permissionInfo.userId = me.
+  const branchInfo = useSessionBranchInfo(currentSessionId, permissionInfo.userId ?? null);
   const pendingArmedSkill = useChatSessionStore((state) => state.pendingArmedSkill);
   const setPendingArmedSkill = useChatSessionStore((state) => state.setPendingArmedSkill);
   const { loadSessionAttachments } = useMessageAttachments();
@@ -1412,13 +1626,15 @@ function ClaudeChatSurface({
   }, []);
 
   // Arm the skill stashed by A2Composer's "open new chat & load" once the freshly-
-  // created session is ready (the just-enabled skill is now loaded + active).
+  // created session is ready (the just-enabled skill is now loaded + active). On a lazy
+  // new-chat landing there's no session yet — arm immediately: the skill marker travels
+  // with the first send, and that send's create syncs the just-enabled skill server-side.
   useEffect(() => {
-    if (currentSessionId && !isInitializingSession && pendingArmedSkill) {
+    if ((currentSessionId || newChat) && !isInitializingSession && pendingArmedSkill) {
       setSelectedSkill(pendingArmedSkill);
       setPendingArmedSkill(undefined);
     }
-  }, [currentSessionId, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
+  }, [currentSessionId, newChat, isInitializingSession, pendingArmedSkill, setPendingArmedSkill]);
 
   const handleSelectSkill = useCallback((skill: { slug: string; name?: string; hint?: string }) => {
     setSelectedSkill(skill);
@@ -1534,17 +1750,35 @@ function ClaudeChatSurface({
                 </div>
               )}
 
+              {/* Projects C#2: a branched session shows "从 <源> 建立的分支" before its
+                  thread. v1 places it at the top; precise fork-point placement (图2) needs
+                  forkedFrom plumbed through the message pipeline (open Codex item). */}
+              {branchInfo.branchedFrom && (
+                <BranchedFromDivider sourceTitle={branchInfo.branchedFrom.title} className="mb-2" />
+              )}
+
               {/* Single source: render the whole thread (historical + live) from
                   the store via one renderer. The streaming turn updates in place
                   as runChat() patches its message; no separate runtime message list. */}
-              {messages.map((msg) => (
-                <HistoricalMessage
-                  key={msg.id}
-                  message={msg}
-                  attachments={attachmentsByMessage.get(msg.id)}
-                  sessionId={currentSessionId}
-                />
-              ))}
+              {messages.map((msg) => {
+                // Per-message author avatars only matter when a thread has more than one
+                // human (a branch, or you viewing someone else's session). For your own
+                // solo chat, keep the plain "U" (authorName stays null).
+                const showAuthors = !!branchInfo.sourceOwner || branchInfo.isViewingNonOwned;
+                const author = showAuthors && msg.role === 'user'
+                  ? (msg.isInherited ? branchInfo.sourceOwner : branchInfo.owner)
+                  : null;
+                return (
+                  <HistoricalMessage
+                    key={msg.id}
+                    message={msg}
+                    attachments={attachmentsByMessage.get(msg.id)}
+                    sessionId={currentSessionId}
+                    authorName={author?.name ?? null}
+                    authorImage={author?.image ?? null}
+                  />
+                );
+              })}
 
               <div aria-hidden="true" className="h-4" />
             </ThreadPrimitive.Viewport>
@@ -1565,6 +1799,9 @@ function ClaudeChatSurface({
                     onOpenNewConversation={onStartSession}
                   />
                 </div>
+
+                {/* Projects C#2 (图1): viewing a session you don't own → replying branches. */}
+                {branchInfo.isViewingNonOwned && <BranchReplyBanner className="mb-2" />}
 
                 <ChatComposerWithRef
                   composerRef={composerRef}
@@ -1859,7 +2096,12 @@ const HistoricalMessageImpl: FC<{
   message: ThreadMessage;
   attachments?: MessageAttachment[];
   sessionId: string | null;
-}> = ({ message, attachments, sessionId }) => {
+  /** Author of this user turn (name + avatar). In a 续聊即分支 thread, inherited turns
+   *  carry the source owner, the rest carry the current owner — so A's and B's messages
+   *  show distinct avatars. Null → fall back to the generic "U". */
+  authorName?: string | null;
+  authorImage?: string | null;
+}> = ({ message, attachments, sessionId, authorName, authorImage }) => {
   // Get i18n content
   const content = useIntlayer('claude-chat');
 
@@ -1913,10 +2155,21 @@ const HistoricalMessageImpl: FC<{
       <div className="group relative mx-auto mt-1 mb-1 block w-full max-w-3xl">
         <div className="group/user wrap-break-word relative inline-flex max-w-[75ch] flex-col gap-2 rounded-xl bg-muted py-2.5 pr-6 pl-2.5 text-foreground transition-all">
           <div className="relative flex flex-row items-center gap-2">
-            <div className="shrink-0 transition-all duration-300">
-              <Avatar.Root className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-primary font-bold text-[12px] text-primary-foreground">
-                <Avatar.AvatarFallback>U</Avatar.AvatarFallback>
-              </Avatar.Root>
+            <div className="shrink-0 transition-all duration-300" title={authorName ?? undefined}>
+              {authorName ? (
+                // Per-message author (续聊即分支): inherited turns show the source owner,
+                // the rest show the current owner — colored per name so A ≠ B at a glance.
+                <LetterAvatar
+                  name={authorName}
+                  iconUrl={authorImage ?? undefined}
+                  size="sm"
+                  className="!size-7 !rounded-full"
+                />
+              ) : (
+                <Avatar.Root className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-primary font-bold text-[12px] text-primary-foreground">
+                  <Avatar.AvatarFallback>U</Avatar.AvatarFallback>
+                </Avatar.Root>
+              )}
             </div>
             <div className="flex-1">
               <div className="relative grid grid-cols-1 gap-2 py-0.5">
