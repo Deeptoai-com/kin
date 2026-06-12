@@ -8,6 +8,7 @@ import { fileEnv } from '~/conf/file';
 import { db } from '~/db/db-config';
 import { files } from '~/db/schema/file.schema';
 import { documents } from '~/db/schema/document.schema';
+import { kbDocuments } from '~/db/schema/kb-document.schema';
 import { auth } from '~/server/auth.server';
 import { S3StaticFileImpl } from '~/server/s3/s3';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -52,6 +53,9 @@ const initUploadSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
   addToKnowledgeBase: z.boolean().optional(),
+  // KB redesign (prd §4.2): the knowledge bases this upload joins (multi-select). Writing
+  // kb_documents here is what makes "勾了知识库" actually land the file in those KBs.
+  knowledgeBaseIds: z.array(z.string()).optional(),
 });
 
 const completeUploadSchema = z
@@ -334,8 +338,9 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
     const mimeType = input.mimeType ?? 'application/octet-stream';
     const size = input.size ?? 0;
 
-    const shouldCreateDocument =
-      !!input.addToKnowledgeBase || Boolean(input.content?.trim().length);
+    const kbIds = input.knowledgeBaseIds ?? [];
+    const addToKb = kbIds.length > 0 || !!input.addToKnowledgeBase;
+    const shouldCreateDocument = addToKb || Boolean(input.content?.trim().length);
 
     // RAG ingest-UX spec (D5/D6): a KB/document-library document goes FULLY into the
     // vector store — size never decides whether to embed (only how to chunk, decided
@@ -367,6 +372,14 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
         throw new Error('Failed to create file record');
       }
 
+      // Link the new file into the chosen knowledge bases (multi-membership; prd §4.2).
+      if (kbIds.length > 0) {
+        await tx
+          .insert(kbDocuments)
+          .values(kbIds.map((kbId) => ({ kbId, fileId: createdFile.id })))
+          .onConflictDoNothing();
+      }
+
       let createdRagDocId: string | null = null;
       if (shouldCreateDocument) {
         const [createdDoc] = await tx
@@ -378,7 +391,7 @@ export const initDocumentUpload = createServerFn({ method: 'POST' })
             filename: originalName,
             totalCharCount: input.content?.length ?? null,
             totalLineCount: input.content ? input.content.split(/\r?\n/).length : null,
-            sourceType: input.addToKnowledgeBase ? 'knowledge-base' : 'upload',
+            sourceType: addToKb ? 'knowledge-base' : 'upload',
             source: key,
             fileId: createdFile.id,
             userId: user.id,

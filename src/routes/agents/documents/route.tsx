@@ -114,6 +114,7 @@ function DocumentsPage() {
   const [search, setSearch] = useState('');
   const [showUpload, setShowUpload] = useState(false);
   const [showKB, setShowKB] = useState(false);
+  const [selectedUploadKbIds, setSelectedUploadKbIds] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<
     Map<string, DeleteDocumentsPayload[number]>
@@ -360,7 +361,8 @@ function DocumentsPage() {
         size: file.size,
         title,
         content: text,
-        addToKnowledgeBase: showKB,
+        addToKnowledgeBase: showKB || selectedUploadKbIds.size > 0,
+        knowledgeBaseIds: Array.from(selectedUploadKbIds),
       });
 
       const initResult = Array.isArray(initResultRaw)
@@ -433,10 +435,11 @@ function DocumentsPage() {
       setTitle('');
       setText('');
       setShowKB(false);
+      setSelectedUploadKbIds(new Set());
 
       // U2: a PDF added to the knowledge base → probe + offer the parse engine
       // (system-recommended, overridable). Non-KB or non-PDF uploads skip this.
-      if (showKB && file.name.toLowerCase().endsWith('.pdf')) {
+      if ((showKB || selectedUploadKbIds.size > 0) && file.name.toLowerCase().endsWith('.pdf')) {
         const row = (refreshed as typeof initialFiles).find((f) => f.id === id && f.documentId);
         if (row?.documentId) void openParseDialog(row.documentId, id);
       }
@@ -767,6 +770,7 @@ function DocumentsPage() {
           if (!nextOpen) {
             setErrorMessage(null);
             setFilesToUpload([]);
+            setSelectedUploadKbIds(new Set());
           }
         }}
       >
@@ -824,6 +828,46 @@ function DocumentsPage() {
                   </FileUpload.Clear>
                 )}
               </FileUpload.Root>
+            </div>
+
+            {/* 加入知识库（KB redesign prd §4.2）—— 选已有（多选）或新建 */}
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>加入知识库（可选）</Label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateKB(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + 新建知识库
+                </button>
+              </div>
+              {knowledgeBases.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">还没有知识库，点「新建知识库」创建一个</p>
+              ) : (
+                <div className="mt-1 max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {knowledgeBases.map((kb) => (
+                    <label
+                      key={kb.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-accent"
+                    >
+                      <Checkbox
+                        checked={selectedUploadKbIds.has(kb.id)}
+                        onCheckedChange={() =>
+                          setSelectedUploadKbIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(kb.id)) next.delete(kb.id);
+                            else next.add(kb.id);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="flex-1 truncate">{kb.name}</span>
+                      <span className="text-xs text-muted-foreground">{kb.documentCount} 文档</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
