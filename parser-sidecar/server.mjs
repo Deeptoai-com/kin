@@ -17,6 +17,10 @@
  *        Rasterize each page to PNG (pdftoppm). Feeds BOTH the VLM OCR input AND the
  *        converter's left-pane original-page display.
  *        → { ok, engine, dpi, count, truncated, pages: [{ page, image(base64 png) }] }
+ *   POST /tables?maxPages=100          → body: raw PDF bytes (OCR module table-v3)
+ *        Detect table LOCATIONS via JSON output (not extraction): page + bbox + rows×cols.
+ *        The converter flags these + overlays bbox; VLM does the actual reading.
+ *        → { ok, engine, count, tables: [{ page, bbox:[x0,y0,x1,y1]pt, rows, cols }] }
  *
  * Run locally:  JAVA_HOME=/opt/homebrew/opt/openjdk node parser-sidecar/server.mjs
  *               (also needs poppler `pdftoppm` on PATH for /render)
@@ -54,6 +58,41 @@ function runCmd(cmd, args) {
       err ? reject(new Error(`${cmd}: ${err.message}\n${String(stderr).slice(0, 500)}`)) : resolve(),
     );
   });
+}
+
+/** Detect tables via the JSON output (OCR module table-v3): location only, not extraction. */
+async function detectTables(bytes, maxPages) {
+  const dir = await mkdtemp(join(tmpdir(), 'tbl-'));
+  try {
+    const input = join(dir, 'input.pdf');
+    await writeFile(input, bytes);
+    const args = ['-o', dir, '-f', 'json', '--table-method', 'cluster', '-q'];
+    if (maxPages) args.push('--pages', `1-${maxPages}`);
+    const t0 = Date.now();
+    await run([...args, input]);
+    const jsonFile = (await readdir(dir)).find((f) => f.endsWith('.json'));
+    if (!jsonFile) return { tables: [], ms: Date.now() - t0 };
+    const doc = JSON.parse(await readFile(join(dir, jsonFile), 'utf8'));
+    const tables = [];
+    const walk = (n) => {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (String(n.type || '').toLowerCase().includes('table') && Array.isArray(n['bounding box'])) {
+        tables.push({
+          page: n['page number'] ?? null,
+          bbox: n['bounding box'], // [x0,y0,x1,y1] in PDF points (y from bottom)
+          rows: n['number of rows'] ?? null,
+          cols: n['number of columns'] ?? null,
+        });
+      }
+      if (n.kids) walk(n.kids);
+      if (n.children) walk(n.children);
+    };
+    walk(doc);
+    return { tables, ms: Date.now() - t0 };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function renderPdf(bytes, dpi, maxPages) {
@@ -146,6 +185,13 @@ const server = createServer(async (req, res) => {
       const base = { ok: true, engine: 'opendataloader-pdf', mode, pages: r.pages, chars: r.chars, ms: r.ms };
       if (mode === 'probe') return send(200, { ...base, recommend: recommend(r.pages, r.chars, r.markdown) });
       return send(200, { ...base, markdown: r.markdown });
+    }
+    if (req.method === 'POST' && url.pathname === '/tables') {
+      const maxPages = Math.min(Number(url.searchParams.get('maxPages')) || MAX_RENDER_PAGES, 500);
+      const bytes = await readBody(req);
+      if (bytes.length === 0) return send(400, { ok: false, error: 'empty body' });
+      const r = await detectTables(bytes, maxPages);
+      return send(200, { ok: true, engine: 'opendataloader-pdf', count: r.tables.length, ms: r.ms, tables: r.tables });
     }
     if (req.method === 'POST' && url.pathname === '/render') {
       const dpi = Math.min(Math.max(Number(url.searchParams.get('dpi')) || 150, 72), 300);

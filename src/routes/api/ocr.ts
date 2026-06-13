@@ -12,7 +12,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { requireUser } from '~/server/require-user';
 import { isRagEnabled } from '~/server/rag/flag';
 import { ocrPdfToMarkdown, ocrImageToMarkdown } from '~/server/rag/ocr-ingest';
-import type { OcrProvider } from '~/server/ocr/provider';
+import { ocrImages, type OcrProvider } from '~/server/ocr/provider';
 
 export const Route = createFileRoute('/api/ocr')({
   server: {
@@ -29,15 +29,23 @@ export const Route = createFileRoute('/api/ocr')({
         } catch {
           return Response.json({ error: 'invalid JSON body' }, { status: 400 });
         }
-        const { contentBase64, mediaType, provider, prompt } = (body ?? {}) as Record<string, unknown>;
-        if (typeof contentBase64 !== 'string' || !contentBase64) {
-          return Response.json({ error: 'contentBase64 is required' }, { status: 400 });
-        }
+        const { contentBase64, images, mediaType, provider, prompt } = (body ?? {}) as Record<string, unknown>;
         const mt = typeof mediaType === 'string' ? mediaType : 'application/octet-stream';
         const prov: OcrProvider | undefined = provider === 'mimo' || provider === 'doubao' ? provider : undefined;
         // Custom prompt (e.g. the 表格 mode's "standard→markdown / irregular→HTML" instruction). Capped.
         const customPrompt = typeof prompt === 'string' && prompt.trim() ? prompt.slice(0, 2000) : undefined;
 
+        // Multi-image (cross-page tables, table-v3): read several page images in one VLM call.
+        if (Array.isArray(images) && images.length > 0) {
+          const imgs = images.filter((v): v is string => typeof v === 'string').slice(0, 8);
+          if (imgs.length === 0) return Response.json({ error: 'images empty' }, { status: 400 });
+          const md = await ocrImages(imgs, mt === 'application/pdf' ? 'image/png' : mt, { provider: prov, prompt: customPrompt });
+          return md ? Response.json({ markdown: md }) : Response.json({ error: 'OCR produced no text' }, { status: 422 });
+        }
+
+        if (typeof contentBase64 !== 'string' || !contentBase64) {
+          return Response.json({ error: 'contentBase64 or images is required' }, { status: 400 });
+        }
         const bytes = Buffer.from(contentBase64, 'base64');
         if (bytes.length === 0) return Response.json({ error: 'empty content' }, { status: 400 });
 

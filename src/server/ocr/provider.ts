@@ -100,8 +100,8 @@ async function postJsonWithRetry(
   throw lastErr instanceof Error ? lastErr : new Error('OCR request failed');
 }
 
-/** doubao via ARK coding gateway — Anthropic Messages format with a base64 image block. */
-async function ocrDoubao(imageBase64: string, mediaType: string, opts: OcrOptions): Promise<string> {
+/** doubao via ARK coding gateway — Anthropic Messages, one or more base64 image blocks. */
+async function ocrDoubao(imagesB64: string[], mediaType: string, opts: OcrOptions): Promise<string> {
   const key = process.env.ARK_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
   if (!key) throw new Error('ARK key not set (ARK_API_KEY or ANTHROPIC_AUTH_TOKEN) — required for doubao OCR.');
   const base = (process.env.ANTHROPIC_BASE_URL || 'https://ark.cn-beijing.volces.com/api/coding').replace(/\/$/, '');
@@ -117,7 +117,7 @@ async function ocrDoubao(imageBase64: string, mediaType: string, opts: OcrOption
           role: 'user',
           content: [
             { type: 'text', text: opts.prompt ?? DEFAULT_PROMPT },
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+            ...imagesB64.map((data) => ({ type: 'image', source: { type: 'base64', media_type: mediaType, data } })),
           ],
         },
       ],
@@ -132,8 +132,8 @@ async function ocrDoubao(imageBase64: string, mediaType: string, opts: OcrOption
     .trim();
 }
 
-/** mimo via OpenRouter — OpenAI chat format with a base64 data-url image. */
-async function ocrMimo(imageBase64: string, mediaType: string, opts: OcrOptions): Promise<string> {
+/** mimo via OpenRouter — OpenAI chat, one or more base64 data-url images. */
+async function ocrMimo(imagesB64: string[], mediaType: string, opts: OcrOptions): Promise<string> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('OPENROUTER_API_KEY not set — required for mimo OCR.');
   const base = (process.env.OCR_OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
@@ -152,7 +152,7 @@ async function ocrMimo(imageBase64: string, mediaType: string, opts: OcrOptions)
           role: 'user',
           content: [
             { type: 'text', text: opts.prompt ?? DEFAULT_PROMPT },
-            { type: 'image_url', image_url: { url: `data:${mediaType};base64,${imageBase64}` } },
+            ...imagesB64.map((b64) => ({ type: 'image_url', image_url: { url: `data:${mediaType};base64,${b64}` } })),
           ],
         },
       ],
@@ -164,6 +164,16 @@ async function ocrMimo(imageBase64: string, mediaType: string, opts: OcrOptions)
 }
 
 /**
+ * OCR one or more page images together → markdown (multi-image = cross-page tables: the
+ * VLM reads the pages in one message and can stitch a table that spans them).
+ */
+export async function ocrImages(imagesB64: string[], mediaType: string, opts: OcrOptions = {}): Promise<string> {
+  if (imagesB64.length === 0) return '';
+  const provider = opts.provider ?? defaultOcrProvider();
+  return provider === 'mimo' ? ocrMimo(imagesB64, mediaType, opts) : ocrDoubao(imagesB64, mediaType, opts);
+}
+
+/**
  * OCR a single page image → markdown. `imageBase64` is the raw base64 (no data-url prefix);
  * `mediaType` like 'image/jpeg' | 'image/png'. Provider defaults to OCR_PROVIDER env (doubao).
  */
@@ -172,8 +182,5 @@ export async function ocrImage(
   mediaType: string,
   opts: OcrOptions = {},
 ): Promise<string> {
-  const provider = opts.provider ?? defaultOcrProvider();
-  return provider === 'mimo'
-    ? ocrMimo(imageBase64, mediaType, opts)
-    : ocrDoubao(imageBase64, mediaType, opts);
+  return ocrImages([imageBase64], mediaType, opts);
 }

@@ -156,6 +156,46 @@ export async function renderPdfViaSidecar(
   }
 }
 
+export interface SidecarTable {
+  page: number | null;
+  /** [x0,y0,x1,y1] in PDF points (y from bottom). */
+  bbox: [number, number, number, number];
+  rows: number | null;
+  cols: number | null;
+}
+
+export interface SidecarTablesResult {
+  ok: boolean;
+  count?: number;
+  tables?: SidecarTable[];
+  error?: string;
+}
+
+/** Detect table LOCATIONS (page + bbox + rows×cols) — OCR module table-v3. Not extraction. */
+export async function detectTablesViaSidecar(
+  bytes: Uint8Array | Buffer,
+  opts: { maxPages?: number; timeoutMs?: number } = {},
+): Promise<SidecarTablesResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10 * 60_000);
+  const qs = opts.maxPages ? `?maxPages=${opts.maxPages}` : '';
+  try {
+    const res = await fetch(`${sidecarUrl()}/tables${qs}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: bytes as BodyInit,
+      signal: controller.signal,
+    });
+    const json = (await res.json()) as SidecarTablesResult;
+    if (!res.ok || !json.ok) return { ok: false, error: json.error ?? `HTTP ${res.status}` };
+    return json;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Fast text-layer probe → engine recommendation (spec §3 "system recommends"). */
 export async function probePdfViaSidecar(bytes: Uint8Array | Buffer): Promise<SidecarParseResult> {
   const controller = new AbortController();
