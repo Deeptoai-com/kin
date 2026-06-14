@@ -11,6 +11,8 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useServerFn } from '@tanstack/react-start';
+import { listKnowledgeBases } from '~/server/function/knowledge-bases.server';
 import { Plus, FileText, Loader2, RefreshCw, Trash2, AlertCircle, Book, Search, CheckCircle2, Circle, CheckSquare, Square, Info } from 'lucide-react';
 import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
@@ -72,13 +74,13 @@ export function KnowledgeBasePanel({ sessionId }: KnowledgeBasePanelProps) {
   const excludeFileIds = documents.map((doc) => doc.fileId);
 
   // Fetch knowledge bases
+  // Use the server fn (same as the documents page) — NOT a raw fetch to
+  // /api/server-functions/listKnowledgeBases (that path 404s; the panel only ever "worked" when
+  // the documents page had already populated this shared ['knowledge-bases'] query cache).
+  const listKbFn = useServerFn(listKnowledgeBases);
   const { data: kbData } = useQuery({
     queryKey: ['knowledge-bases'],
-    queryFn: async () => {
-      const res = await fetch('/api/server-functions/listKnowledgeBases');
-      if (!res.ok) throw new Error('Failed to fetch knowledge bases');
-      return res.json() as Promise<KnowledgeBase[]>;
-    },
+    queryFn: () => listKbFn() as Promise<KnowledgeBase[]>,
   });
 
   const knowledgeBases = kbData || [];
