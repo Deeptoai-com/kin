@@ -14,7 +14,10 @@ const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379'
 })
 
 const queueName = process.env.BULLMQ_QUEUE ?? 'system'
-const prefix = process.env.BULLMQ_PREFIX ?? 'constructa'
+// MUST match the producer default in src/server/rag/queue.ts ('oxygenie'). If these diverge and
+// BULLMQ_PREFIX is unset (e.g. local dev), the app enqueues to a queue this worker never consumes
+// → docs stuck 'pending'. The old 'constructa' default here was exactly that latent footgun.
+const prefix = process.env.BULLMQ_PREFIX ?? 'oxygenie'
 const queue = new Queue(queueName, { connection, prefix })
 
 // Main worker
