@@ -127,7 +127,8 @@ function OcrConverterPage() {
   const [dragOver, setDragOver] = useState(false);
   const [batchRunning, setBatchRunning] = useState(false);
   // table-v3.1: detection derived from parsed text (full coverage); selection → VLM read
-  const [selPages, setSelPages] = useState<number[]>([]);
+  const [selPages, setSelPages] = useState<number[]>([]); // ☑️-checked pages (for cross-page merge)
+  const [viewPage, setViewPage] = useState<number | null>(null); // page being VIEWED in the comparison
   const [recognizedTables, setRecognizedTables] = useState<RecognizedTable[]>([]); // persisted VLM tables
   const [tableReading, setTableReading] = useState(false);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -262,11 +263,19 @@ function OcrConverterPage() {
     [pages],
   );
 
+  // checkbox ONLY: toggle a page in the cross-page-merge selection (does NOT view it).
   const toggleSelPage = useCallback((pn: number) => {
     setSelPages((prev) => (prev.includes(pn) ? prev.filter((x) => x !== pn) : [...prev, pn].sort((a, b) => a - b)));
+  }, []);
+
+  // row click: VIEW a page in the comparison (no selection). If it belongs to a recognized
+  // cross-page correction, view the whole set so 原图/文字/AI 三栏对齐.
+  const viewTablePage = useCallback((pn: number) => {
+    setViewPage(pn);
     setTableError(null);
-    void ensurePageImage(pn);
-  }, [ensurePageImage]);
+    const corr = recognizedTables.find((t) => t.pages.includes(pn));
+    for (const p of corr ? corr.pages : [pn]) void ensurePageImage(p);
+  }, [recognizedTables, ensurePageImage]);
 
   /** Render → VLM-recognize → PERSIST one page-set. Returns the markdown ('' = empty/failed).
    *  Persisted results survive reopen AND get injected into the doc on 加入知识库 — for the Agent.
@@ -293,9 +302,8 @@ function OcrConverterPage() {
     [ensurePageImage, persist, pages, scanned, saveTableFn],
   );
 
-  /** Manual: read the selected page(s) as ONE (cross-page) table. */
-  const readSelectedTables = useCallback(async () => {
-    const sel = [...selPages];
+  /** Recognize a given page-set as ONE table (single page, or cross-page merged). */
+  const readTables = useCallback(async (sel: number[]) => {
     if (sel.length === 0) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -306,7 +314,15 @@ function OcrConverterPage() {
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setTableError('识别失败，可重试');
     } finally { setTableReading(false); }
-  }, [selPages, recognizeOne]);
+  }, [recognizeOne]);
+
+  /** Footer: recognize the ☑️-checked pages as one (cross-page) table, then view the result. */
+  const readChecked = useCallback(async () => {
+    const sel = [...selPages];
+    if (sel.length === 0) return;
+    await readTables(sel);
+    setViewPage(sel[0]); // jump the comparison to the just-recognized set
+  }, [selPages, readTables]);
 
   /** 全选一键: VLM-recognize EVERY detected table page individually (each page = its own table,
    *  NOT merged), concurrency 2, cancellable, with progress. Re-recognizes pages already done. */
@@ -334,7 +350,7 @@ function OcrConverterPage() {
   const resetState = useCallback(() => {
     fileRef.current = null; jobIdRef.current = null; uploadedFileIdRef.current = null;
     setFileName(null); setPages([]); setActive(0); setScanned(false); setError(null); setSavedToKb('idle');
-    setSelPages([]); setRecognizedTables([]); setTableError(null); setRendering(null); setFormat('markdown'); setPhase('idle');
+    setSelPages([]); setViewPage(null); setRecognizedTables([]); setTableError(null); setRendering(null); setFormat('markdown'); setPhase('idle');
   }, []);
 
   const runLoad = useCallback(
@@ -434,9 +450,12 @@ function OcrConverterPage() {
   const tablePages = findTablePages(pages); // full-doc, instant (from already-parsed text)
   // table-mode comparison (原图 / 文字识别 / VLM): everything derived for the current selection.
   const recognizedSet = new Set(recognizedTables.flatMap((t) => t.pages)); // which pages have a saved table
-  const selImages = selPages.map((pn) => pages.find((p) => p.page === pn)).filter((p): p is OcrPage => !!p?.imageUrl);
-  const selParserText = selPages.map((pn) => pages.find((p) => p.page === pn)?.text).filter(Boolean).join('\n\n');
-  const selVlm = recognizedTables.find((t) => tableKey(t.pages) === tableKey(selPages))?.content ?? null;
+  // comparison is driven by the VIEWED page (+ its correction set if cross-page), not the checkboxes.
+  const activeCorrection = viewPage != null ? recognizedTables.find((t) => t.pages.includes(viewPage)) : undefined;
+  const activeSet = activeCorrection ? activeCorrection.pages : viewPage != null ? [viewPage] : [];
+  const cmpImages = activeSet.map((pn) => pages.find((p) => p.page === pn)).filter((p): p is OcrPage => !!p?.imageUrl);
+  const cmpParserText = activeSet.map((pn) => pages.find((p) => p.page === pn)?.text).filter(Boolean).join('\n\n');
+  const cmpVlm = activeCorrection?.content ?? null;
 
   const flashCopy = (id: string, text: string) => { void navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1600); };
   const copyAll = () => flashCopy('all', format === 'text' ? mdToText(assembled) : assembled);
@@ -545,12 +564,17 @@ function OcrConverterPage() {
               ) : (
                 <div className="space-y-1">
                   {tablePages.map((t) => {
-                    const sel = selPages.includes(t.page);
+                    const checked = selPages.includes(t.page);
+                    const focused = viewPage === t.page;
                     const done = recognizedSet.has(t.page);
                     return (
-                      <button key={t.page} type="button" onClick={() => toggleSelPage(t.page)}
-                        className={`flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${sel ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
-                        {sel ? <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                      // row click = VIEW; only the ☑️ toggles selection.
+                      <div key={t.page} onClick={() => viewTablePage(t.page)}
+                        className={`flex w-full cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors ${focused ? 'border-primary bg-primary/5' : 'hover:bg-accent/40'}`}>
+                        <button type="button" title={checked ? '取消勾选' : '勾选（用于跨页合并识别）'}
+                          onClick={(e) => { e.stopPropagation(); toggleSelPage(t.page); }} className="shrink-0 text-muted-foreground hover:text-foreground">
+                          {checked ? <CheckSquare className="h-3.5 w-3.5 text-primary" /> : <Square className="h-3.5 w-3.5" />}
+                        </button>
                         <span className="flex-1">第 {t.page} 页</span>
                         {done ? (
                           <span className="flex shrink-0 items-center gap-0.5 rounded bg-emerald-500/10 px-1 text-[10px] font-medium text-emerald-600"><Check className="h-3 w-3" />已修正</span>
@@ -560,7 +584,7 @@ function OcrConverterPage() {
                             {t.big && <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">大表</span>}
                           </>
                         )}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -579,36 +603,36 @@ function OcrConverterPage() {
                     <Sparkles className="h-3.5 w-3.5" />一键识别全部 {tablePages.length} 个表
                   </button>
                   {selPages.length > 0 && (
-                    <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
+                    <button type="button" disabled={tableReading} onClick={() => void readChecked()}
                       className="flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs hover:bg-accent disabled:opacity-50">
                       {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      仅识别选中 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
+                      识别勾选的 {selPages.length} 页{selPages.length > 1 ? '（跨页合并）' : ''}
                     </button>
                   )}
-                  <p className="text-[10px] leading-relaxed text-muted-foreground">AI 识别会用图片还原的正确表格<span className="text-foreground">替换</span>文字识别的错误结果。加入知识库时，已修正的页用 AI 版本——Agent 读到的就是对的。</p>
+                  <p className="text-[10px] leading-relaxed text-muted-foreground">点页码看对比 · 勾选 ☑️ 用于跨页合并。AI 识别会用正确表格<span className="text-foreground">替换</span>文字识别的错误结果——入库后 Agent 读到的就是对的。</p>
                 </>
               ) : null}
             </div>
           </div>
           {/* right: 三栏对比 —— PDF 原图 / 文字识别（解析器）/ AI 识别（VLM），让"前→后"提升一眼可见 */}
           <div className="min-h-0 overflow-hidden">
-            {selPages.length === 0 ? (
+            {viewPage == null ? (
               <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-                ← 勾选表格页，查看「PDF 原图 / 文字识别 / AI 识别」三栏对比
+                ← 点左侧某一页，查看「PDF 原图 / 文字识别 / AI 识别」三栏对比
               </div>
             ) : (
               <div className="flex h-full flex-col">
                 <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-                  <span className="text-xs font-medium">第 {selPages.join('、')} 页 · 对比</span>
-                  <button type="button" disabled={tableReading} onClick={() => void readSelectedTables()}
+                  <span className="text-xs font-medium">第 {activeSet.join('、')} 页 · 对比</span>
+                  <button type="button" disabled={tableReading} onClick={() => void readTables(activeSet)}
                     className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                     {tableReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    {selVlm ? '重新识别' : '用 AI 识别'}{selPages.length > 1 ? '（跨页合并）' : ''}
+                    {cmpVlm ? '重新识别' : '用 AI 识别'}{activeSet.length > 1 ? '（跨页合并）' : ''}
                   </button>
                 </div>
                 {tableError && <p className="border-b bg-destructive/5 px-3 py-1.5 text-xs text-destructive">{tableError}</p>}
                 {/* the replacement is the whole point — say it loudly once the page is corrected. */}
-                {selVlm ? (
+                {cmpVlm ? (
                   <p className="flex items-center gap-1.5 border-b border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-xs text-emerald-700"><Check className="h-3.5 w-3.5 shrink-0" /><span>这一页已用 <b>AI 识别</b> 替换文字识别的错误表格 · 加入知识库后，Agent 读到的就是右侧这份正确内容。</span></p>
                 ) : (
                   <p className="border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">尚未识别 · 点「用 AI 识别」用图片还原表格，<span className="text-foreground">替换</span>中间文字识别的错误结果。</p>
@@ -618,10 +642,10 @@ function OcrConverterPage() {
                   <div className="flex min-h-0 flex-col">
                     <div className="border-b bg-muted/30 px-2 py-1 text-[11px] font-medium text-muted-foreground">PDF 原图</div>
                     <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
-                      {rendering !== null && selPages.includes(rendering) ? (
+                      {rendering !== null && activeSet.includes(rendering) ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />渲染中…</div>
-                      ) : selImages.length ? (
-                        selImages.map((p) => <img key={p.page} src={p.imageUrl!} alt={`page ${p.page}`} className="w-full rounded border" />)
+                      ) : cmpImages.length ? (
+                        cmpImages.map((p) => <img key={p.page} src={p.imageUrl!} alt={`page ${p.page}`} className="w-full rounded border" />)
                       ) : (
                         <p className="text-xs text-muted-foreground">本页无预览图</p>
                       )}
@@ -629,25 +653,25 @@ function OcrConverterPage() {
                   </div>
                   {/* col 2: 文字识别（解析器）— the "before". Once replaced, visibly superseded. */}
                   <div className="flex min-h-0 flex-col">
-                    <div className={`flex items-center justify-between border-b px-2 py-1 text-[11px] font-medium ${selVlm ? 'bg-destructive/5 text-destructive' : 'bg-muted/30 text-muted-foreground'}`}>
-                      <span className={selVlm ? 'line-through decoration-destructive/50' : ''}>文字识别（解析器）</span>
-                      <span className={`rounded px-1 text-[10px] ${selVlm ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>{selVlm ? '✗ 已被替换' : '识别前'}</span>
+                    <div className={`flex items-center justify-between border-b px-2 py-1 text-[11px] font-medium ${cmpVlm ? 'bg-destructive/5 text-destructive' : 'bg-muted/30 text-muted-foreground'}`}>
+                      <span className={cmpVlm ? 'line-through decoration-destructive/50' : ''}>文字识别（解析器）</span>
+                      <span className={`rounded px-1 text-[10px] ${cmpVlm ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>{cmpVlm ? '✗ 已被替换' : '识别前'}</span>
                     </div>
-                    <div className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 text-xs leading-relaxed text-muted-foreground ${selVlm ? 'opacity-40 grayscale' : ''}`}>
-                      {selParserText || '（解析器在此页未提取到文字）'}
+                    <div className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 text-xs leading-relaxed text-muted-foreground ${cmpVlm ? 'opacity-40 grayscale' : ''}`}>
+                      {cmpParserText || '（解析器在此页未提取到文字）'}
                     </div>
                   </div>
                   {/* col 3: AI 识别（VLM）— the "after". When present it's the authoritative version. */}
-                  <div className={`flex min-h-0 flex-col ${selVlm ? 'ring-2 ring-inset ring-emerald-500/40' : ''}`}>
-                    <div className={`flex items-center justify-between border-b px-2 py-1 text-[11px] font-medium ${selVlm ? 'bg-emerald-500/10 text-emerald-700' : 'bg-primary/5 text-primary'}`}>
-                      <span className="flex items-center gap-1">AI 识别<span className={`rounded px-1 text-[10px] ${selVlm ? 'bg-emerald-500/15 text-emerald-700' : 'bg-primary/10'}`}>{selVlm ? '✓ 生效中' : '识别后'}</span></span>
-                      {selVlm && <button type="button" onClick={() => flashCopy('selvlm', selVlm)} className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent">{copied === 'selvlm' ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制</button>}
+                  <div className={`flex min-h-0 flex-col ${cmpVlm ? 'ring-2 ring-inset ring-emerald-500/40' : ''}`}>
+                    <div className={`flex items-center justify-between border-b px-2 py-1 text-[11px] font-medium ${cmpVlm ? 'bg-emerald-500/10 text-emerald-700' : 'bg-primary/5 text-primary'}`}>
+                      <span className="flex items-center gap-1">AI 识别<span className={`rounded px-1 text-[10px] ${cmpVlm ? 'bg-emerald-500/15 text-emerald-700' : 'bg-primary/10'}`}>{cmpVlm ? '✓ 生效中' : '识别后'}</span></span>
+                      {cmpVlm && <button type="button" onClick={() => flashCopy('selvlm', cmpVlm)} className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent">{copied === 'selvlm' ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}复制</button>}
                     </div>
                     <div className="ocr-page min-h-0 flex-1 overflow-auto p-2 text-sm">
                       {tableReading ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />AI 识别中…</div>
-                      ) : selVlm ? (
-                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(selVlm) }} />
+                      ) : cmpVlm ? (
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(cmpVlm) }} />
                       ) : (
                         <p className="text-xs text-muted-foreground">点上方「用 AI 识别」→ 用图片还原这一页的正确表格</p>
                       )}
