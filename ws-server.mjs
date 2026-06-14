@@ -1405,6 +1405,10 @@ async function handleChat(ws, prompt, resumeSessionId, options = {}) {
       cookie: ws.cookie,
       // Session KB scope (面板勾选, prd 阶段3): kb_search restricts to these KBs.
       kbIds,
+      // Workspace session this turn writes to (= the client's currentSessionId after session_init;
+      // for a branch it's the fork target D2). The worker stamps it onto each kb_search trace so
+      // the right-side Retrieval tab can show "what THIS conversation searched".
+      sessionId: outputSessionId ?? null,
     });
     // Newline-delimited + keep stdin OPEN so Ask-mode HITL can stream
     // approval_response lines to the worker mid-run. The worker exits on its own

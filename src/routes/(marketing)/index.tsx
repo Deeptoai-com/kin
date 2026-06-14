@@ -6,8 +6,8 @@ export const Route = createFileRoute('/(marketing)/')({
   component: RouteComponent,
 });
 
-const GH = 'https://github.com/foreveryh/oxygenie';
-const GH_DEPLOY = 'https://github.com/foreveryh/oxygenie/blob/main/docs/deployment/dokploy.md';
+const GH = 'https://github.com/deeptoai/kin';
+const GH_DEPLOY = 'https://github.com/deeptoai/kin/blob/main/docs/deployment/mac-mini.md';
 
 function RouteComponent() {
   const c = useIntlayer('home');
@@ -18,7 +18,7 @@ function RouteComponent() {
       <section className="hero" id="top">
         <div className="wrap">
           <div className="tag">
-            $ oxygenie up —— <b>self-hosted</b> · multi-model · sandboxed · open-source
+            $ kin up —— <b>self-hosted</b> · any-model · sandboxed · open-source · AGPLv3
           </div>
           <h1>
             <span className="soft">{c.hero.titleSoft}</span>
@@ -48,7 +48,7 @@ function RouteComponent() {
                 {c.hero.metaDeploy}
               </div>
               <div>
-                <span>ARK multi-model</span>
+                <span>any-model</span>
                 {c.hero.metaModels}
               </div>
               <div>
@@ -56,6 +56,23 @@ function RouteComponent() {
                 {c.hero.metaSandbox}
               </div>
             </div>
+          </div>
+          <div className="heroshot">
+            <div className="shot">
+              <span className="ph">screenshot · Kin workspace · /agents/c</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Trust strip ───────────────────────────────────────── */}
+      <section className="trust">
+        <div className="wrap">
+          <div className="cap">// works with any model · built on open standards</div>
+          <div className="row">
+            <b>Claude</b> <span className="dot">·</span> <b>GPT</b> <span className="dot">·</span>{' '}
+            <b>GLM</b> <span className="dot">·</span> <b>DeepSeek</b> <span className="dot">·</span> MCP{' '}
+            <span className="dot">·</span> Skills <span className="dot">·</span> Claude Agent SDK
           </div>
         </div>
       </section>
@@ -164,11 +181,11 @@ function RouteComponent() {
           <div className="app">
             <div className="app-top">
               <div className="l">
-                <span className="cl">~/</span>oxygenie<span style={{ color: 'var(--line-2)' }}>/</span>
+                <span className="cl">~/</span>kin<span style={{ color: 'var(--line-2)' }}>/</span>
                 <b>agents/c</b>
               </div>
               <div className="st">
-                <i /> model: glm-5.1 · sandbox · live
+                <i /> model: claude · any provider · live
               </div>
             </div>
             <div className="app-body">
@@ -197,7 +214,7 @@ function RouteComponent() {
                   <div className="tx">Reskin the landing to JumpX, then build.</div>
                 </div>
                 <div className="bubble ai">
-                  <div className="who">oxygenie · glm-5.1</div>
+                  <div className="who">kin · claude</div>
                   <div className="tx">On it — updating design tokens and verifying the build —</div>
                 </div>
                 <div className="term">
@@ -230,7 +247,7 @@ function RouteComponent() {
                 </div>
                 <div className="deliv">
                   <span className="s wait">[ todo ]</span>
-                  <div className="tx">deploy to oxygenie.local</div>
+                  <div className="tx">deploy to kin.local</div>
                 </div>
               </aside>
             </div>
@@ -252,8 +269,26 @@ function RouteComponent() {
           <div className="mgrid">
             <div className="mrow">
               <div>
-                <div className="nm">GLM-5.1</div>
-                <div className="id">ark/glm-5.1 · default</div>
+                <div className="nm">Claude</div>
+                <div className="id">anthropic/claude · default</div>
+              </div>
+              <div className="h">
+                <i /> healthy · 2.4s
+              </div>
+            </div>
+            <div className="mrow">
+              <div>
+                <div className="nm">GPT</div>
+                <div className="id">openai/gpt · general</div>
+              </div>
+              <div className="h">
+                <i /> healthy · 3.1s
+              </div>
+            </div>
+            <div className="mrow">
+              <div>
+                <div className="nm">GLM</div>
+                <div className="id">zhipu/glm · cost-saver</div>
               </div>
               <div className="h">
                 <i /> healthy · 3.6s
@@ -261,29 +296,11 @@ function RouteComponent() {
             </div>
             <div className="mrow">
               <div>
-                <div className="nm">Doubao Seed 2.0 Code</div>
-                <div className="id">ark/doubao-code · coding</div>
+                <div className="nm">DeepSeek</div>
+                <div className="id">deepseek/chat · cost-saver</div>
               </div>
               <div className="h">
-                <i /> healthy · 5.3s
-              </div>
-            </div>
-            <div className="mrow">
-              <div>
-                <div className="nm">Doubao Seed 2.0 Pro</div>
-                <div className="id">ark/doubao-pro · general</div>
-              </div>
-              <div className="h">
-                <i /> healthy · 2.1s
-              </div>
-            </div>
-            <div className="mrow">
-              <div>
-                <div className="nm">MiniMax</div>
-                <div className="id">ark/minimax · general</div>
-              </div>
-              <div className="h">
-                <i /> healthy · 3.5s
+                <i /> healthy · 4.0s
               </div>
             </div>
           </div>
@@ -326,16 +343,52 @@ function RouteComponent() {
               <div className="body">
                 <span className="c"># three steps to launch</span>
                 <br />
-                <span className="k">$</span> git clone github.com/foreveryh/oxygenie
+                <span className="k">$</span> git clone github.com/deeptoai/kin
                 <br />
-                <span className="k">$</span> cp .env.example .env <span className="c"># add ARK token</span>
+                <span className="k">$</span> cp .env.example .env <span className="c"># add a model key</span>
                 <br />
                 <span className="k">$</span> docker compose up -d
                 <br />
-                <span className="g">✓</span> oxygenie up · https://oxygenie.local
+                <span className="g">✓</span> kin up · https://kin.local
                 <br />
                 <span className="k">$</span> <span className="tcur" />
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Who it's for ──────────────────────────────────────── */}
+      <section className="icp" id="who">
+        <div className="wrap">
+          <span className="eyebrow">
+            <b>[06]</b> who it's for
+          </span>
+          <h2>
+            {c.icp.heading}
+            <span className="cl">{c.icp.headingAccent}</span>
+          </h2>
+          <p className="lede">{c.icp.lede}</p>
+          <div className="igrid">
+            <div className="icard">
+              <div className="ic">01</div>
+              <h3>{c.icp.c1Title}</h3>
+              <p>{c.icp.c1Desc}</p>
+            </div>
+            <div className="icard">
+              <div className="ic">02</div>
+              <h3>{c.icp.c2Title}</h3>
+              <p>{c.icp.c2Desc}</p>
+            </div>
+            <div className="icard">
+              <div className="ic">03</div>
+              <h3>{c.icp.c3Title}</h3>
+              <p>{c.icp.c3Desc}</p>
+            </div>
+            <div className="icard">
+              <div className="ic">04</div>
+              <h3>{c.icp.c4Title}</h3>
+              <p>{c.icp.c4Desc}</p>
             </div>
           </div>
         </div>
@@ -349,13 +402,21 @@ function RouteComponent() {
             <span className="cl">{c.footer.bigAccent}</span>
             <i className="cur" />
           </div>
+          <div className="foot-cta">
+            <Link className="btn-go" to="/agents/c">
+              {c.hero.ctaPrimary} <span className="ar">→</span>
+            </Link>
+            <a className="btn-ghost" href={GH} target="_blank" rel="noopener noreferrer">
+              {c.hero.ctaSecondary}
+            </a>
+          </div>
           <div className="frow">
             <div className="fmeta">
-              <b>OxyGenie</b> · self-hosted Claude-Agent workspace
+              <b>Kin</b> · self-hosted Claude-Agent workspace
               <br />
-              single-org · multi-user · fully-sandboxed · ARK multi-model
+              single-org · multi-user · fully-sandboxed · provider-agnostic
               <br />
-              open-source · MIT · 2026
+              AGPLv3 + commercial · deeptoai · 2026
             </div>
             <a className="nbtn" href="#top">
               ↑ top

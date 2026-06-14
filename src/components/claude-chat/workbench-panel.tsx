@@ -20,20 +20,23 @@
  */
 
 import { useState, type FC, type ReactNode } from 'react';
-import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode } from 'lucide-react';
+import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Telescope, ChevronRight, RefreshCw } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import {
   useSessionTodos,
   useSessionSubAgents,
   useSessionFiles,
   useSessionContext,
+  useSessionRagTraces,
   type TodoItem,
   type SubAgentItem,
   type SessionFile,
   type SessionContextInfo,
+  type SessionRagTracesState,
 } from '~/lib/hooks/use-session-workbench';
+import type { RagTraceChunk, RagTraceView, SessionRagTraces } from '~/server/function/rag-trace.server';
 
-type WorkbenchTab = 'progress' | 'subagents' | 'files' | 'context';
+type WorkbenchTab = 'progress' | 'subagents' | 'files' | 'context' | 'retrieval';
 
 interface TabDef {
   id: WorkbenchTab;
@@ -46,6 +49,7 @@ const TABS: TabDef[] = [
   { id: 'subagents', label: 'Sub-agents', icon: GitBranch },
   { id: 'files', label: 'Files', icon: FolderOpen },
   { id: 'context', label: 'Context', icon: Gauge },
+  { id: 'retrieval', label: 'Retrieval', icon: Telescope },
 ];
 
 /** Placeholder slot for the owner-supplied 3D skeuomorphic icons (Wave 0). */
@@ -241,6 +245,129 @@ const ContextView: FC<{ ctx: SessionContextInfo }> = ({ ctx }) => {
   );
 };
 
+/** ⑤ Retrieval — kb_search funnel traces for this session (RAG observability). */
+const pageLabel = (c: RagTraceChunk): string =>
+  c.pageStart ? ` · p.${c.pageStart}${c.pageEnd && c.pageEnd !== c.pageStart ? `-${c.pageEnd}` : ''}` : '';
+
+const ChunkRow: FC<{ id: string; chunks: SessionRagTraces['chunks']; tags: string[]; dropped?: boolean }> = ({
+  id,
+  chunks,
+  tags,
+  dropped,
+}) => {
+  const c = chunks[id];
+  if (!c) {
+    return <li className="px-2 py-1 text-[11px] italic text-muted-foreground/70">（该片段已失效 / 文档已重新入库）</li>;
+  }
+  return (
+    <li className={cn('rounded-md border px-2 py-1.5', dropped ? 'border-dashed border-border bg-transparent opacity-70' : 'border-border bg-background')}>
+      <div className="flex items-center gap-1.5">
+        <span className="truncate text-[11px] font-medium text-foreground">{c.docTitle}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {tags.map((t) => (
+            <span key={t} className="rounded bg-primary/10 px-1 text-[9px] font-medium text-primary">{t}</span>
+          ))}
+        </span>
+      </div>
+      {c.sectionPath && (
+        <p className="truncate text-[10px] text-muted-foreground" title={c.sectionPath}>
+          {c.sectionPath}
+          {pageLabel(c)}
+        </p>
+      )}
+      <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{c.snippet}</p>
+    </li>
+  );
+};
+
+const TraceCard: FC<{ trace: RagTraceView; chunks: SessionRagTraces['chunks'] }> = ({ trace, chunks }) => {
+  const [open, setOpen] = useState(false);
+  const vec = new Set(trace.vectorIds);
+  const bm = new Set(trace.bm25Ids);
+  const recalled = new Set([...trace.vectorIds, ...trace.bm25Ids]);
+  const returnedSet = new Set(trace.returnedIds);
+  // "recalled but not returned" = the ranking-loss signal (was a candidate, didn't survive).
+  const dropped = trace.fusedIds.filter((id) => !returnedSet.has(id));
+  const tagsFor = (id: string): string[] => [vec.has(id) ? '向量' : null, bm.has(id) ? 'BM25' : null].filter((x): x is string => !!x);
+  const degraded = trace.degraded && trace.degraded !== 'ok';
+
+  return (
+    <li className="rounded-lg border border-border bg-card">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-start gap-1.5 px-2.5 py-2 text-left">
+        <ChevronRight className={cn('mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-foreground" title={trace.query}>{trace.query}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+            {trace.visibleDocCount != null && <span className="rounded bg-muted px-1">看 {trace.visibleDocCount} 篇</span>}
+            <span className="rounded bg-muted px-1">召回 {recalled.size}</span>
+            <span className="rounded bg-emerald-500/10 px-1 text-emerald-600">返回 {trace.returnedIds.length}</span>
+            <span className="rounded bg-muted px-1">{trace.reranked ? 'rerank 开' : 'rerank 关'}</span>
+            {degraded && <span className="rounded bg-destructive/10 px-1 text-destructive" title={trace.degraded ?? ''}>降级</span>}
+            {trace.latencyMs != null && <span className="rounded bg-muted px-1">{trace.latencyMs}ms</span>}
+          </div>
+        </div>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-border px-2.5 py-2">
+          <p className="text-[10px] text-muted-foreground">
+            向量 {trace.vectorIds.length} · BM25 {trace.bm25Ids.length} · 融合 {trace.fusedIds.length} · 返回 {trace.returnedIds.length}
+          </p>
+          <div>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">返回给 Agent（{trace.returnedIds.length}）</p>
+            {trace.returnedIds.length ? (
+              <ul className="flex flex-col gap-1">
+                {trace.returnedIds.map((id) => <ChunkRow key={id} id={id} chunks={chunks} tags={tagsFor(id)} />)}
+              </ul>
+            ) : (
+              <p className="px-2 text-[11px] italic text-muted-foreground">无返回 —— 范围内没有任何片段被召回（范围漏 / 召回漏）。</p>
+            )}
+          </div>
+          {dropped.length > 0 && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">召回未返回（{dropped.length}）· 排序挤掉</p>
+              <ul className="flex flex-col gap-1">
+                {dropped.map((id) => <ChunkRow key={id} id={id} chunks={chunks} tags={tagsFor(id)} dropped />)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+};
+
+const RetrievalView: FC<{ state: SessionRagTracesState }> = ({ state }) => {
+  const { data, loading, error, refresh } = state;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          kb_search 检索{data?.traces.length ? ` · ${data.traces.length}` : ''}
+        </p>
+        <button type="button" onClick={refresh} disabled={loading} className="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-50">
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}刷新
+        </button>
+      </div>
+      <p className="px-4 pb-2 text-[10px] leading-relaxed text-muted-foreground">
+        Agent 每次搜知识库的<b className="font-medium text-foreground">召回漏斗</b>。命中与否需你对照文档判断——这里只如实展示：哪条腿召回了、被排序挤掉了、最终返回了。
+      </p>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        {error ? (
+          <p className="px-1 py-4 text-xs text-destructive">读取失败，点「刷新」重试。</p>
+        ) : !data && loading ? (
+          <div className="flex items-center gap-2 px-1 py-4 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />加载中…</div>
+        ) : data && data.traces.length ? (
+          <ul className="flex flex-col gap-2">
+            {data.traces.map((t) => <TraceCard key={t.id} trace={t} chunks={data.chunks} />)}
+          </ul>
+        ) : (
+          <p className="px-1 py-4 text-xs text-muted-foreground">本次对话还没有 kb_search 检索。当 Agent 搜索知识库后，每次检索的漏斗会出现在这里。</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export interface WorkbenchPanelProps {
   currentSessionId: string | null;
   className?: string;
@@ -252,6 +379,8 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
   const subAgents = useSessionSubAgents();
   const files = useSessionFiles();
   const context = useSessionContext();
+  // Retrieval is DB-backed — fetch only when its tab is open (and a session exists).
+  const ragTraces = useSessionRagTraces(currentSessionId, activeTab === 'retrieval');
 
   return (
     <aside
@@ -325,6 +454,7 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
               hint="Model, capabilities, and this session's token usage will surface here once a turn runs."
             />
           ))}
+        {activeTab === 'retrieval' && <RetrievalView state={ragTraces} />}
       </div>
 
       {/* Session-scope footer marker (skeleton — confirms per-session boundary) */}

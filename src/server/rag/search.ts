@@ -26,6 +26,9 @@ export interface KbSearchParams {
   kbId?: string;
   /** Session-selected scope (KB 面板勾选, prd 阶段3): union of these KBs. kbId wins if set. */
   kbIds?: string[];
+  /** Workspace session this search ran in — recorded on the trace so the Retrieval workbench
+   *  tab can scope to "what THIS conversation searched". Null for eval/smoke callers. */
+  sessionId?: string;
   /** Ablation knobs for the golden-set eval (R4) — production callers leave them unset. */
   skipRerank?: boolean;
   skipBm25?: boolean;
@@ -187,6 +190,7 @@ export async function searchKb(userId: string, params: KbSearchParams): Promise<
       .insert(ragSearchTrace)
       .values({
         userId,
+        sessionId: params.sessionId ?? null,
         query,
         params: { k: params.k, documentId: params.documentId, kbId: params.kbId },
         visibleDocCount: docIds.length,

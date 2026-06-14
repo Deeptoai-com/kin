@@ -8,8 +8,10 @@
  * messages are loaded; this layer adds no new data access.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useServerFn } from '@tanstack/react-start';
 import { useChatSessionStore, type ThreadMessage, type PreviewState } from '~/lib/chat-session-store';
+import { listSessionRagTraces, type SessionRagTraces } from '~/server/function/rag-trace.server';
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -208,6 +210,42 @@ export function useSessionContext(): SessionContextInfo | null {
       numTurns: usage?.num_turns,
     };
   }, [usage, meta]);
+}
+
+// ───────────────────────── ⑤ Retrieval (RAG trace) ─────────────────────────
+
+export interface SessionRagTracesState {
+  data: SessionRagTraces | null;
+  loading: boolean;
+  error: boolean;
+  refresh: () => void;
+}
+
+/**
+ * The current session's kb_search funnel traces (DB-backed — UNLIKE the other workbench
+ * selectors, this reads rag_search_trace via a server fn, since the per-stage recall ids
+ * aren't in the message store). Fetches only when `enabled` (tab open) + a session exists;
+ * re-fetches on session switch or manual refresh().
+ */
+export function useSessionRagTraces(sessionId: string | null, enabled: boolean): SessionRagTracesState {
+  const fn = useServerFn(listSessionRagTraces);
+  const [data, setData] = useState<SessionRagTraces | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  useEffect(() => {
+    if (!enabled || !sessionId) return;
+    let alive = true;
+    setLoading(true);
+    setError(false);
+    fn({ data: { sessionId } })
+      .then((res) => { if (alive) setData(res as SessionRagTraces); })
+      .catch(() => { if (alive) setError(true); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [fn, sessionId, enabled, nonce]);
+  return { data, loading, error, refresh };
 }
 
 /**

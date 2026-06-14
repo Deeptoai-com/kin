@@ -32,7 +32,7 @@ export const Route = createFileRoute('/api/rag/search')({
         } catch {
           return Response.json({ error: 'invalid JSON body' }, { status: 400 });
         }
-        const { query, k, documentId, kbId, kbIds } = (body ?? {}) as Record<string, unknown>;
+        const { query, k, documentId, kbId, kbIds, sessionId } = (body ?? {}) as Record<string, unknown>;
         if (typeof query !== 'string' || !query.trim()) {
           return Response.json({ error: 'query is required' }, { status: 400 });
         }
@@ -44,6 +44,8 @@ export const Route = createFileRoute('/api/rag/search')({
           kbId: typeof kbId === 'string' ? kbId : undefined,
           // Session scope picker (prd 阶段3): forwarded by the worker from the chat request.
           kbIds: Array.isArray(kbIds) ? kbIds.filter((v): v is string => typeof v === 'string') : undefined,
+          // Workspace session (for the Retrieval workbench tab) — also worker-forwarded.
+          sessionId: typeof sessionId === 'string' ? sessionId : undefined,
         });
         return Response.json({ hits });
       },

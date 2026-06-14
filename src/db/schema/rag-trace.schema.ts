@@ -17,6 +17,10 @@ export const ragSearchTrace = pgTable(
       .$defaultFn(() => generateId('rtrace'))
       .primaryKey(),
     userId: text('user_id').notNull(),
+    /** Workspace session (= sdkSessionId / client currentSessionId) this search ran in, so the
+     *  right-side Retrieval workbench tab can show "what this conversation searched". Null for
+     *  non-session callers (eval/smoke). Threaded: ws-server → worker → /api/rag/search. */
+    sessionId: text('session_id'),
     query: text('query').notNull(),
     /** Narrowing params as sent: { k, documentId, kbId } */
     params: jsonb('params'),
@@ -37,5 +41,6 @@ export const ragSearchTrace = pgTable(
   (table) => ({
     userIdx: index('idx_rag_search_trace_user').on(table.userId),
     createdIdx: index('idx_rag_search_trace_created').on(table.createdAt),
+    sessionIdx: index('idx_rag_search_trace_session').on(table.sessionId),
   }),
 );

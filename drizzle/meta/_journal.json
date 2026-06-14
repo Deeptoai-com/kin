@@ -225,6 +225,13 @@
       "when": 1781427229628,
       "tag": "0031_ocr_job_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781434303489,
+      "tag": "0032_rag_trace_session",
+      "breakpoints": true
     }
   ]
 }

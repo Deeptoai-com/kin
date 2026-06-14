@@ -256,6 +256,9 @@ async function startRun(request) {
       // Session KB scope (面板勾选, prd 阶段3): kb_search restricts to these knowledge
       // bases unless the model explicitly passes its own kbId.
       kbIds: sessionKbIds = [],
+      // Workspace session id — forwarded to /api/rag/search so the trace records which
+      // conversation each kb_search ran in (Retrieval workbench tab).
+      sessionId: workspaceSessionId = null,
     } = request;
     const permissionMode = resolvePermissionMode(requestedPermissionMode, userId);
     const disallowedTools = resolveDisallowedTools(
@@ -536,7 +539,9 @@ async function startRun(request) {
       async (args) => {
         try {
           // Session scope (面板勾选) applies unless the model narrowed explicitly.
-          const scoped = args.kbId || !sessionKbIds?.length ? args : { ...args, kbIds: sessionKbIds };
+          const withScope = args.kbId || !sessionKbIds?.length ? args : { ...args, kbIds: sessionKbIds };
+          // Stamp the workspace session so the trace is attributable to this conversation.
+          const scoped = workspaceSessionId ? { ...withScope, sessionId: workspaceSessionId } : withScope;
           const response = await fetch(`${appUrl}/api/rag/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', cookie: userCookie || '' },
