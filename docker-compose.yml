@@ -220,6 +220,9 @@ services:
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    volumes:
+      # Read SDK JSONL transcripts to build the conversation-search index (reindex/index-session jobs)
+      - claude-sessions:/data/users
     command: ['npx', 'tsx', 'src/worker/index.ts']
     restart: unless-stopped
     profiles: ['dev', 'selfhost', 'prod']

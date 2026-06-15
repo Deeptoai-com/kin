@@ -197,6 +197,9 @@ services:
       MESSAGE_REINDEX_ON_BOOT: ${MESSAGE_REINDEX_ON_BOOT:-false}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    volumes:
+      # Read SDK JSONL transcripts to build the conversation-search index (reindex/index-session jobs)
+      - claude-sessions:/data/users
     command: ['npx', 'tsx', 'src/worker/index.ts']
     restart: unless-stopped
     networks:

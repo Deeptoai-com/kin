@@ -189,6 +189,9 @@ services:
       EMBED_PROVIDER: ${EMBED_PROVIDER:-}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+    volumes:
+      # Read SDK JSONL transcripts to build the conversation-search index (reindex/index-session jobs)
+      - claude-sessions:/data/users
     command: ['npx', 'tsx', 'src/worker/index.ts']
     restart: unless-stopped
     networks:
