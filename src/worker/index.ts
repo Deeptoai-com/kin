@@ -6,6 +6,8 @@ import { logger } from '~/lib/logger'
 import { runDailyCreditRefill } from './processors/dailyCreditRefill.ts'
 import { reindexDocuments } from './processors/reindexDocuments.ts'
 import { probeModels } from './processors/probeModels.ts'
+import { reindexMessages } from './processors/reindexMessages.ts'
+import { indexSessionMessages } from './processors/indexSessionMessages.ts'
 import { runUpdateCheck } from './processors/updateCheck.ts'
 import { ingestDocument } from '~/server/rag/ingest'
 import { RAG_QUEUE, RAG_INGEST_JOB } from '~/server/rag/queue'
@@ -35,6 +37,11 @@ const worker = new Worker(
       case 'probe-models':
         logger.info('[worker] running probe-models job')
         return probeModels((job.data as { modelId?: string } | undefined)?.modelId)
+      case 'reindex-messages':
+        logger.info('[worker] running reindex-messages job')
+        return reindexMessages()
+      case 'index-session-messages':
+        return indexSessionMessages(job.data as { userId?: string; sdkSessionId?: string })
       case 'update-check':
         logger.info('[worker] running update-check job')
         return runUpdateCheck()
@@ -119,6 +126,12 @@ events.on('failed', ({ jobId, failedReason }) =>
   if (process.env.SEARCH_REINDEX_ON_BOOT === 'true') {
     await queue.add('reindex-all', {}, { jobId: `reindex-${Date.now()}` })
     logger.info('[worker] queued reindex-all on boot')
+  }
+
+  // Conversation search: optionally backfill the message index on boot (default off).
+  if ((process.env.MESSAGE_REINDEX_ON_BOOT ?? 'false').toLowerCase() === 'true') {
+    await queue.add('reindex-messages', {}, { jobId: `reindex-messages-${Date.now()}` })
+    logger.info('[worker] queued reindex-messages on boot')
   }
 })().catch((e) => {
   logger.error('[worker] bootstrap error', { error: e })
