@@ -357,9 +357,16 @@ services:
       UPDATER_HEALTH_URL: ${UPDATER_HEALTH_URL:-http://app:5000/api/health}
       APP_IMAGE: ${APP_IMAGE:-ghcr.io/deeptoai-com/kin/app}
       APP_TAG: ${APP_TAG:-latest}
+      # Prod env for compose substitution on recreate — controller passes this via `--env-file`
+      # so ${POSTGRES_*}/${APP_NAME}/… resolve to PRODUCTION values, not the repo's /work/.env.
+      UPDATER_COMPOSE_ENV_FILE: ${UPDATER_COMPOSE_ENV_FILE:-/run/updater/prod.env}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/work:ro
+      # Mount the FULL prod env: set UPDATER_PROD_ENV_FILE to its host path (default /dev/null =
+      # unset → empty → controller falls back to /work/.env). Must hold the secrets + the non-secret
+      # vars the stack was started with (APP_NAME/APP_NAME_SANITIZED/RAG_ENABLED/APP_PULL_POLICY/…).
+      - ${UPDATER_PROD_ENV_FILE:-/dev/null}:/run/updater/prod.env:ro
     restart: unless-stopped
     networks:
       - private

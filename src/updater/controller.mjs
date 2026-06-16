@@ -24,12 +24,19 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import fs from 'node:fs';
 
 // ── Config (env) ─────────────────────────────────────────────────────────────
 const PORT = Number(process.env.UPDATER_PORT || 5066);
 const TOKEN = process.env.UPDATER_TOKEN || '';
 const COMPOSE_PROJECT = process.env.UPDATER_COMPOSE_PROJECT || 'oxygenie';
 const COMPOSE_FILE = process.env.UPDATER_COMPOSE_FILE || '/work/docker-compose.tunnel.yml';
+// Production env for compose variable substitution during recreate. The mounted repo's /work/.env
+// is the DEV env; without this, the inner `compose up` interpolates ${POSTGRES_*}/${APP_NAME}/… from
+// /work/.env → wrong DATABASE_URL + wrong container_name → 28P01 → health-gate fail → rollback.
+// Point this at a mounted file holding the FULL prod env (secrets + APP_NAME/APP_NAME_SANITIZED/
+// RAG_ENABLED/… the stack was actually started with). Unset/empty → fall back to /work/.env.
+const COMPOSE_ENV_FILE = process.env.UPDATER_COMPOSE_ENV_FILE || '';
 const WORK_DIR = process.env.UPDATER_WORK_DIR || '/work';
 const APP_IMAGE = process.env.APP_IMAGE || 'ghcr.io/deeptoai-com/kin/app';
 const APP_TAG = process.env.APP_TAG || 'latest';
@@ -103,8 +110,24 @@ function runDocker(args, { timeoutMs = 120000, extraEnv = {} } = {}) {
   });
 }
 
+/**
+ * `--env-file <prod-env>` so the inner compose interpolates ${...} from the PRODUCTION env rather
+ * than the repo's /work/.env. Only applied when the file is present AND non-empty — an unset or
+ * `/dev/null` mount yields no flag, preserving the default /work/.env behaviour (dev/CI).
+ */
+function composeEnvFileArgs() {
+  try {
+    if (COMPOSE_ENV_FILE && fs.statSync(COMPOSE_ENV_FILE).size > 0) {
+      return ['--env-file', COMPOSE_ENV_FILE];
+    }
+  } catch {
+    // not mounted / unreadable → fall back to compose's default .env lookup
+  }
+  return [];
+}
+
 function compose(extraArgs, opts) {
-  return runDocker(['compose', '-p', COMPOSE_PROJECT, '-f', COMPOSE_FILE, ...extraArgs], opts);
+  return runDocker(['compose', ...composeEnvFileArgs(), '-p', COMPOSE_PROJECT, '-f', COMPOSE_FILE, ...extraArgs], opts);
 }
 
 /** Parse compose `--format json` output (NDJSON in compose v2, or a JSON array). */
