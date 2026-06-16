@@ -1,6 +1,6 @@
-# Contributing to OxyGenie
+# Contributing to Kin
 
-Thank you for your interest in contributing to OxyGenie! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Kin! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
@@ -17,26 +17,26 @@ Please be respectful and considerate of others when contributing to this project
 
 ### Running with Docker (recommended for first-time setup)
 
-The fastest way to get the app running is with Docker Compose. See the [README Quick Start → Option A: Docker Compose](README.md#option-a-docker-compose-recommended) section.
+The fastest way to get the app running is with the one-command installer, which pulls the
+prebuilt multi-arch GHCR images. See the [README Quick Start](README.md#quick-start) for the
+full set of paths (VPS installer, Cloudflare Tunnel, local development).
 
 ```bash
-cp .env.example .env
-# Edit .env: set POSTGRES_*, MINIO_*, MEILI_MASTER_KEY, BETTER_AUTH_*, ANTHROPIC_API_KEY, ZHIPU_API_KEY
-
-docker compose --env-file .env.docker --env-file .env --profile selfhost up -d --build
+git clone https://github.com/Deeptoai-com/kin.git
+cd kin
+sudo bash scripts/install-vps.sh            # interactive; generates secrets, pulls images
 ```
 
-- **App:** http://localhost:5050  
-- **Claude Chat:** http://localhost:5050/agents/c  
-
-Use [.env.docker](.env.docker) and `.env`; `.env` is loaded last and overrides `.env.docker`. To **keep existing DB data** (ex0/constructa), set **only** `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in `.env` to match your existing DB. Docker builds `DATABASE_URL` from these with host `db`; do not set `DATABASE_URL` in `.env` when using Docker.
+When it finishes, open `https://<your-domain>` and register the first account. For a Mac /
+workstation behind NAT, use the Cloudflare Tunnel path (`docker-compose.tunnel.yml`) — see
+[docs/deployment/tunnel.md](docs/deployment/tunnel.md).
 
 ### Development Setup (local, without Docker)
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/foreveryh/oxygenie.git
-   cd OxyGenie
+   git clone https://github.com/Deeptoai-com/kin.git
+   cd kin
    ```
 
 2. **Install dependencies:**
@@ -52,7 +52,7 @@ Use [.env.docker](.env.docker) and `.env`; `.env` is loaded last and overrides `
    **Minimum required environment variables** (for basic development):
    ```bash
    # Database
-   DATABASE_URL="postgresql://user:password@localhost:5432/oxygenie"
+   DATABASE_URL="postgresql://user:password@localhost:5432/kin"
    
    # Claude Agent SDK (required for main chat feature)
    ANTHROPIC_API_KEY="sk-ant-..."
@@ -100,18 +100,14 @@ Use [.env.docker](.env.docker) and `.env`; `.env` is loaded last and overrides `
 ## Project Structure
 
 ```
-oxygenie/
+kin/
 ├── src/
 │   ├── claude/              # Claude Agent SDK integration
 │   │   ├── adapters/        # WebSocket adapter for Assistant UI
 │   │   ├── skills/          # Skills management and loading
 │   │   └── mcp/             # MCP (Model Context Protocol) integration
-│   ├── mastra/              # Mastra AI SDK integration
-│   │   ├── agents/          # Mastra agents
-│   │   └── workflows/       # Mastra workflows
 │   ├── components/          # React UI components
 │   │   ├── claude-chat/     # Claude Chat UI components
-│   │   ├── ai-elements/     # Vercel AI SDK UI components
 │   │   └── ui/              # shadcn/ui components
 │   ├── routes/              # TanStack Router routes
 │   │   ├── agents/          # Agent-related pages
@@ -134,7 +130,6 @@ oxygenie/
 - **`ws-server.mjs`**: Main WebSocket server that handles authentication, session management, and process lifecycle for Claude Agent Chat.
 - **`ws-query-worker.mjs`**: Worker process that calls Claude Agent SDK's `query()` function in isolated subprocesses.
 - **`src/claude/`**: Core Claude Agent SDK integration (WebSocket adapter, skills, MCP).
-- **`src/mastra/`**: Mastra AI SDK integration for alternative chat interface.
 - **`src/routes/`**: TanStack Router file-based routes (pages and API endpoints).
 - **`src/server/function/`**: Server Functions (preferred over REST API).
 
@@ -289,7 +284,6 @@ How you tested these changes
 ## Key Areas
 
 - **Claude Agent Integration**: `src/claude/` - WebSocket adapter, skills, MCP
-- **Mastra Integration**: `src/mastra/` - Agents and workflows
 - **Server Functions**: `src/server/function/` - Preferred server-side API
 - **Database**: `src/db/` - Schemas and repositories
 - **UI Components**: `src/components/` - React components

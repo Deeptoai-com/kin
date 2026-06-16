@@ -1,36 +1,38 @@
-# Deploy OxyGenie on a Mac mini (from scratch)
+# Deploy Kin on a Mac mini (from scratch)
 
-A complete, start-to-finish guide to self-hosting the **full** OxyGenie stack — chat,
+A complete, start-to-finish guide to self-hosting the **full** Kin stack — chat,
 the Phase C **live preview**, and the **code sandbox** — on a single Apple-Silicon Mac
 (a Mac mini is ideal), exposed on your own domain through a **Cloudflare Tunnel**. No public
 IP, no open ports, no separate server.
 
-This is the **Path C / tunnel** deployment ([tunnel.md](tunnel.md)) written as a linear
-recipe for a brand-new machine, with the one thing that actually trips people up — **RAM vs.
-the image build** — settled up front.
+This is the **Path B / tunnel** deployment ([tunnel.md](tunnel.md)) written as a linear
+recipe for a brand-new machine.
 
 ---
 
-## 0. Read this first: 8 GB vs 16 GB (the build is the catch)
+## 0. Read this first: just pull the prebuilt image
 
-OxyGenie's web image bundles a server-side-rendered (SSR) app whose **build peaks above
-8 GB of RAM**. Everything else (running the stack) is light. So the only hard requirement is
-about **building the image**, not running it:
+Kin publishes **prebuilt multi-arch (amd64 + arm64) images** to GHCR
+(`ghcr.io/deeptoai-com/kin/{app,parser,updater}`). On an Apple-Silicon Mac, `docker compose
+pull` fetches the **native arm64** variant — **no local build, no OOM risk, no 8-vs-16 GB
+build dance.** This guide pulls by default; building locally is optional (see [Step 4](#step-4--get-the-image)).
 
-| Mac mini | Build the image on the mini? | What to do |
-|---|---|---|
-| **16 GB (recommended)** | ✅ Yes — native build works | Follow every step here as written. |
-| **8 GB** | ❌ No — the build OOMs | Build the image on **another** Apple-Silicon Mac (16 GB+), transfer it, and run it on the mini (see [Step 4 · 8 GB path](#step-4--build-the-image)). The mini runs the stack fine; it just can't *build* it. |
+**RAM is now only about *running* the stack**, which is light:
 
-> **Why not just pull a prebuilt image?** The published image (`ghcr.io/foreveryh/oxygenie/app`)
-> is `linux/amd64` (for x86 servers). A Mac mini is `arm64`; running amd64 under emulation is
-> slow. For a Mac you want a **native arm64** image, which means building it on *an* arm64 Mac
-> (the mini if 16 GB, or another Mac if 8 GB).
+| Mac mini | Run Kin? |
+|---|---|
+| **8 GB** | ✅ Light single-user use (idle stack + a preview fits). |
+| **16 GB (recommended)** | ✅ Comfortable, room for several concurrent previews. |
+
+> A local build (only if you want to run your own image instead of the published one) still
+> peaks above 8 GB of RAM — so build on a 16 GB+ Mac. But you no longer need to: pulling the
+> multi-arch image is the default.
 
 **Runtime footprint** (so you know it fits): macOS itself ~3–4 GB; the idle stack (Postgres,
-Redis, MinIO, Meilisearch, app, worker, preview-controller, Traefik, cloudflared) ~2–3 GB; an
-active preview build adds ~1 GB (each preview sandbox is capped at 768 MB). 16 GB is
-comfortable with room for several previews; 8 GB works for light single-user use.
+Redis, MinIO, Meilisearch, app, worker, preview-controller, Traefik, cloudflared, the `parser`
+and `updater` sidecars) ~2–3 GB; an active preview build adds ~1 GB (each preview sandbox is
+capped at 768 MB). 16 GB is comfortable with room for several previews; 8 GB works for light
+single-user use.
 
 ---
 
@@ -38,7 +40,7 @@ comfortable with room for several previews; 8 GB works for light single-user use
 
 - An **Apple-Silicon Mac mini**, macOS up to date.
 - A **domain you control, managed by Cloudflare** (DNS hosted on Cloudflare). The examples use
-  `oxygenie.cc` — substitute your own everywhere.
+  `kin.example.com` — substitute your own everywhere.
 - A free **Cloudflare account**.
 - An **LLM gateway key** — the default is ARK (Volcengine): an `ANTHROPIC_AUTH_TOKEN`
   (Bearer) + base URL. (Any Anthropic-compatible gateway works; see the env notes.)
@@ -58,8 +60,8 @@ brew install orbstack            # then launch OrbStack once so the docker engin
 xcode-select --install 2>/dev/null || true
 
 # 1c. clone
-git clone https://github.com/foreveryh/oxygenie.git
-cd oxygenie
+git clone https://github.com/Deeptoai-com/kin.git
+cd kin
 ```
 
 Confirm Docker is up: `docker version` should print both Client and Server.
@@ -71,18 +73,18 @@ Confirm Docker is up: `docker version` should print both Client and Server.
 **Never put secrets in the repo or in `.env`.** Keep them in a file in your home dir:
 
 ```bash
-mkdir -p ~/oxygenie-deploy && chmod 700 ~/oxygenie-deploy
-cat > ~/oxygenie-deploy/secrets.env <<'EOF'
+mkdir -p ~/kin-deploy && chmod 700 ~/kin-deploy
+cat > ~/kin-deploy/secrets.env <<'EOF'
 # --- identity / domain ---
-APP_HOSTNAME=oxygenie.cc
-APP_NAME=oxygenie
-APP_NAME_SANITIZED=oxygenie-mini        # must be UNIQUE across stacks on this host (volume names)
+APP_HOSTNAME=kin.example.com
+APP_NAME=kin
+APP_NAME_SANITIZED=kin-mini        # must be UNIQUE across stacks on this host (volume names)
 
 # --- datastore + auth secrets (generated below) ---
-POSTGRES_USER=oxygenie
+POSTGRES_USER=kin
 POSTGRES_PASSWORD=__FILL__
-POSTGRES_DB=oxygenie
-MINIO_ROOT_USER=oxygenie
+POSTGRES_DB=kin
+MINIO_ROOT_USER=kin
 MINIO_ROOT_PASSWORD=__FILL__
 MEILI_MASTER_KEY=__FILL__
 BETTER_AUTH_SECRET=__FILL__
@@ -96,17 +98,17 @@ ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.1
 ANTHROPIC_DEFAULT_HAIKU_MODEL=doubao-seed-2.0-lite
 CLAUDE_CODE_SUBAGENT_MODEL=glm-5.1
 EOF
-chmod 600 ~/oxygenie-deploy/secrets.env
+chmod 600 ~/kin-deploy/secrets.env
 
 # fill the four generated secrets in place:
 for k in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MEILI_MASTER_KEY BETTER_AUTH_SECRET; do
   v=$(openssl rand -hex 32)
-  sed -i '' "s|^$k=__FILL__|$k=$v|" ~/oxygenie-deploy/secrets.env
+  sed -i '' "s|^$k=__FILL__|$k=$v|" ~/kin-deploy/secrets.env
 done
 ```
 
-Then edit `~/oxygenie-deploy/secrets.env` and set your real `ANTHROPIC_AUTH_TOKEN` (and
-`APP_HOSTNAME` if not `oxygenie.cc`). Keep `APP_NAME_SANITIZED` unique — volume names derive
+Then edit `~/kin-deploy/secrets.env` and set your real `ANTHROPIC_AUTH_TOKEN` (and
+`APP_HOSTNAME` if not `kin.example.com`). Keep `APP_NAME_SANITIZED` unique — volume names derive
 from it, and a collision would reuse another stack's data.
 
 > ARK uses **`ANTHROPIC_AUTH_TOKEN`** (Bearer). Setting `ANTHROPIC_API_KEY` makes the SDK
@@ -123,7 +125,7 @@ ingress is defined in `config.yml` below so the wildcard works.
 
 ### 3b. Generate credentials + tunnel config
 ```bash
-cd ~/oxygenie/infra/tunnel        # adjust if you cloned elsewhere
+cd ~/kin/infra/tunnel        # adjust if you cloned elsewhere
 cp config.yml.example config.yml
 TOKEN='eyJ...'                    # paste your tunnel token
 TID=$(echo "$TOKEN" | base64 -d \
@@ -131,7 +133,7 @@ TID=$(echo "$TOKEN" | base64 -d \
 sed -i '' "s/REPLACE_WITH_TUNNEL_ID/$TID/" config.yml
 echo "Tunnel ID: $TID"            # you need this for DNS next
 ```
-If your domain isn't `oxygenie.cc`, also edit the two `hostname:` lines in `config.yml`.
+If your domain isn't `kin.example.com`, also edit the two `hostname:` lines in `config.yml`.
 (`config.yml` and `credentials.json` are **gitignored** — per-deploy / secret.)
 
 ### 3c. DNS — two **proxied** CNAMEs
@@ -139,46 +141,43 @@ In Cloudflare DNS for your zone, add (replace `<TID>`):
 
 | Type | Name | Target | Proxy |
 |---|---|---|---|
-| CNAME | `oxygenie.cc` (`@`) | `<TID>.cfargotunnel.com` | **Proxied** (orange) |
+| CNAME | `kin.example.com` (`@`) | `<TID>.cfargotunnel.com` | **Proxied** (orange) |
 | CNAME | `*` | `<TID>.cfargotunnel.com` | **Proxied** (orange) |
 
-The apex serves the app; `*` serves every `<id>.oxygenie.cc` preview. Cloudflare's free
+The apex serves the app; `*` serves every `<id>.kin.example.com` preview. Cloudflare's free
 Universal SSL covers the apex + one wildcard level (so previews are single-level by design).
 
 ---
 
-## Step 4 · Build the image
+## Step 4 · Get the image
 
-### 16 GB Mac mini — build natively (on the mini)
+**Default — pull the prebuilt multi-arch image (recommended).** Nothing to do here:
+`docker-compose.tunnel.yml` defaults to `ghcr.io/deeptoai-com/kin/app` and Step 5 pulls the
+native **arm64** variant automatically. Skip to Step 5.
+
+**Optional — build locally** (only if you want to run your own image instead of the published
+one). The build peaks above 8 GB of RAM, so do it on a 16 GB+ Mac:
 ```bash
-cd ~/oxygenie
-docker build -t oxygenie:local .
+cd ~/kin
+docker build -t kin:local .                                # ~4 GB native arm64
 ```
-The result is a ~4 GB native arm64 image tagged `oxygenie:local`. (Playwright + LibreOffice
-were removed from the image in 2026-06, so it's lean by default — no build flags needed.)
-
-### 8 GB Mac mini — build elsewhere, then load
-On **another Apple-Silicon Mac with 16 GB+** (same `docker build` as above), then:
-```bash
-# on the build Mac:
-docker save oxygenie:local | gzip > oxygenie-local.tar.gz       # ~1.5–2 GB
-scp oxygenie-local.tar.gz you@mac-mini.local:~/                 # or AirDrop / USB
-
-# on the 8 GB mini:
-gunzip -c ~/oxygenie-local.tar.gz | docker load                # registers oxygenie:local
-```
-(Alternatively push to a private registry from the build Mac and `docker pull` on the mini.)
+Then in Step 5 set `APP_IMAGE=kin APP_TAG=local APP_PULL_POLICY=never` and overlay
+`-f docker-compose.build.yml`. On an 8 GB mini you can build on **another** 16 GB+ Mac and
+transfer the image (`docker save kin:local | gzip > kin-local.tar.gz` → copy → `gunzip -c
+kin-local.tar.gz | docker load`), but pulling the multi-arch image avoids all of this.
 
 ---
 
 ## Step 5 · Bring up the stack
 
 ```bash
-cd ~/oxygenie
-set -a; . ~/oxygenie-deploy/secrets.env; set +a
-export APP_IMAGE=oxygenie APP_TAG=local
-docker compose -f docker-compose.tunnel.yml -p oxygenie up -d
+cd ~/kin
+set -a; . ~/kin-deploy/secrets.env; set +a
+docker compose -f docker-compose.tunnel.yml -p kin up -d    # pulls ghcr.io/deeptoai-com/kin/* (arm64)
 ```
+
+> Running your own local build instead? Add the overlay + image env:
+> `APP_IMAGE=kin APP_TAG=local APP_PULL_POLICY=never docker compose -f docker-compose.tunnel.yml -f docker-compose.build.yml -p kin up -d`.
 
 This starts everything: Postgres, Redis, MinIO, Meilisearch, the migrator (runs once), the
 app, the worker, the preview-controller, the bundled Traefik (+ the macOS `dockerproxy` shim),
@@ -192,10 +191,10 @@ reboot once the Docker engine is running.
 `fetch()` from Node ignores a manual `Host` header, so test routing with `wget --header`:
 
 ```bash
-set -a; . ~/oxygenie-deploy/secrets.env; set +a
+set -a; . ~/kin-deploy/secrets.env; set +a
 
 # everything up + datastores healthy
-docker compose -f docker-compose.tunnel.yml -p oxygenie ps
+docker compose -f docker-compose.tunnel.yml -p kin ps
 
 # cloudflared connected to the edge (expect ~4 "Registered tunnel connection")
 docker logs ${APP_NAME_SANITIZED}-cloudflared 2>&1 | grep "Registered tunnel connection"
@@ -206,10 +205,10 @@ docker exec ${APP_NAME_SANITIZED}-dockerproxy sh -c \
   "wget -qS -O /dev/null --header='Host: $APP_HOSTNAME' http://$TIP/health 2>&1 | grep HTTP/"   # → 200
 
 # code sandbox viable (user+net namespace must succeed)
-docker exec oxygenie-app sh -c 'unshare -Urn echo userns-ok'   # → userns-ok
+docker exec kin-app sh -c 'unshare -Urn echo userns-ok'   # → userns-ok
 ```
 
-Then open **`https://oxygenie.cc`** in a browser (DNS from Step 3 must be live). You should
+Then open **`https://kin.example.com`** in a browser (DNS from Step 3 must be live). You should
 get the app over HTTPS (Cloudflare terminates TLS at the edge).
 
 ---
@@ -221,7 +220,7 @@ makes installs reuse downloads (cold ≈ 15 s → warm ≈ 4 s for a React+Vite 
 common frameworks once so even the first preview is fast:
 
 ```bash
-cd ~/oxygenie
+cd ~/kin
 bash infra/preview/warm-cache.sh
 # extend later: PREVIEW_WARM_DEPS="svelte @sveltejs/vite-plugin-svelte" bash infra/preview/warm-cache.sh
 ```
@@ -230,12 +229,12 @@ bash infra/preview/warm-cache.sh
 
 ## Step 8 · First sign-in
 
-Open `https://oxygenie.cc`, create your account. OxyGenie is a **single-org, multi-user**
+Open `https://kin.example.com`, create your account. Kin is a **single-org, multi-user**
 workspace for a trusted team — the first user is you; invite teammates as needed. You may see
 a "verify your email" banner; email verification is optional for core use on a self-host.
 
 Try it end to end: ask for a small multi-file web app → click **运行预览 / Run preview** → it
-builds in a sandbox and loads at `https://<id>.oxygenie.cc`. Run a snippet of Python to
+builds in a sandbox and loads at `https://<id>.kin.example.com`. Run a snippet of Python to
 exercise the code sandbox.
 
 ---
@@ -256,22 +255,29 @@ power failure".)
   so OrbStack starts after a reboot; `restart: unless-stopped` then brings the stack back.
 
 ### Update to a new version
+**Easiest: in-app online auto-update.** When a newer image is published, an **admin** sees an
+**update** entry in the sidebar; one click runs pull → migrate → recreate → health-gate (auto-
+rollback on failure), executed by the `updater` sidecar.
+
+Or update manually by pulling the new image:
 ```bash
-cd ~/oxygenie && git pull
-docker build -t oxygenie:local .   # (8 GB: rebuild off-box + load)
-set -a; . ~/oxygenie-deploy/secrets.env; set +a; export APP_IMAGE=oxygenie APP_TAG=local
-docker compose -f docker-compose.tunnel.yml -p oxygenie up -d   # recreates only what changed
+cd ~/kin && git pull
+set -a; . ~/kin-deploy/secrets.env; set +a
+docker compose -f docker-compose.tunnel.yml -p kin pull      # fetch the latest GHCR image
+docker compose -f docker-compose.tunnel.yml -p kin up -d     # recreates only what changed
 ```
+(Running your own local build? `docker build -t kin:local .` first, with the
+`APP_IMAGE=kin APP_TAG=local APP_PULL_POLICY=never` + `-f docker-compose.build.yml` overlay.)
 
 ### Back up your data (do this regularly)
 User workspaces, the database, and object storage live in named volumes. The important ones:
 `${APP_NAME_SANITIZED}-data` (Postgres), `${APP_NAME_SANITIZED}-claude-sessions` (user
 workspaces), `${APP_NAME_SANITIZED}-minio-data`, `${APP_NAME_SANITIZED}-meili-data`.
 ```bash
-set -a; . ~/oxygenie-deploy/secrets.env; set +a
-mkdir -p ~/oxygenie-backups
+set -a; . ~/kin-deploy/secrets.env; set +a
+mkdir -p ~/kin-backups
 for v in data claude-sessions minio-data meili-data; do
-  docker run --rm -v ${APP_NAME_SANITIZED}-$v:/d -v ~/oxygenie-backups:/b busybox \
+  docker run --rm -v ${APP_NAME_SANITIZED}-$v:/d -v ~/kin-backups:/b busybox \
     tar czf /b/$v.tgz -C /d .
 done
 ```
@@ -279,9 +285,9 @@ done
 
 ### Logs / stop / start
 ```bash
-docker compose -f docker-compose.tunnel.yml -p oxygenie logs -f app          # tail app logs
-docker compose -f docker-compose.tunnel.yml -p oxygenie stop                 # stop (keeps data)
-docker compose -f docker-compose.tunnel.yml -p oxygenie up -d                # start again
+docker compose -f docker-compose.tunnel.yml -p kin logs -f app          # tail app logs
+docker compose -f docker-compose.tunnel.yml -p kin stop                 # stop (keeps data)
+docker compose -f docker-compose.tunnel.yml -p kin up -d                # start again
 ```
 
 ---
@@ -294,9 +300,9 @@ The most common first-deploy snags:
 
 | Symptom | Fix |
 |---|---|
-| Build killed / "out of memory" on an 8 GB mini | Build off-box (Step 4 · 8 GB path) — the build needs >8 GB. |
+| Build killed / "out of memory" on an 8 GB mini | You don't need to build — pull the prebuilt multi-arch image (Step 4 default). A local build needs >8 GB; do it on a 16 GB+ Mac. |
 | Site unreachable, but `docker ps` is healthy | The mini slept or lost network. See "Keep the mini awake". |
-| `https://oxygenie.cc` shows Cloudflare error 1033/530 | Tunnel not connected — check `cloudflared` logs (Step 6) and that DNS CNAMEs point to `<TID>.cfargotunnel.com`, **proxied**. |
+| `https://kin.example.com` shows Cloudflare error 1033/530 | Tunnel not connected — check `cloudflared` logs (Step 6) and that DNS CNAMEs point to `<TID>.cfargotunnel.com`, **proxied**. |
 | Preview opens but 404s | Ensure you're on this branch's code (Traefik v3 `HostRegexp` fix). |
 | Chat says auth/model error | ARK key/model: `ANTHROPIC_AUTH_TOKEN` set, `ANTHROPIC_API_KEY` **unset**. |
 
@@ -304,12 +310,13 @@ The most common first-deploy snags:
 
 ## What you get vs. the other paths
 
-| | This guide (Mac mini + tunnel) | [Docker Compose VPS](docker-compose.md) | [Dokploy](dokploy.md) |
-|---|---|---|---|
-| Public IP / open ports | **None needed** (outbound tunnel) | Needed | Needed |
-| TLS | Cloudflare edge (automatic) | Let's Encrypt / your certs | Dokploy / CF Origin CA |
-| Always-on | Only while the mini is on | 24/7 | 24/7 |
-| Best for | A team's own box / full-feature self-host | A real server | Managed PaaS w/ UI |
+| | This guide (Mac mini + tunnel) | [VPS / Docker Compose](docker-compose.md) |
+|---|---|---|
+| Public IP / open ports | **None needed** (outbound tunnel) | Needed |
+| TLS | Cloudflare edge (automatic) | Let's Encrypt / your certs |
+| Install | `docker compose up` (this guide) | one-command [`install-vps.sh`](../../scripts/install-vps.sh) |
+| Always-on | Only while the mini is on | 24/7 |
+| Best for | A team's own box / full-feature self-host | A real server |
 
-All paths run the **same app and images**; they differ only in who runs the edge (proxy / TLS
+Both paths run the **same app and images**; they differ only in who runs the edge (proxy / TLS
 / DNS).

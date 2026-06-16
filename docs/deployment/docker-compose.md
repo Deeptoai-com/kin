@@ -1,11 +1,16 @@
 # Path A — Docker Compose on a single Linux VPS
 
-Self-host the **full** OxyGenie stack — chat, the Phase C **live preview**, and the **code
+Self-host the **full** Kin stack — chat, the Phase C **live preview**, and the **code
 sandbox** — on one Linux server with a public IP, using a **bundled Traefik** that terminates
 TLS. This is the recommended baseline for anyone running their own box. **No Cloudflare Tunnel,
-no Dokploy, no Swarm.** (For a workstation behind NAT, use [Path C / tunnel](tunnel.md); for a
-managed UI, [Path B / Dokploy](dokploy.md).)
+no Dokploy, no Swarm.** (For a Mac / workstation behind NAT, use [Path B / tunnel](tunnel.md).)
 
+> **Easiest path: the one-command installer.** `scripts/install-vps.sh` does everything below
+> for you — installs Docker, generates secrets, pulls the prebuilt GHCR images, and brings up
+> `docker-compose.prod.yml` behind Traefik + Let's Encrypt. This page documents the same stack
+> manually, for when you want to understand or customize it.
+
+**Installer:** [`scripts/install-vps.sh`](../../scripts/install-vps.sh) ·
 **Compose file:** [`docker-compose.prod.yml`](../../docker-compose.prod.yml)
 
 ```
@@ -23,8 +28,8 @@ Internet ──TLS──▶ Traefik (:443, bundled)  ──reads container label
 
 ## Critical invariants (get any wrong → it won't serve)
 
-1. **Secrets live OUTSIDE the repo** in `~/oxygenie-deploy/secrets.env` (chmod 600). Never edit
-   `.env` / commit secrets.
+1. **Secrets live OUTSIDE the repo** in `~/kin-deploy/secrets.env` (chmod 600). Never edit
+   `.env` / commit secrets. (The `install-vps.sh` path instead writes a chmod-600 `.env`.)
 2. **`APP_NAME_SANITIZED` must be unique** on the host — volume names (`${APP_NAME_SANITIZED}-data`
    etc.) are global; a collision reuses another stack's data (→ Postgres `28P01`).
 3. **`DATABASE_URL` is built from `POSTGRES_*` inside the compose** — don't pass a separate
@@ -54,7 +59,7 @@ The compose **defaults to option A**. Both are wired; see the comments in the `t
 
 ### 1. Server + DNS
 - A Linux VPS with **Docker + the Compose plugin**, ports **80 + 443** open.
-- DNS for your domain (examples use `oxygenie.cc`):
+- DNS for your domain (examples use `kin.example.com`):
   - `A  @  → <vps-ip>`
   - `A  *  → <vps-ip>`  (wildcard, for previews)
   - For TLS option A you also need the domain in **Cloudflare** (for the DNS-01 token); for
@@ -62,18 +67,18 @@ The compose **defaults to option A**. Both are wired; see the comments in the `t
 
 ### 2. Get the code + secrets
 ```bash
-git clone https://github.com/foreveryh/oxygenie.git && cd oxygenie
-mkdir -p ~/oxygenie-deploy && chmod 700 ~/oxygenie-deploy
-cat > ~/oxygenie-deploy/secrets.env <<'EOF'
-APP_HOSTNAME=oxygenie.cc
-APP_NAME=oxygenie
-APP_NAME_SANITIZED=oxygenie            # unique per host (volume names)
-POSTGRES_USER=oxygenie
+git clone https://github.com/Deeptoai-com/kin.git && cd kin
+mkdir -p ~/kin-deploy && chmod 700 ~/kin-deploy
+cat > ~/kin-deploy/secrets.env <<'EOF'
+APP_HOSTNAME=kin.example.com
+APP_NAME=kin
+APP_NAME_SANITIZED=kin            # unique per host (volume names)
+POSTGRES_USER=kin
 POSTGRES_PASSWORD=__FILL__
-POSTGRES_DB=oxygenie
-MINIO_ROOT_USER=oxygenie
+POSTGRES_DB=kin
+MINIO_ROOT_USER=kin
 MINIO_ROOT_PASSWORD=__FILL__
-MINIO_BUCKET=oxygenie
+MINIO_BUCKET=kin-files
 MEILI_MASTER_KEY=__FILL__
 BETTER_AUTH_SECRET=__FILL__
 # TLS option A (Let's Encrypt DNS-01):
@@ -88,20 +93,21 @@ ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.1
 ANTHROPIC_DEFAULT_HAIKU_MODEL=doubao-seed-2.0-lite
 CLAUDE_CODE_SUBAGENT_MODEL=glm-5.1
 EOF
-chmod 600 ~/oxygenie-deploy/secrets.env
+chmod 600 ~/kin-deploy/secrets.env
 for k in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MEILI_MASTER_KEY BETTER_AUTH_SECRET; do
-  sed -i "s|^$k=__FILL__|$k=$(openssl rand -hex 32)|" ~/oxygenie-deploy/secrets.env
+  sed -i "s|^$k=__FILL__|$k=$(openssl rand -hex 32)|" ~/kin-deploy/secrets.env
 done
 # then edit secrets.env: real ANTHROPIC_AUTH_TOKEN, ACME_EMAIL, CF_DNS_API_TOKEN, APP_HOSTNAME
 ```
 
 ### 3. Image — pull (default) or build on the VPS
-Default pulls `ghcr.io/foreveryh/oxygenie/app:latest`. To build on the VPS instead (needs ≥16 GB
-RAM): `docker build -t oxygenie:local .` then set `APP_IMAGE=oxygenie APP_TAG=local APP_PULL_POLICY=never`.
+Default pulls `ghcr.io/deeptoai-com/kin/app:latest` (prebuilt multi-arch). To build on the VPS
+instead (needs ≥16 GB RAM): `docker build -t kin:local .` then set
+`APP_IMAGE=kin APP_TAG=local APP_PULL_POLICY=never`.
 
 ### 4. Bring it up
 ```bash
-set -a; . ~/oxygenie-deploy/secrets.env; set +a
+set -a; . ~/kin-deploy/secrets.env; set +a
 docker compose -f docker-compose.prod.yml up -d
 ```
 Traefik obtains the wildcard cert via DNS-01 on first boot — watch:
@@ -109,7 +115,7 @@ Traefik obtains the wildcard cert via DNS-01 on first boot — watch:
 
 ### 5. Verify
 ```bash
-set -a; . ~/oxygenie-deploy/secrets.env; set +a
+set -a; . ~/kin-deploy/secrets.env; set +a
 docker compose -f docker-compose.prod.yml ps                            # all healthy
 curl -sS -o /dev/null -w '%{http_code}\n' https://$APP_HOSTNAME/health   # → 200
 docker exec ${APP_NAME}-app sh -c 'unshare -Urn echo userns-ok'         # → userns-ok (sandbox)

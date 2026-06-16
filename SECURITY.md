@@ -2,13 +2,13 @@
 
 ## Reporting a Vulnerability
 
-We take security seriously. If you discover a security vulnerability in OxyGenie, please report it responsibly.
+We take security seriously. If you discover a security vulnerability in Kin, please report it responsibly.
 
 ### How to Report
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please use [GitHub Security Advisories](https://github.com/foreveryh/oxygenie/security/advisories/new) to report vulnerabilities.
+Instead, please use [GitHub Security Advisories](https://github.com/Deeptoai-com/kin/security/advisories/new) to report vulnerabilities.
 
 Include the following information:
 - Description of the vulnerability
@@ -25,8 +25,8 @@ Include the following information:
 ### Scope
 
 This policy applies to:
-- The OxyGenie application
-- Official OxyGenie repositories
+- The Kin application
+- Official Kin repositories
 
 ### Out of Scope
 
@@ -45,7 +45,7 @@ We only provide security updates for the latest version. Please keep your instal
 
 ## Security Best Practices
 
-When using OxyGenie:
+When using Kin:
 
 1. **Keep credentials secure**: Never commit `.env` files or credentials
 2. **Use environment variables**: Store secrets in environment variables

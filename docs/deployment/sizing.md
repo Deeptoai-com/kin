@@ -21,13 +21,13 @@
 | 每个活跃 Agent 会话 | ~0.3–0.5 GB | 每会话起 `ws-query-worker` 子进程 + SDK CLI + bubblewrap 代码沙盒 |
 | 每个预览沙盒 | ≤768 MB | 硬上限 `PREVIEW_MEMORY=768m`、1 CPU、256 PID（`docker-compose.tunnel.yml`） |
 
-> ⚠️ **核心服务目前没有内存上限**（`mem_limit` 未设；README「Scale & limits」：尚无并发上限，重负载下有 OOM 风险）。所以"最小"配置成立的前提是**轻并发**。
+> ⚠️ **核心服务目前没有内存上限**（`mem_limit` 未设）。并发本身受**全局 worker 信号量 + 按用户上限**（`PER_USER_MAX_WORKERS`，默认 3）约束、超额排队；但单个 worker 的内存没有硬限，重负载下仍有 OOM 风险。所以"最小"配置成立的前提是**轻并发**。
 
 ---
 
 ## 3. 配置档位
 
-| | 最小（单人 / 2–3 轻度用户） | 推荐（小团队 + 若干预览） | 目标（~50 并发，README 在建） |
+| | 最小（单人 / 2–3 轻度用户） | 推荐（小团队 + 若干预览） | 目标（~50 并发，需调高并发上限） |
 |---|---|---|---|
 | **RAM** | **8 GB** | **16 GB** | 16 GB |
 | **vCPU** | 2（4 更稳） | 4 | 8 |
@@ -60,7 +60,7 @@
 
 ## 5. 三个实操注意
 
-1. **加 swap**：因目前无并发上限，小内存机给 4 GB swap（`scripts/add-swap.sh` 已有）能扛爆发、避免直接 OOM —— 8 GB 机尤其建议。
+1. **加 swap**：单个 worker 无内存硬限，小内存机给 4 GB swap（`scripts/add-swap.sh` 已有）能扛爆发、避免直接 OOM —— 8 GB 机尤其建议。
 2. **磁盘 SSD/NVMe**：别用机械盘 / 最低档块存储。
 3. **arm64 优先**：Hetzner CAX / EC2 Graviton / GCE Axion 都是 arm64，复用同一镜像、更便宜，VPS 和 Mac 一鱼两吃。
 
