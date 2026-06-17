@@ -373,6 +373,10 @@ http.createServer((req, res) => {
 }
 
 async function installDeps(body) {
+  // No-build static sites have no dependencies to install — serve the files as-is.
+  if (body.manifest?.noBuild) {
+    return { exitCode: 0, output: '', skipped: 'install' };
+  }
   const workdir = appWorkdir(body.workspacePath, body.manifest);
   const command = [
     'corepack enable >/dev/null 2>&1 || true',
@@ -388,14 +392,23 @@ async function installDeps(body) {
 
 async function startPreview(body) {
   const workdir = appWorkdir(body.workspacePath, body.manifest);
-  const build = await execInContainer({
-    previewId: body.previewId,
-    command: body.manifest.buildCommand,
-    workdir,
-    timeoutMs: Number(process.env.PREVIEW_BUILD_TIMEOUT_MS || 5 * 60 * 1000),
-  });
 
-  const outputDir = body.manifest.outputDir || 'dist';
+  // No-build static: skip the build step entirely; the served files ARE the source.
+  const build = body.manifest?.noBuild
+    ? { exitCode: 0, output: '', skipped: 'build' }
+    : await execInContainer({
+        previewId: body.previewId,
+        command: body.manifest.buildCommand,
+        workdir,
+        timeoutMs: Number(process.env.PREVIEW_BUILD_TIMEOUT_MS || 5 * 60 * 1000),
+      });
+
+  // Serve dir. Build apps serve their output dir (default `dist`). No-build static
+  // serves the manifest dir itself — outputDir may be '' (the workdir root, where
+  // index.html lives), so DON'T fall back to 'dist' in that case.
+  const outputDir = body.manifest?.noBuild
+    ? (body.manifest.outputDir || '')
+    : (body.manifest.outputDir || 'dist');
   const previewRoot = path.posix.join(workdir, outputDir);
   const logPath = path.posix.join(workdir, '.oxygenie/preview.log');
   const pidPath = path.posix.join(workdir, '.oxygenie/preview.pid');

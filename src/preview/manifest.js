@@ -177,6 +177,33 @@ export async function normalizeManifest(workspacePath, manifest) {
     throw new Error('Preview manifest must be an object');
   }
 
+  // ── Strategy ②: no-build static ────────────────────────────────────────────
+  // Serve a directory AS-IS (plain HTML/JS/CSS — no package.json, install, or build
+  // required). This is the second serve strategy alongside the build→dist SPA path:
+  // a pure frontend (index.html + relative assets, e.g. a vendored Three.js app)
+  // renders by serving its folder directly. Detected automatically (see
+  // detectManifest), or set `"noBuild": true` in .oxygenie/app.json. No command runs
+  // — only the FS-fenced static server, pointed at the served directory.
+  if (manifest.noBuild === true) {
+    const noBuildRoot = normalizeRelativePath(manifest.rootDir ?? '', '');
+    const serveDir = normalizeRelativePath(manifest.outputDir ?? noBuildRoot, noBuildRoot);
+    return {
+      rootDir: noBuildRoot,
+      title: readString(manifest.title ?? manifest.name, 'Static Preview'),
+      name: readString(manifest.name ?? manifest.title, 'Static Preview'),
+      type: 'static',
+      framework: 'static',
+      noBuild: true,
+      installCommand: '',
+      buildCommand: '',
+      devCommand: '',
+      // '' = serve the workspace/rootDir root itself (where index.html lives).
+      outputDir: serveDir,
+      port: readPort(manifest.port, DEFAULT_STATIC_PORT),
+      entryFiles: ['index.html'],
+    };
+  }
+
   const rootDir = normalizeRelativePath(manifest.rootDir ?? '', '');
   const appDir = path.join(workspacePath, rootDir);
   const pkg = await readJson(path.join(appDir, 'package.json'));
@@ -215,6 +242,7 @@ export async function normalizeManifest(workspacePath, manifest) {
     name: readString(manifest.name, readString(manifest.title ?? pkg.name, 'App Preview')),
     type,
     framework,
+    noBuild: false,
     installCommand,
     buildCommand,
     devCommand,
@@ -226,13 +254,31 @@ export async function normalizeManifest(workspacePath, manifest) {
 
 async function detectManifest(workspacePath) {
   const rootDir = await findPackageJson(workspacePath);
+
+  // No package.json at all — a plain static site (index.html at root) is still
+  // previewable: serve it as-is, no build. (Only error if there's nothing to serve.)
   if (rootDir === null) {
-    throw new Error('No package.json found in the session workspace');
+    if (await fileExists(path.join(workspacePath, 'index.html'))) {
+      return normalizeManifest(workspacePath, { noBuild: true, rootDir: '' });
+    }
+    throw new Error('No package.json or index.html found in the session workspace');
   }
 
   const appDir = path.join(workspacePath, rootDir);
   const pkg = await readJson(path.join(appDir, 'package.json'));
   const framework = detectFramework(pkg);
+
+  // No bundler (vite/cra/next/react) but a real index.html → no-build static: serve
+  // the folder as-is instead of forcing an install→build→dist pipeline this kind of
+  // pure-frontend project doesn't have. Bundler projects keep the build path below.
+  if (framework === 'static' && (await fileExists(path.join(appDir, 'index.html')))) {
+    return normalizeManifest(workspacePath, {
+      noBuild: true,
+      rootDir,
+      title: readString(pkg.name, 'Static Preview'),
+    });
+  }
+
   const defaults = await detectPackageManager(appDir);
   const scripts = isPlainObject(pkg.scripts) ? pkg.scripts : {};
 
