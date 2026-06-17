@@ -61,11 +61,47 @@ function isEnabled() {
   return process.platform === 'linux';
 }
 
+// Curated default egress allowlist (the "generous allowlist" / T1+ model). srt's
+// network filter is domain-allowlist only (no CIDR), so listing just these git /
+// package hosts INHERENTLY blocks internal services + cloud metadata (they're not
+// on the list) while letting `git clone` / `npm i` / `pip install` work — keeping
+// the per-session sandbox (and its continuity) unchanged. Tune via env / Admin.
+const DEFAULT_EXEC_ALLOWED_DOMAINS = [
+  // Git hosting
+  'github.com', 'codeload.github.com', 'objects.githubusercontent.com',
+  'raw.githubusercontent.com', 'gist.githubusercontent.com', 'api.github.com',
+  'gitlab.com', 'bitbucket.org',
+  // npm / yarn
+  'registry.npmjs.org', 'registry.yarnpkg.com',
+  // Python
+  'pypi.org', 'files.pythonhosted.org',
+  // Common package CDNs
+  'cdn.jsdelivr.net', 'unpkg.com', 'esm.sh', 'deno.land', 'jsr.io',
+];
+
+/**
+ * Effective egress allowlist for the sandbox, resolved from EXEC_SANDBOX_ALLOWED_DOMAINS:
+ *  - unset            → DEFAULT_EXEC_ALLOWED_DOMAINS (generous default, the chosen "A" model)
+ *  - "off" / "none"   → [] (legacy deny-all, for the paranoid)
+ *  - comma-list       → exactly those domains (Admin/operator override)
+ * Admin-backed config simply sets this env when the worker is spawned, so this
+ * function is the single source-of-truth and stays storage-agnostic.
+ */
+function resolveAllowedDomains() {
+  const raw = process.env.EXEC_SANDBOX_ALLOWED_DOMAINS;
+  if (raw == null) return DEFAULT_EXEC_ALLOWED_DOMAINS;
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed.toLowerCase() === 'off' || trimmed.toLowerCase() === 'none') return [];
+  return [...new Set(trimmed.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean))];
+}
+
 function buildConfig(workspace) {
   const allowRead = [workspace, '/usr', '/lib', '/lib64', '/bin', '/sbin', '/etc', '/proc', '/dev', '/tmp'];
   if (srtPkgDir) allowRead.push(srtPkgDir); // srt must read its own apply-seccomp helper
   return {
-    network: { allowedDomains: [], deniedDomains: [] }, // deny all network
+    // Domain allowlist (see resolveAllowedDomains). Empty = deny-all. Internal
+    // services / cloud metadata are never on the list → blocked for free.
+    network: { allowedDomains: resolveAllowedDomains(), deniedDomains: [] },
     filesystem: {
       denyRead: ['/'],
       allowRead,

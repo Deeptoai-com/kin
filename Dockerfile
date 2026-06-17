@@ -64,6 +64,7 @@ FROM node:24-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bash \
+    git \
     bubblewrap \
     socat \
     ripgrep \
