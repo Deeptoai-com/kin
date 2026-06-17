@@ -9,7 +9,6 @@ import {
 } from './settings-nav';
 import RiBankCard2Line from '~icons/ri/bank-card-2-line';
 import RiBillLine from '~icons/ri/bill-line';
-import RiBuilding4Line from '~icons/ri/building-4-line';
 import RiListSettingsLine from '~icons/ri/list-settings-line';
 import RiUserSettingsLine from '~icons/ri/user-settings-line';
 
@@ -20,7 +19,6 @@ interface SettingsNavigationProps {
 // Icon mapping for sections
 const iconMap = {
   account: RiUserSettingsLine,
-  organization: RiBuilding4Line,
   preferences: RiListSettingsLine,
   plans: RiBankCard2Line,
   billing: RiBillLine,
@@ -36,12 +34,6 @@ export function SettingsNavigation({ activeSection }: SettingsNavigationProps) {
       label: content.sections.account.title,
       description: content.sections.account.description,
       icon: iconMap.account,
-    },
-    {
-      section: 'organization',
-      label: content.sections.organization.title,
-      description: content.sections.organization.description,
-      icon: iconMap.organization,
     },
     {
       section: 'preferences',

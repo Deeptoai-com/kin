@@ -22,7 +22,6 @@ export function SettingsContent({ activeSection, children }: SettingsContentProp
   const getSectionLabel = (section: SettingsSection): string => {
     const labelMap: Record<SettingsSection, string> = {
       account: content.sections.account.title,
-      organization: content.sections.organization.title,
       preferences: content.sections.preferences.title,
       plans: content.sections.plans.title,
       billing: content.sections.billing.title,

@@ -6,7 +6,6 @@ import RiMore from '~icons/ri/more-line';
 import RiListSettingsLine from '~icons/ri/list-settings-line';
 import RiBankCard2Line from '~icons/ri/bank-card-2-line';
 import RiBillLine from '~icons/ri/bill-line';
-import RiBuilding4Line from '~icons/ri/building-4-line';
 import RiLogoutBox from '~icons/ri/logout-box-line';
 import RiUser from '~icons/ri/user-line';
 import { useRouter, useRouterState } from '@tanstack/react-router';
@@ -135,10 +134,6 @@ export function NavUser({
                 <DropdownMenuItem onSelect={() => openSettingsDialog('account')}>
                   <RiUser />
                   {content.userMenu.account}
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => openSettingsDialog('organization')}>
-                  <RiBuilding4Line />
-                  {content.userMenu.organization}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openSettingsDialog('preferences')}>
                   <RiListSettingsLine />
