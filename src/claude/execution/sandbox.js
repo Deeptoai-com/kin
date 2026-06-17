@@ -91,7 +91,12 @@ function resolveAllowedDomains() {
   const raw = process.env.EXEC_SANDBOX_ALLOWED_DOMAINS;
   if (raw == null) return DEFAULT_EXEC_ALLOWED_DOMAINS;
   const trimmed = raw.trim();
-  if (trimmed === '' || trimmed.toLowerCase() === 'off' || trimmed.toLowerCase() === 'none') return [];
+  // Empty string is treated as UNSET → curated default. This matters because docker
+  // compose forwards optional vars as `${VAR:-}`, which sets the var to "" when the
+  // operator hasn't defined it — a blank env must NEVER silently kill all egress.
+  // Deny-all requires an explicit "off"/"none" sentinel (an intentional choice).
+  if (trimmed === '') return DEFAULT_EXEC_ALLOWED_DOMAINS;
+  if (trimmed.toLowerCase() === 'off' || trimmed.toLowerCase() === 'none') return [];
   return [...new Set(trimmed.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean))];
 }
 
