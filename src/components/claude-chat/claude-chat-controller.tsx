@@ -23,7 +23,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ThumbsDown, ThumbsUp, Layers, Paperclip, PanelLeftClose, PanelLeftOpen, Plus, MessageSquare, Loader2 } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, Layers, Paperclip, Plus, MessageSquare, Loader2 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, memo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { AssistantTurnCard } from '~/components/claude-chat/assistant-turn-card';
@@ -39,7 +39,7 @@ import { type PermissionInfo } from '~/components/claude-chat/permission-badge';
 import { ChatComposerWithRef, type ChatComposerRef } from '~/components/claude-chat/chat-composer';
 import { A2ComposerPanel } from '~/components/claude-chat/a2composer-panel';
 import { ApprovalPrompt } from '~/components/claude-chat/approval-prompt';
-import { WorkbenchPanel } from '~/components/claude-chat/workbench-panel';
+import { WorkbenchDock } from '~/components/claude-chat/workbench-panel';
 import { SkillChip } from '~/components/claude-chat/skill-chip';
 import { cn, toLocalizedString } from '~/lib/utils';
 import { parseSkillMarker } from '~/lib/skills/skill-marker';
@@ -655,31 +655,6 @@ export function ClaudeChatController({
   if (isDev) {
     const chatPanel = (
       <>
-        {/* Floating action buttons - only show when no artifact */}
-        {!activeArtifactId && !sessionListExpanded && (
-          <div className="absolute top-4 left-4 z-10 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setSessionListExpanded(!sessionListExpanded)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-              aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-              title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-            >
-              {sessionListExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-            </button>
-            {!sessionListExpanded && (
-              <button
-                type="button"
-                onClick={handleNewSession}
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                aria-label={toLocalizedString(content.header.newChat)}
-                title={toLocalizedString(content.header.newChat)}
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        )}
         <ClaudeChatSurface
           key={chatKey}
           permissionInfo={permissionInfo}
@@ -730,26 +705,19 @@ export function ClaudeChatController({
           >
             <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
           </div>
-          <div
-            className={cn(
-              'h-full shrink-0 overflow-hidden border-l',
-              !activeArtifactId && 'hidden lg:block'
-            )}
-            style={
-              activeArtifactId
-                ? { flexBasis: 0, flexGrow: 1 - artifactSplitRatio, maxWidth: 'none' }
-                : { width: 360 }
-            }
-          >
-            {activeArtifactId ? (
+          {activeArtifactId ? (
+            <div
+              className="h-full shrink-0 overflow-hidden border-l"
+              style={{ flexBasis: 0, flexGrow: 1 - artifactSplitRatio, maxWidth: 'none' }}
+            >
               <ArtifactsPanel
                 artifactId={activeArtifactId}
                 onClose={() => setActiveArtifact(null)}
               />
-            ) : (
-              <WorkbenchPanel currentSessionId={currentSessionId} />
-            )}
-          </div>
+            </div>
+          ) : (
+            <WorkbenchDock currentSessionId={currentSessionId} />
+          )}
         </div>
 
       </div>
@@ -899,31 +867,6 @@ const MainContent: FC<{
   const content = useIntlayer('claude-chat');
   const chatPanel = (
     <>
-      {/* Floating action buttons - only show when no artifact */}
-      {!activeArtifactId && !sessionListExpanded && (
-        <div className="absolute top-4 left-4 z-10 flex gap-2">
-          <button
-            type="button"
-            onClick={() => setSessionListExpanded(!sessionListExpanded)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-card border shadow-sm transition-colors hover:bg-accent"
-            aria-label={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-            title={toLocalizedString(sessionListExpanded ? content.sidebar.collapse : content.sidebar.expand)}
-          >
-            {sessionListExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </button>
-          {!sessionListExpanded && (
-            <button
-              type="button"
-              onClick={handleNewSession}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-              aria-label={toLocalizedString(content.header.newChat)}
-              title={toLocalizedString(content.header.newChat)}
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      )}
       <ClaudeChatSurface
         key={chatKey}
         permissionInfo={permissionInfo}
@@ -974,26 +917,19 @@ const MainContent: FC<{
         >
           <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
         </div>
-        <div
-          className={cn(
-            'h-full shrink-0 overflow-hidden border-l',
-            !activeArtifactId && 'hidden lg:block'
-          )}
-          style={
-            activeArtifactId
-              ? { flexBasis: 0, flexGrow: 1 - artifactSplitRatio, maxWidth: 'none' }
-              : { width: 360 }
-          }
-        >
-          {activeArtifactId ? (
+        {activeArtifactId ? (
+          <div
+            className="h-full shrink-0 overflow-hidden border-l"
+            style={{ flexBasis: 0, flexGrow: 1 - artifactSplitRatio, maxWidth: 'none' }}
+          >
             <ArtifactsPanel
               artifactId={activeArtifactId}
               onClose={() => setActiveArtifact(null)}
             />
-          ) : (
-            <WorkbenchPanel currentSessionId={currentSessionId} />
-          )}
-        </div>
+          </div>
+        ) : (
+          <WorkbenchDock currentSessionId={currentSessionId} />
+        )}
       </div>
     </>
   );

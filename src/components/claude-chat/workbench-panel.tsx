@@ -20,7 +20,7 @@
  */
 
 import { useState, useEffect, type FC, type ReactNode } from 'react';
-import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Telescope, ChevronRight, RefreshCw, Play, ExternalLink } from 'lucide-react';
+import { ListChecks, GitBranch, FolderOpen, Gauge, Check, Loader2, FileCode, Telescope, ChevronRight, RefreshCw, Play, ExternalLink, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { startPreview } from '~/claude/adapters';
 import { useChatSessionStore } from '~/lib/chat-session-store';
@@ -443,9 +443,11 @@ const RetrievalView: FC<{ state: SessionRagTracesState }> = ({ state }) => {
 export interface WorkbenchPanelProps {
   currentSessionId: string | null;
   className?: string;
+  /** When provided, a "collapse" button is shown in the tab bar (used by WorkbenchDock). */
+  onCollapse?: () => void;
 }
 
-export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, className }) => {
+export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, className, onCollapse }) => {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('progress');
   const todoSummary = useSessionTodos();
   const subAgents = useSessionSubAgents();
@@ -482,6 +484,17 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
             </button>
           );
         })}
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label="收起工作台"
+            title="收起工作台"
+            className="ml-auto mb-1 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Section body — Wave 0 empty states */}
@@ -530,6 +543,66 @@ export const WorkbenchPanel: FC<WorkbenchPanelProps> = ({ currentSessionId, clas
         )}
       </div>
     </aside>
+  );
+};
+
+// ─────────────────────────── WorkbenchDock (collapsible) ───────────────────────────
+
+const WORKBENCH_OPEN_KEY = 'kin.workbench.open';
+
+/**
+ * Persisted open/closed state for the right-side workbench. SSR-safe: starts CLOSED
+ * (so first-ever load is collapsed — more chat space, per the default-collapsed ask),
+ * then restores the user's last choice from localStorage on mount.
+ */
+function useWorkbenchOpen(): [boolean, (v: boolean) => void] {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(WORKBENCH_OPEN_KEY) === 'true') setOpen(true);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, []);
+  const set = (v: boolean) => {
+    setOpen(v);
+    try {
+      localStorage.setItem(WORKBENCH_OPEN_KEY, String(v));
+    } catch {
+      /* ignore */
+    }
+  };
+  return [open, set];
+}
+
+/**
+ * WorkbenchDock — the right rail wrapper that makes the workbench COLLAPSIBLE.
+ * Collapsed → a thin rail with an expand button (the default). Open → the full 360px
+ * panel with a collapse button in its tab bar. Hidden below lg, same as before.
+ */
+export const WorkbenchDock: FC<{ currentSessionId: string | null }> = ({ currentSessionId }) => {
+  const [open, setOpen] = useWorkbenchOpen();
+
+  if (!open) {
+    return (
+      <div className="hidden h-full w-11 shrink-0 flex-col items-center gap-1 border-l bg-card py-3 lg:flex">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="展开工作台"
+          title="展开工作台（Progress / Files / Context）"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="hidden h-full shrink-0 overflow-hidden border-l lg:block" style={{ width: 360 }}>
+      <WorkbenchPanel currentSessionId={currentSessionId} onCollapse={() => setOpen(false)} />
+    </div>
   );
 };
 

@@ -9,7 +9,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, MessageSquare, PanelLeftClose } from 'lucide-react';
+import { Plus, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useIntlayer } from 'react-intlayer';
 import { SessionItem, type SessionItemData } from './session-item';
 import { cn, toLocalizedString } from '~/lib/utils';
@@ -108,7 +108,7 @@ export function SessionList({
     <div
       className={cn(
         'flex h-full flex-col transition-all duration-300 ease-in-out border-r border-sidebar-border bg-sidebar',
-        isExpanded ? 'w-64' : 'w-0 overflow-hidden'
+        isExpanded ? 'w-64' : 'w-12 overflow-hidden'
       )}
     >
       {isExpanded ? (
@@ -184,7 +184,30 @@ export function SessionList({
             </div>
           )}
         </>
-      ) : null}
+      ) : (
+        /* Collapsed rail — keep an always-visible expand trigger (+ new chat) so the
+           sidebar can never become a one-way trap (the old w-0 state had no control). */
+        <div className="flex flex-col items-center gap-2 p-2">
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sidebar-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label={toLocalizedString(content.sidebar.expand)}
+            title={toLocalizedString(content.sidebar.expand)}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onNewSession}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
+            aria-label={toLocalizedString(content.sessionList.newChat)}
+            title={toLocalizedString(content.sessionList.newChat)}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
