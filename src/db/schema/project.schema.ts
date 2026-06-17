@@ -26,10 +26,6 @@ export const project = pgTable('project', {
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
 
-  // Outer org boundary (better-auth organization). Reserved for P1+ org↔project work;
-  // single-org self-hosted instances leave it null. Not FK-enforced yet.
-  orgId: text('org_id'),
-
   name: text('name').notNull(),
   description: text('description'),
   // Project-level custom instructions. Stored + editable today; APPLYING them to a
