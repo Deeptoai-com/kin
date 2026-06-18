@@ -24,6 +24,31 @@ const tableKey = (ps: number[]) => [...ps].sort((a, b) => a - b).join(',');
 /** BUG-008: 单文件大小白名单 — 与后端 OCR_MAX_BODY_BYTES 25MB 留出 base64 inflation 余量。
  *  超限前端先拒，避免用户上传 80MB 后等几秒才收到 413。 */
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/** BUG-008 返工: 前端 parse/render fetch 各自的客户端超时（与后端 90s 留余量到 100s，让 server
+ *  超时先触发 → 客户端拿到的是 504 + 明确文案；client 端只兜 server 不响应这种最坏路径）。 */
+const PARSE_RENDER_CLIENT_TIMEOUT_MS = 100_000;
+
+/** BUG-008 返工: 给 fetch 套 AbortSignal + 超时 + r.ok 校验 + 明确错误回流。供 parse/render 用。 */
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, label: string): Promise<unknown> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    if (!res.ok) {
+      let detail = `${label} HTTP ${res.status}`;
+      try { const j = await res.json(); if (j?.error) detail = `${label} HTTP ${res.status}: ${j.error}`; } catch { /* not JSON */ }
+      throw new Error(detail);
+    }
+    return await res.json();
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') {
+      throw new Error(`${label} 超时（${timeoutMs / 1000}s 内无响应），可重试`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 export const Route = createFileRoute('/agents/ocr')({
   loader: async () => ({ history: await listOcrJobs() }),
@@ -123,6 +148,9 @@ function OcrConverterPage() {
   const [active, setActive] = useState(0);
   const [format, setFormat] = useState<OutputFormat>('markdown');
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready'>('idle');
+  /** BUG-008 返工：阶段进度细化，告诉用户卡在哪一段 —— 上传中/解析中/渲染中/识别中。
+   *  只在 phase='loading' 期间显示，phase='ready' 后清空。 */
+  const [loadingStage, setLoadingStage] = useState<'parse' | 'render' | null>(null);
   const [scanned, setScanned] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -265,16 +293,23 @@ function OcrConverterPage() {
       if (pg?.imageB64) return pg.imageB64;
       if (!file || !pg || file.name.split('.').pop()?.toLowerCase() !== 'pdf') return null;
       setRendering(pn);
+      // BUG-008 返工: 单页懒渲染同样套超时 + r.ok，否则查看深页时同样会"渲染中"无限转。
       try {
-        const res = await fetch(`/api/ocr/render?page=${pn}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file });
-        const j = await res.json();
+        const j = (await fetchWithTimeout(
+          `/api/ocr/render?page=${pn}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file },
+          PARSE_RENDER_CLIENT_TIMEOUT_MS,
+          '渲染',
+        )) as { pages?: { image: string }[] };
         const img = (j.pages ?? [])[0]?.image as string | undefined;
         if (img) {
           setPages((prev) => prev.map((p) => (p.page === pn ? { ...p, imageB64: img, imageUrl: `data:image/png;base64,${img}` } : p)));
           return img;
         }
         return null;
-      } catch {
+      } catch (e) {
+        // 单页懒渲染失败不阻塞主流程：报到 tableError 让用户看见，但不影响其他页。
+        setTableError(e instanceof Error ? e.message : '渲染失败');
         return null;
       } finally {
         setRendering((r) => (r === pn ? null : r));
@@ -383,6 +418,7 @@ function OcrConverterPage() {
     fileRef.current = null; jobIdRef.current = null; uploadedFileIdRef.current = null;
     setFileName(null); setPages([]); setActive(0); setScanned(false); setError(null); setSavedToKb('idle');
     setSelPages([]); setViewPage(null); setRecognizedTables([]); setTableError(null); setRendering(null); setFormat('markdown'); setPhase('idle');
+    setLoadingStage(null);
   }, []);
 
   const runLoad = useCallback(
@@ -399,14 +435,29 @@ function OcrConverterPage() {
       try {
         if (ext === 'pdf') {
           setPhase('loading');
-          const [parseRes, renderRes] = await Promise.all([
-            fetch('/api/ocr/parse', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }).then((r) => r.json()),
-            fetch('/api/ocr/render', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }).then((r) => r.json()),
+          // BUG-008 返工: parse/render fetch 都套 AbortSignal+超时+r.ok（之前完全没有）。
+          // 先标 'parse' 阶段——任一段先返回都会切到 'render' 直到两者就绪。Promise.allSettled
+          // 让两段独立 bail：一段超时不会拖死另一段；一段成功 + 另一段失败，仍能告诉用户哪段挂了。
+          setLoadingStage('parse');
+          const [parseSettled, renderSettled] = await Promise.allSettled([
+            fetchWithTimeout('/api/ocr/parse', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }, PARSE_RENDER_CLIENT_TIMEOUT_MS, '解析'),
+            fetchWithTimeout('/api/ocr/render', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }, PARSE_RENDER_CLIENT_TIMEOUT_MS, '渲染'),
           ]);
-          // BUG-008: 解析/渲染端点也可能返回 { error }（如 sidecar 挂、PDF 损坏）。
-          // 旧版仅看 pages.length === 0 → "无法读取该 PDF"，误导用户以为是文件本身问题。
-          if (parseRes?.error && !parseRes?.pages) throw new Error(`解析失败：${parseRes.error}`);
-          if (renderRes?.error && !renderRes?.pages) throw new Error(`渲染失败：${renderRes.error}`);
+          // 双段都失败 → 统一报错，phase 回 idle，用户能直接重试。
+          if (parseSettled.status === 'rejected' && renderSettled.status === 'rejected') {
+            const pe = (parseSettled.reason as Error).message;
+            const re = (renderSettled.reason as Error).message;
+            throw new Error(`解析与渲染都失败：${pe} / ${re}`);
+          }
+          // 单段失败：解析失败但渲染成功 → 当扫描件处理（用户仍可逐页 AI 识别）；
+          //         渲染失败但解析成功 → 没有原图但有文字层（仍可呈现文字 + 后续以 ensurePageImage 兜底）。
+          // 这两种降级都把错误"提示出来"，但不阻塞流程——比"一直转"或"报错回 idle"对用户友好。
+          const parseRes = parseSettled.status === 'fulfilled' ? (parseSettled.value as { scanned?: boolean; pages?: { page: number; text: string }[]; error?: string }) : { scanned: true, pages: [], error: (parseSettled.reason as Error).message };
+          const renderRes = renderSettled.status === 'fulfilled' ? (renderSettled.value as { pages?: { page: number; image: string }[]; error?: string }) : { pages: [], error: (renderSettled.reason as Error).message };
+          if (parseSettled.status === 'rejected') setError(`解析失败：${(parseSettled.reason as Error).message}（已退化为扫描件，可逐页 AI 识别）`);
+          else if (renderSettled.status === 'rejected') setError(`渲染失败：${(renderSettled.reason as Error).message}（无页面预览图，文字内容仍可读）`);
+          setLoadingStage(null);
+
           const images: Record<number, string> = {};
           for (const p of (renderRes.pages ?? []) as { page: number; image: string }[]) images[p.page] = p.image;
           const textByPage: Record<number, string> = {};
@@ -443,7 +494,11 @@ function OcrConverterPage() {
             setPages((prev) => prev.map((p, i) => (i === 0 ? { ...p, ocring: false, error: !aborted } : p)));
           }
         }
-      } catch (err) { setError(err instanceof Error ? err.message : '读取失败'); setPhase('idle'); }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '读取失败');
+        setPhase('idle');
+        setLoadingStage(null);
+      }
     },
     [resetState, callOcr, persist],
   );
@@ -569,7 +624,10 @@ function OcrConverterPage() {
           <ScanText className="h-4 w-4 shrink-0 text-primary" />
           <span className="truncate">{fileName}</span>
           {phase === 'loading' ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />解析中…</span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {loadingStage === 'parse' ? '解析中…' : loadingStage === 'render' ? '渲染中…' : '加载中…'}
+            </span>
           ) : scanned ? (
             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600">扫描件 · 需 AI 识别</span>
           ) : (
@@ -779,7 +837,19 @@ function OcrConverterPage() {
           <button type="button" onClick={addToKb} disabled={!assembled || savedToKb !== 'idle'} className="flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{savedToKb === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedToKb === 'done' ? <Check className="h-3.5 w-3.5" /> : <BookPlus className="h-3.5 w-3.5" />}{savedToKb === 'done' ? '已加入' : '加入知识库'}</button>
         </div>
       </div>
-      {error && <p className="border-t px-4 py-1.5 text-xs text-destructive">{error}</p>}
+      {error && (
+        <div className="flex items-center justify-between gap-2 border-t bg-destructive/5 px-4 py-1.5">
+          <p className="flex items-center gap-1.5 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0" />{error}</p>
+          {/* BUG-008 返工: parse/render/识别失败时给一个明确的"重试"入口，避免用户只能刷新页面。
+              重试 = 用同一份文件重跑 runLoad（或者点 RotateCcw 重置）。 */}
+          {fileRef.current && phase !== 'loading' && (
+            <button type="button" onClick={() => fileRef.current && void runLoad(fileRef.current)}
+              className="flex shrink-0 items-center gap-1 rounded border border-destructive/40 px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10">
+              <RotateCcw className="h-3 w-3" />重试
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
