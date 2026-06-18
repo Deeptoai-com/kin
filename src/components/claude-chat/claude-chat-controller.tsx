@@ -23,7 +23,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useIntlayer } from 'react-intlayer';
 import { useServerFn } from '@tanstack/react-start';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ThumbsDown, ThumbsUp, Layers, Paperclip, Plus, MessageSquare, Loader2 } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, Layers, Paperclip, Plus, MessageSquare, Loader2, RotateCcw } from 'lucide-react';
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, memo, type FC, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { StreamingMarkdown } from '~/components/claude-chat/streaming-markdown';
 import { AssistantTurnCard } from '~/components/claude-chat/assistant-turn-card';
@@ -55,6 +55,7 @@ import type { MessageAttachment } from '~/db/schema/message-attachment.schema';
 import {
   runChat,
   cancelActiveRun,
+  regenerateAssistantMessage,
   detachActiveRun,
   unsubscribeSession,
   getSessionId,
@@ -1631,7 +1632,7 @@ function ClaudeChatSurface({
               {/* Single source: render the whole thread (historical + live) from
                   the store via one renderer. The streaming turn updates in place
                   as runChat() patches its message; no separate runtime message list. */}
-              {messages.map((msg) => {
+              {messages.map((msg, msgIndex) => {
                 // Per-message author avatars only matter when a thread has more than one
                 // human (a branch, or you viewing someone else's session). For your own
                 // solo chat, keep the plain "U" (authorName stays null).
@@ -1656,6 +1657,7 @@ function ClaudeChatSurface({
                       sessionId={currentSessionId}
                       authorName={author?.name ?? null}
                       authorImage={author?.image ?? null}
+                      isLast={msgIndex === messages.length - 1}
                     />
                   </div>
                 );
@@ -1983,7 +1985,9 @@ const HistoricalMessageImpl: FC<{
    *  show distinct avatars. Null → fall back to the generic "U". */
   authorName?: string | null;
   authorImage?: string | null;
-}> = ({ message, attachments, sessionId, authorName, authorImage }) => {
+  /** Is this the last message in the thread? Gates the BUG-010 resume affordance. */
+  isLast?: boolean;
+}> = ({ message, attachments, sessionId, authorName, authorImage, isLast }) => {
   // Get i18n content
   const content = useIntlayer('claude-chat');
 
@@ -2030,6 +2034,9 @@ const HistoricalMessageImpl: FC<{
   // once there are activities or response text).
   const isRunning = message.status?.type === 'running';
   const hasContent = message.content.length > 0;
+  // BUG-010: this assistant turn was paused (or errored) and is the tail of the
+  // thread → offer a one-click resume that re-runs the original prompt.
+  const canResume = isAssistant && !!isLast && message.status?.type === 'incomplete';
 
   if (isUser) {
     // User message
@@ -2155,6 +2162,22 @@ const HistoricalMessageImpl: FC<{
                     <Layers className="h-3.5 w-3.5" />
                     <span>{toLocalizedString(content.actions.viewFileChanges).replace('{count}', String(successfulChanges.length))}</span>
                   </button>
+                )}
+
+                {/* BUG-010 暂停后续跑: re-run the paused/failed turn from the original
+                    prompt — no manual copy-paste. */}
+                {canResume && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void regenerateAssistantMessage(message.id)}
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>重新生成</span>
+                    </button>
+                    <span className="text-xs text-muted-foreground">已暂停 · 点此基于原消息继续</span>
+                  </div>
                 )}
               </div>
             </div>

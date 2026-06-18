@@ -35,9 +35,9 @@ import {
   InfoCircledIcon,
   ReloadIcon,
 } from '@radix-ui/react-icons';
-import { FolderOpen, FolderTree, Plus, ArrowUpIcon } from 'lucide-react';
+import { FolderOpen, FolderTree, Plus, ArrowUpIcon, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState, useRef, useImperativeHandle } from 'react';
-import type { ChangeEvent, FormEvent, MutableRefObject } from 'react';
+import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, MutableRefObject } from 'react';
 import { ContextBadges } from './context-badges';
 import { SkillChip } from './skill-chip';
 import { KnowledgeBasePanel } from './knowledge-base-panel';
@@ -51,26 +51,12 @@ import { McpStatusIndicator } from './mcp-status-indicator';
 import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
 import { useMessageAttachments, type PendingAttachment } from '~/lib/utils/message-attachments';
+import { useWorkspaceUploads, type UploadItem } from '~/lib/hooks/use-workspace-uploads';
+import { formatBytes } from '~/lib/upload-limits';
 import { useChatSessionStore } from '~/lib/chat-session-store';
 import { useDraftAutoSave } from '~/lib/hooks/use-session-protection';
 import { buildSkillMarker, injectSkillMarker } from '~/lib/skills/skill-marker';
 import { trackClaudeAgentQuerySent } from '~/lib/observability/posthog-events';
-
-/**
- * Uploaded workspace file status
- */
-type UploadedWorkspaceFile = {
-  name: string;
-  path: string;
-  /** Workspace-relative path the Agent should Read (parsed .md for rich docs, else == path). */
-  agentPath?: string;
-  mimeType?: string;
-  fileSize?: number;
-  status: 'uploaded' | 'error';
-  error?: string;
-  /** Non-fatal notice shown on the chip (e.g. a scanned PDF with no text layer). */
-  notice?: string;
-};
 
 /**
  * Props for ChatComposer component
@@ -134,34 +120,6 @@ export interface ChatComposerRef {
 }
 
 /**
- * Upload a file to the workspace
- */
-async function uploadWorkspaceFile(sessionId: string, file: File, filePath?: string) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('filePath', filePath ?? file.name);
-
-  const response = await fetch(`/api/workspace/${sessionId}/files`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    const message = payload?.error || `Upload failed (${response.status})`;
-    throw new Error(message);
-  }
-
-  return response.json() as Promise<{
-    filePath: string;
-    storedPath: string;
-    parsedPath?: string;
-    parsedEngine?: string;
-    parseStatus?: 'parsed' | 'scanned';
-  }>;
-}
-
-/**
  * ChatComposer Component
  *
  * Main input interface for Claude Agent Chat.
@@ -206,9 +164,22 @@ export function ChatComposer({
   // up — the file chip would never appear.
   const storeMessages = useChatSessionStore((state) => state.messages);
 
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedWorkspaceFile[]>([]);
+  // Upload manager: real progress, per-file cancel, client size-gate, and
+  // background-parse status polling (PRD §3.3). Replaces the old fetch-and-block
+  // upload that locked the composer (BUG-002/005/006). Destructured so effect/
+  // callback deps reference the STABLE functions, not the fresh object per render.
+  const {
+    items: uploadItems,
+    addFiles: addUploadFiles,
+    dismiss: dismissUpload,
+    clear: clearUploads,
+    hasPending: hasPendingUploads,
+    readyAttachments,
+  } = useWorkspaceUploads(currentSessionId);
+  // Composer-level notice (session-create failure, no-valid-file paste/drop) —
+  // per-file errors live on the upload items themselves.
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { persistAttachments } = useMessageAttachments();
   const pendingAttachmentsRef = useRef<PendingAttachment[] | null>(null);
@@ -247,7 +218,6 @@ export function ChatComposer({
   }, [isRunning, clearDraft]);
 
   useEffect(() => {
-    setUploadedFiles([]);
     setUploadError(null);
   }, [currentSessionId]);
 
@@ -267,20 +237,20 @@ export function ChatComposer({
     persistAttachments(currentSessionId, lastUserMessage.id, pending).then(() => {
       lastPersistedMessageIdRef.current = lastUserMessage.id;
       pendingAttachmentsRef.current = null;
-      setUploadedFiles([]);
+      clearUploads();
       setUploadError(null);
       onAttachmentsPersisted?.();
     });
-  }, [currentSessionId, storeMessages, persistAttachments, onAttachmentsPersisted]);
+  }, [currentSessionId, storeMessages, persistAttachments, onAttachmentsPersisted, clearUploads]);
 
   const handleClearInput = useCallback(async () => {
-    setUploadedFiles([]);
+    clearUploads();
     setUploadError(null);
     await api.composer().reset();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [api]);
+  }, [api, clearUploads]);
 
   const handleExampleSelect = useCallback((prompt: string) => {
     if (!prompt) return;
@@ -324,69 +294,91 @@ export function ChatComposer({
     });
   }, [withSession]);
 
-  const handleFilesSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) {
-      return;
-    }
-    if (!currentSessionId) {
-      setUploadError('请先发送一条消息以创建会话，再上传文件。');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadError(null);
-
-    for (const file of Array.from(files)) {
-      try {
-        const result = await uploadWorkspaceFile(currentSessionId, file);
-        setUploadedFiles((prev) => ([
-          ...prev,
-          {
-            name: file.name,
-            path: result.filePath,
-            // Rich docs are parsed to `<name>.md` server-side — point the Agent there.
-            agentPath: result.parsedPath ?? result.filePath,
-            mimeType: file.type,
-            fileSize: file.size,
-            status: 'uploaded',
-            notice: result.parseStatus === 'scanned'
-              ? '扫描件 PDF，无文字层，AI 暂时无法按文本读取'
-              : undefined,
-          },
-        ]));
-        try {
-          await api.composer().addAttachment(file);
-        } catch (error) {
-          console.warn('[Composer] Attachments not supported by current adapter:', error);
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '上传失败';
-        setUploadedFiles((prev) => ([
-          ...prev,
-          {
-            name: file.name,
-            path: file.name,
-            mimeType: file.type,
-            fileSize: file.size,
-            status: 'error',
-            error: message,
-          },
-        ]));
-        setUploadError(message);
+  // Add image files to the assistant-ui attachment strip (thumbnails). Docs show
+  // their status chip instead. Best-effort — never blocks the real upload.
+  const addThumbnails = useCallback((files: File[]) => {
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        void api.composer().addAttachment(file).catch(() => {});
       }
     }
+  }, [api]);
 
-    setIsUploading(false);
+  // Single entry point for picker / drag-drop / paste. Uploads start immediately
+  // when a session exists; otherwise we lazily create one and flush a queued set
+  // once it's ready (drop/paste on a brand-new chat shouldn't be dropped).
+  const pendingFilesRef = useRef<File[] | null>(null);
+  const handleAddFiles = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    setUploadError(null);
+    if (currentSessionId) {
+      addUploadFiles(files);
+      addThumbnails(files);
+      return;
+    }
+    pendingFilesRef.current = [...(pendingFilesRef.current ?? []), ...files];
+    void withSession(() => {});
+  }, [currentSessionId, addUploadFiles, addThumbnails, withSession]);
+
+  // Flush files queued before the session existed (drop/paste on a new chat).
+  useEffect(() => {
+    if (currentSessionId && pendingFilesRef.current?.length) {
+      const queued = pendingFilesRef.current;
+      pendingFilesRef.current = null;
+      addUploadFiles(queued);
+      addThumbnails(queued);
+    }
+  }, [currentSessionId, addUploadFiles, addThumbnails]);
+
+  const handleFilesSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      handleAddFiles(Array.from(files));
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [api, currentSessionId]);
+  }, [handleAddFiles]);
+
+  // BUG-001 拖拽上传: accept any dropped files via the same pipeline.
+  const handleDragOver = useCallback((event: DragEvent) => {
+    if (event.dataTransfer?.types?.includes('Files')) {
+      event.preventDefault();
+      setIsDragging(true);
+    }
+  }, []);
+  const handleDragLeave = useCallback((event: DragEvent) => {
+    // Only leave when the pointer exits the composer (not when entering a child).
+    if (event.currentTarget === event.target) setIsDragging(false);
+  }, []);
+  const handleDrop = useCallback((event: DragEvent) => {
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    setIsDragging(false);
+    handleAddFiles(Array.from(event.dataTransfer.files));
+  }, [handleAddFiles]);
+
+  // BUG-003 剪贴板图片粘贴: pull image files out of the clipboard (no intermediate
+  // save) and upload them. Non-image paste falls through to normal text paste.
+  const handlePaste = useCallback((event: ClipboardEvent) => {
+    const imageFiles: File[] = [];
+    for (const item of Array.from(event.clipboardData?.items ?? [])) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      event.preventDefault();
+      handleAddFiles(imageFiles);
+    }
+  }, [handleAddFiles]);
 
   const composerHasText = composerText.trim().length > 0;
-  // F1: gate send on upload completion — otherwise pressing Enter mid-upload sends
-  // before `uploadedFiles` is populated and silently drops the attachment.
-  const canSend = composerIsEditing && composerHasText && !isRunning && !isUploading;
+  // Gate send on no PENDING uploads (uploading/parsing) — NOT a global "isUploading"
+  // lock (BUG-005). The input stays editable throughout; each pending chip is
+  // cancellable, so a stuck/slow upload never traps the user: cancel → send.
+  const canSend = composerIsEditing && composerHasText && !isRunning && !hasPendingUploads;
 
   const handleSend = useCallback((event?: FormEvent) => {
     if (event) {
@@ -397,15 +389,9 @@ export function ChatComposer({
       return;
     }
     if (!canSend || isRunning) return;
-    const pendingAttachments = uploadedFiles
-      .filter((file) => file.status === 'uploaded')
-      .map((file) => ({
-        originalName: file.name,
-        // Agent reads the parsed .md for rich docs; falls back to the original path.
-        filePath: file.agentPath ?? file.path,
-        mimeType: file.mimeType,
-        fileSize: file.fileSize,
-      }));
+    // Only ready/scanned attachments (have a usable agentPath); pending uploads are
+    // gated out by canSend, errored ones are excluded by the hook.
+    const pendingAttachments = readyAttachments;
     pendingAttachmentsRef.current = pendingAttachments.length > 0 ? pendingAttachments : null;
     const baseRunConfig = composerRunConfig ?? {};
     const baseCustom = (baseRunConfig.custom ?? {}) as Record<string, unknown>;
@@ -454,14 +440,25 @@ export function ChatComposer({
     }
 
     sendNow();
-  }, [api, canSend, composerHasText, isRunning, uploadedFiles, onSend, composerRunConfig, composerText, selectedSkill]);
+  }, [api, canSend, composerHasText, isRunning, readyAttachments, currentSessionId, onSend, composerRunConfig, composerText, selectedSkill]);
 
   return (
     <ComposerPrimitive.Root
       data-composer-root="true"
-      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-border/70 bg-card p-0.5 shadow-md transition-shadow duration-200 focus-within:shadow-lg hover:shadow-lg"
+      data-dragging={isDragging || undefined}
+      className="relative z-30 shrink-0 mx-auto flex w-full max-w-3xl flex-col overflow-visible rounded-2xl border border-border/70 bg-card p-0.5 shadow-md transition-shadow duration-200 focus-within:shadow-lg hover:shadow-lg data-[dragging]:border-primary data-[dragging]:ring-2 data-[dragging]:ring-primary/40"
       onSubmit={handleSend}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onPaste={handlePaste}
     >
+      {/* BUG-001 拖拽: drop-anywhere overlay hint */}
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-primary/5 text-sm font-medium text-primary">
+          松开以上传文件
+        </div>
+      )}
       <div className="m-3.5 flex flex-col gap-3.5">
         {/* Context badges - show active Skills and MCP sources */}
         {!isRunning && sessionMetadata && (
@@ -499,8 +496,8 @@ export function ChatComposer({
               onClick={handleUploadClick}
               className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-lg border bg-transparent px-1.5 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="上传文件"
-              disabled={isUploading || ensuringSession}
-              title="上传文件到工作区"
+              disabled={ensuringSession}
+              title="上传文件到工作区（支持多选 / 拖拽 / 粘贴图片）"
             >
               <Plus width={16} height={16} />
             </button>
@@ -634,27 +631,28 @@ export function ChatComposer({
         </div>
       </div>
       <ComposerAttachmentsSection
-        uploadedFiles={uploadedFiles}
+        items={uploadItems}
         uploadError={uploadError}
-        isUploading={isUploading}
+        onDismiss={dismissUpload}
       />
     </ComposerPrimitive.Root>
   );
 }
 
 /**
- * Composer Attachments Section
- * Displays uploaded files and error messages
+ * Composer Attachments Section (PRD §3.3)
+ * Renders each upload as a chip with live progress + a cancel/remove button.
+ * States: uploading(%) → parsing → ready | scanned | error.
  */
 interface ComposerAttachmentsSectionProps {
-  uploadedFiles: UploadedWorkspaceFile[];
+  items: UploadItem[];
   uploadError: string | null;
-  isUploading: boolean;
+  onDismiss: (id: string) => void;
 }
 
-function ComposerAttachmentsSection({ uploadedFiles, uploadError, isUploading }: ComposerAttachmentsSectionProps) {
-  const hasUploads = uploadedFiles.length > 0;
-  const hasContent = hasUploads || uploadError || isUploading;
+function ComposerAttachmentsSection({ items, uploadError, onDismiss }: ComposerAttachmentsSectionProps) {
+  const hasUploads = items.length > 0;
+  const hasContent = hasUploads || uploadError;
 
   if (!hasContent) return null;
 
@@ -664,33 +662,78 @@ function ComposerAttachmentsSection({ uploadedFiles, uploadError, isUploading }:
         <div className="relative z-50 flex flex-wrap items-center gap-3" data-attachments="true">
           <ComposerPrimitive.Attachments components={{ Attachment: ClaudeAttachment }} />
           {hasUploads && (
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {uploadedFiles.map((file) => (
-                <span
-                  key={`${file.path}-${file.status}`}
-                  className={`rounded-md border px-2 py-0.5 ${
-                    file.status === 'error'
-                      ? 'border-destructive text-destructive'
-                      : file.notice
-                        ? 'border-amber-500/60 text-amber-600 dark:text-amber-400'
-                        : 'border-transparent bg-card text-foreground'
-                  }`}
-                  title={file.error || file.notice || file.path}
-                >
-                  {file.notice ? `⚠️ ${file.path}` : file.path}
-                </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {items.map((item) => (
+                <UploadChip key={item.id} item={item} onDismiss={() => onDismiss(item.id)} />
               ))}
             </div>
           )}
         </div>
-        {(uploadError || isUploading) && (
+        {uploadError && (
           <div className="mt-2 text-xs">
-            {isUploading && <span className="text-muted-foreground">正在上传文件...</span>}
-            {uploadError && <span className="text-destructive">{uploadError}</span>}
+            <span className="text-destructive">{uploadError}</span>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Single upload chip: name + state, a thin progress bar while uploading, and a
+ * cancel (pending) / remove (done) button so the user is never trapped (BUG-005).
+ */
+function UploadChip({ item, onDismiss }: { item: UploadItem; onDismiss: () => void }) {
+  const isError = item.status === 'error';
+  const isPending = item.status === 'uploading' || item.status === 'parsing';
+  const hasNotice = !!item.notice && !isError;
+
+  const statusLabel =
+    item.status === 'uploading'
+      ? `上传中 ${item.progress}%`
+      : item.status === 'parsing'
+        ? '解析中…'
+        : item.status === 'scanned'
+          ? '扫描件'
+          : isError
+            ? '失败'
+            : formatBytes(item.fileSize);
+
+  return (
+    <span
+      className={`group/chip relative flex max-w-[18rem] items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+        isError
+          ? 'border-destructive/60 text-destructive'
+          : hasNotice
+            ? 'border-amber-500/60 text-amber-600 dark:text-amber-400'
+            : 'border-border bg-card text-foreground'
+      }`}
+      title={item.error || item.notice || item.name}
+    >
+      {item.status === 'uploading' || item.status === 'parsing' ? (
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+      ) : null}
+      <span className="truncate font-medium">{item.name}</span>
+      <span className="shrink-0 text-[10px] opacity-70">· {statusLabel}</span>
+      {/* Live progress bar during upload */}
+      {item.status === 'uploading' && (
+        <span className="absolute inset-x-1 bottom-0 h-0.5 overflow-hidden rounded-full bg-muted-foreground/20">
+          <span
+            className="block h-full rounded-full bg-primary transition-[width] duration-200"
+            style={{ width: `${Math.max(item.progress, 3)}%` }}
+          />
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+        aria-label={isPending ? '取消上传' : '移除'}
+        title={isPending ? '取消上传' : '移除'}
+      >
+        <Cross2Icon width={12} height={12} />
+      </button>
+    </span>
   );
 }
 

@@ -1715,4 +1715,36 @@ export function cancelActiveRun(): void {
   abort();
 }
 
+/**
+ * BUG-010 暂停后续跑/重发: re-run the turn that produced `assistantMessageId`
+ * (typically one the user paused → status incomplete/cancelled, or one that
+ * errored). Finds the nearest preceding USER message, drops the incomplete
+ * assistant placeholder, and re-drives runChat with the SAME prompt — so the
+ * user never has to copy the original text and resend it by hand. The SDK's
+ * server-side conversation context (incl. any prior attachments) continues via
+ * resume, so the plain prompt is enough.
+ */
+export async function regenerateAssistantMessage(assistantMessageId: string): Promise<void> {
+  if (isQueryRunning) return; // don't stack a re-run on top of a live turn
+  const store = useChatSessionStore.getState();
+  const msgs = store.messages;
+  const idx = msgs.findIndex((m) => m.id === assistantMessageId);
+  if (idx < 0) return;
+
+  let userText = '';
+  for (let i = idx - 1; i >= 0; i--) {
+    if (msgs[i].role === 'user') {
+      userText = (msgs[i].content as StoreContentPart[])
+        .filter((p): p is Extract<StoreContentPart, { type: 'text' }> => p.type === 'text')
+        .map((p) => p.text)
+        .join('\n');
+      break;
+    }
+  }
+  if (!userText.trim()) return;
+
+  store.removeMessageById(assistantMessageId);
+  await runChat(userText);
+}
+
 export default ClaudeAgentWSAdapter;

@@ -5,9 +5,10 @@ import { useIntlayer } from 'react-intlayer';
 import { toLocalizedString } from '~/lib/utils';
 import { useServerFn } from '@tanstack/react-start';
 import { AudioLines, Book, FileText, Image as ImageIcon, Video, Plus, Edit2, Trash2, Loader2, X } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import * as FileUpload from '~/components/dropzone';
+import { DOC_UPLOAD_MAX_BYTES, isWithinLimit, tooLargeMessage } from '~/lib/upload-limits';
 import { Button } from '~/components/ui/button';
 import {
   Dialog,
@@ -118,6 +119,8 @@ function DocumentsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // null = idle; 0-100 = the whole upload flow is running (init → bytes → finalize).
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // BUG-006: lets the user cancel a stuck/slow upload (XHR abort / fetch AbortController).
+  const cancelUploadRef = useRef<null | (() => void)>(null);
   const [selectedFiles, setSelectedFiles] = useState<
     Map<string, DeleteDocumentsPayload[number]>
   >(new Map());
@@ -365,6 +368,13 @@ function DocumentsPage() {
     if (filesToUpload.length === 0) return;
     const file = filesToUpload[0];
 
+    // BUG-006: reject oversize uploads up front with a clear message, instead of
+    // letting a 200MB+ direct-to-MinIO upload stall (the bar used to crawl at ~1%).
+    if (!isWithinLimit(file.size, DOC_UPLOAD_MAX_BYTES)) {
+      setErrorMessage(tooLargeMessage(DOC_UPLOAD_MAX_BYTES, 'doc'));
+      return;
+    }
+
     try {
       setErrorMessage(null);
       setUploadProgress(0);
@@ -396,13 +406,16 @@ function DocumentsPage() {
       let shouldComplete = true;
 
       if (uploadUrl) {
-        // 2a) upload directly to S3 via presigned URL
+        // 2a) upload directly to S3 via presigned URL (cancellable via AbortController)
+        const controller = new AbortController();
+        cancelUploadRef.current = () => controller.abort();
         await fetch(uploadUrl, {
           method: 'PUT',
           body: file,
           headers: {
             'Content-Type': file.type || 'application/octet-stream',
           },
+          signal: controller.signal,
         });
       } else {
         // 2b) binary direct upload (KB redesign 阶段5): XHR PUTs the RAW file so we get
@@ -411,6 +424,7 @@ function DocumentsPage() {
         // giant string. The server route stores bytes + finalizes url/size.
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
+          cancelUploadRef.current = () => xhr.abort();
           xhr.open('PUT', `/api/documents/upload?id=${encodeURIComponent(id)}&key=${encodeURIComponent(key ?? '')}`);
           xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
           xhr.upload.onprogress = (e) => {
@@ -421,6 +435,7 @@ function DocumentsPage() {
               ? resolve()
               : reject(new Error(`上传失败（HTTP ${xhr.status}）`));
           xhr.onerror = () => reject(new Error('上传失败（网络错误）'));
+          xhr.onabort = () => reject(new Error('已取消上传'));
           xhr.send(file);
         });
         shouldComplete = false;
@@ -453,12 +468,19 @@ function DocumentsPage() {
         if (row?.documentId) void openParseDialog(row.documentId, id);
       }
     } catch (err) {
+      // AbortError (user cancelled) gets a friendly message, not a scary stack.
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
       console.error('Upload failed', err);
-      setErrorMessage(err instanceof Error ? err.message : content.upload.upload);
+      setErrorMessage(aborted ? '已取消上传' : err instanceof Error ? err.message : content.upload.upload);
     } finally {
+      cancelUploadRef.current = null;
       setUploadProgress(null);
     }
   };
+
+  const handleCancelUpload = useCallback(() => {
+    cancelUploadRef.current?.();
+  }, []);
 
   return (
     <>
@@ -812,6 +834,7 @@ function DocumentsPage() {
             </div>
             <div>
               <Label>{content.upload.attachFiles}</Label>
+              <p className="mt-0.5 text-xs text-muted-foreground">单个文件最大 {Math.round(DOC_UPLOAD_MAX_BYTES / 1024 / 1024)}MB</p>
               <FileUpload.Root
                 value={filesToUpload}
                 onValueChange={(updatedFiles: File[] | null) => {
@@ -913,7 +936,12 @@ function DocumentsPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            {uploadProgress !== null && (
+              <Button variant="outline" onClick={handleCancelUpload}>
+                取消上传
+              </Button>
+            )}
             <Button onClick={handleUploadDoc} disabled={uploading || filesToUpload.length === 0}>
               {uploadProgress !== null && uploadProgress > 0 && uploadProgress < 100
                 ? `上传中 ${uploadProgress}%`

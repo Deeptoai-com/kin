@@ -11,6 +11,68 @@ import { requireUser } from '~/server/require-user';
 import { getWorkspaceSession } from '~/server/workspace-session';
 import { validateRelativePath } from '~/server/security/validate-relative-path';
 import { needsParse, parseToMarkdown } from '~/server/documents/document-parser';
+import { writeParseStatus } from '~/server/documents/parse-status';
+import { CHAT_ATTACH_MAX_BYTES, tooLargeMessage } from '~/lib/upload-limits';
+
+/** Server-side upload ceiling (PRD §3.2). Env-overridable; client gates first. */
+const MAX_UPLOAD_BYTES = Number(process.env.WORKSPACE_UPLOAD_MAX_BYTES ?? CHAT_ATTACH_MAX_BYTES);
+
+/**
+ * Background markdown parse (PRD §3.1): runs AFTER the POST has already
+ * responded. Materialises `<name>.md`, moves the original binary OUT of the
+ * Agent-visible workspace into hidden `.uploads/`, and records the outcome in
+ * the parse-status sidecar so the composer chip can poll it. Never throws —
+ * the upload already succeeded; a parse failure just leaves no `.md`.
+ */
+async function backgroundParse(params: {
+  workspacePath: string;
+  fullFilePath: string;
+  filePath: string;
+  byteLength: number;
+  startedAt: number;
+}): Promise<void> {
+  const { workspacePath, fullFilePath, filePath, byteLength, startedAt } = params;
+  const mdRelPath = `${filePath}.md`;
+  const stashOriginal = async () => {
+    const hiddenAbs = path.join(workspacePath, '.uploads', filePath);
+    await mkdir(path.dirname(hiddenAbs), { recursive: true });
+    await rename(fullFilePath, hiddenAbs);
+  };
+  try {
+    const parsed = await parseToMarkdown(fullFilePath, filePath, byteLength);
+    if (parsed.ok) {
+      await writeFile(path.join(workspacePath, mdRelPath), parsed.markdown, 'utf8');
+      await stashOriginal();
+      await writeParseStatus(workspacePath, filePath, {
+        status: 'parsed', startedAt, updatedAt: Date.now(),
+        parsedPath: mdRelPath, engine: parsed.engine ?? undefined,
+      });
+    } else if (parsed.reason === 'empty') {
+      // Scanned / image-only doc: guiding stub so the Agent reads a deterministic
+      // .md and tells the user, instead of failing silently. OCR is a follow-up.
+      await writeFile(path.join(workspacePath, mdRelPath), buildScannedDocStub(path.basename(filePath)), 'utf8');
+      await stashOriginal();
+      await writeParseStatus(workspacePath, filePath, {
+        status: 'scanned', startedAt, updatedAt: Date.now(),
+        parsedPath: mdRelPath, engine: 'none-scanned',
+      });
+      console.warn(`[Workspace API] No text layer for ${filePath} (likely scanned); wrote guiding stub.`);
+    } else {
+      // too-large-for-inline-parse / unsupported / genuine error: keep the original
+      // in place (no .md). The chip shows a notice; the file is still in the workspace.
+      await writeParseStatus(workspacePath, filePath, {
+        status: 'failed', startedAt, updatedAt: Date.now(), error: parsed.error,
+      });
+      console.error(`[Workspace API] Parse skipped/failed for ${filePath}: ${parsed.error}`);
+    }
+  } catch (parseError) {
+    await writeParseStatus(workspacePath, filePath, {
+      status: 'failed', startedAt, updatedAt: Date.now(),
+      error: parseError instanceof Error ? parseError.message : String(parseError),
+    }).catch(() => {});
+    console.error('[Workspace API] Parse error:', parseError);
+  }
+}
 
 /**
  * Guiding stub written in place of a real `.md` when a PDF has no extractable
@@ -159,6 +221,18 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
         const user = await requireUser(request);
         const { sessionId } = params;
 
+        // PRD §3.2: reject oversize uploads via Content-Length BEFORE buffering the
+        // whole multipart body into memory (this is what hung on 200MB+ — BUG-002).
+        // +1MB slack covers multipart boundary/field overhead; a precise file.size
+        // check below is authoritative.
+        const declaredLength = Number(request.headers.get('content-length') ?? 0);
+        if (declaredLength && declaredLength > MAX_UPLOAD_BYTES + 1024 * 1024) {
+          return new Response(
+            JSON.stringify({ error: tooLargeMessage(MAX_UPLOAD_BYTES, 'chat') }),
+            { status: 413, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
         const formData = await request.formData();
         const file = formData.get('file');
         const rawFilePath = formData.get('filePath');
@@ -175,6 +249,15 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           return new Response(
             JSON.stringify({ error: 'Invalid file path' }),
             { status: 400, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
+        // Precise size check (authoritative; the Content-Length gate above is a
+        // cheap pre-filter that buys us out of buffering a huge body).
+        if (file.size > MAX_UPLOAD_BYTES) {
+          return new Response(
+            JSON.stringify({ error: tooLargeMessage(MAX_UPLOAD_BYTES, 'chat') }),
+            { status: 413, headers: { 'content-type': 'application/json' } }
           );
         }
 
@@ -200,59 +283,30 @@ export const Route = createFileRoute('/api/workspace/$sessionId/files')({
           const buffer = Buffer.from(await file.arrayBuffer());
           await writeFile(fullFilePath, buffer);
 
-          // F2: parse rich docs (pdf/docx/...) → markdown so the Agent's Read tool can
-          // use them. Plain text/code is left as-is (the Agent reads it directly).
-          // Parse failure is non-fatal: the original file is still uploaded.
-          let parsedPath: string | undefined;
-          let parsedEngine: string | undefined;
-          // 'parsed' = real text extracted; 'scanned' = no text layer (stub written);
-          // undefined = not a rich doc, or parse genuinely failed.
-          let parseStatus: 'parsed' | 'scanned' | undefined;
+          // PRD §3.1: rich docs (pdf/docx/...) need a markdown parse before the Agent's
+          // Read tool can use them — but that parse can take minutes (and used to block
+          // the whole upload request → BUG-002). Now we respond IMMEDIATELY with
+          // parseStatus 'parsing' and run the parse in the BACKGROUND, recording the
+          // outcome in a sidecar the composer polls. Plain text/code needs no parse.
+          let parseStatus: 'parsing' | undefined;
           if (needsParse(filePath)) {
-            // Both the success and scanned-stub paths move the original binary OUT of the
-            // Agent-visible workspace into a hidden .uploads/ dir (excluded from Glob + the
-            // file panel; also guarded by the worker). The Agent only ever sees the .md.
-            const stashOriginal = async () => {
-              const hiddenAbs = path.join(workspacePath, '.uploads', filePath);
-              await mkdir(path.dirname(hiddenAbs), { recursive: true });
-              await rename(fullFilePath, hiddenAbs);
-            };
-            try {
-              const parsed = await parseToMarkdown(fullFilePath, filePath, buffer.byteLength);
-              const mdRelPath = `${filePath}.md`;
-              if (parsed.ok) {
-                await writeFile(path.join(workspacePath, mdRelPath), parsed.markdown, 'utf8');
-                parsedPath = mdRelPath;
-                parsedEngine = parsed.engine ?? undefined;
-                parseStatus = 'parsed';
-                await stashOriginal();
-              } else if (parsed.reason === 'empty') {
-                // Scanned / image-only doc: write a guiding stub so the Agent has a
-                // deterministic .md to read and tells the user, instead of failing silently.
-                await writeFile(
-                  path.join(workspacePath, mdRelPath),
-                  buildScannedDocStub(path.basename(filePath)),
-                  'utf8',
-                );
-                parsedPath = mdRelPath;
-                parsedEngine = 'none-scanned';
-                parseStatus = 'scanned';
-                await stashOriginal();
-                console.warn(`[Workspace API] No text layer for ${filePath} (likely scanned); wrote guiding stub.`);
-              } else {
-                console.error(`[Workspace API] Parse skipped/failed for ${filePath}: ${parsed.error}`);
-              }
-            } catch (parseError) {
-              console.error('[Workspace API] Parse error:', parseError);
-            }
+            const startedAt = Date.now();
+            await writeParseStatus(workspacePath, filePath, {
+              status: 'parsing', startedAt, updatedAt: startedAt,
+            });
+            parseStatus = 'parsing';
+            // Fire-and-forget: not awaited, so the response returns now. The server is a
+            // long-lived Node process (not serverless), so the task runs to completion.
+            void backgroundParse({
+              workspacePath, fullFilePath, filePath, byteLength: buffer.byteLength, startedAt,
+            });
           }
 
           return Response.json({
             sessionId: session.id,
             filePath,
             storedPath: fullFilePath,
-            parsedPath,
-            parsedEngine,
+            // parsedPath/engine are resolved later via the parse-status route (async parse).
             parseStatus,
           });
         } catch (error) {
