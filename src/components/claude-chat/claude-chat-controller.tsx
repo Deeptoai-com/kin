@@ -247,7 +247,9 @@ export function ClaudeChatController({
   });
   // Track if a session is being created (loading state)
   const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [isInitializingSession, setIsInitializingSession] = useState(false);
+  // BUG-009: 当落地页就有 urlSessionId（点对话/外链/刷新），首屏要立刻进入 loading 占位，
+  // 不能让 ThreadPrimitive.Empty 在 bootstrap effect 跑前抢先露脸（New Chat 空态白屏闪）。
+  const [isInitializingSession, setIsInitializingSession] = useState(() => Boolean(urlSessionId));
 
   // Query to check if user has any historical sessions
   const { data: sessionsData, isLoading: sessionsLoading } = useQuery<{
@@ -291,6 +293,25 @@ export function ClaudeChatController({
     startResize: handleArtifactSplitResize,
   } = useArtifactSplitRatio();
 
+  // BUG-009: settle timer for session switch loading state. Tracked in a ref so a
+  // rapid second switch can cancel the prior timer (otherwise the old timer fires
+  // mid-new-switch and clears the spinner before the new history arrives).
+  const switchSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armSwitchSettleTimer = useCallback(() => {
+    if (switchSettleTimerRef.current) clearTimeout(switchSettleTimerRef.current);
+    switchSettleTimerRef.current = setTimeout(() => {
+      switchSettleTimerRef.current = null;
+      setIsInitializingSession(false);
+    }, 3000);
+  }, []);
+  const clearSwitchSettleTimer = useCallback(() => {
+    if (switchSettleTimerRef.current) {
+      clearTimeout(switchSettleTimerRef.current);
+      switchSettleTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => clearSwitchSettleTimer(), [clearSwitchSettleTimer]);
+
   // Listen for messages loaded events from WebSocket
   // Note: We do NOT increment chatKey here because that would cause
   // the component to remount, which triggers abort on any running query
@@ -298,6 +319,13 @@ export function ClaudeChatController({
     const unsubscribe = onMessagesLoaded((messages: SDKMessage[]) => {
       console.log('[Route] Received messages_loaded callback with', messages.length, 'messages');
       loadHistoricalMessages(messages);
+      // BUG-009: 历史灌回 store 后再关掉切换 loading，避免 messages_loaded 抵达前 spinner
+      // 提前消失露出 New Chat 空态。createSession 路径自己管理 init 标志，关一下也无副作用。
+      if (switchSettleTimerRef.current) {
+        clearTimeout(switchSettleTimerRef.current);
+        switchSettleTimerRef.current = null;
+      }
+      setIsInitializingSession(false);
       // Historical messages are stored in zustand and rendered separately,
       // no need to remount the component
     });
@@ -325,9 +353,16 @@ export function ClaudeChatController({
       setCurrentSessionId(sessionId);
       setSessionId(sessionId);
       if (!checkIsQueryRunning()) {
+        // BUG-009: 同样要避开 clearMessages → messages_loaded 之间的白屏闪 New Chat。
+        // onMessagesLoaded 监听器会在历史抵达后关掉这个标志；空历史会话 server 不发
+        // messages_loaded，靠这个 settleTimer 兜底关 spinner。
+        setIsInitializingSession(true);
         clearMessages();
+        armSwitchSettleTimer();
         resumeSession(sessionId).catch((error) => {
           console.error('[Route] Failed to resume restored session on mount:', error);
+          clearSwitchSettleTimer();
+          setIsInitializingSession(false);
         });
       }
     }
@@ -469,16 +504,32 @@ export function ClaudeChatController({
       }
     } else if (sdkSessionId) {
       console.log('[Route] Selecting session:', sdkSessionId);
-      setIsInitializingSession(false);
+      // BUG-009 白屏闪根治：切到已有会话时，clearMessages → resumeSession(异步等服务器
+      // messages_loaded) 之间 ~1s 空窗，hasHistoricalMessages=false 会命中 ThreadPrimitive.Empty
+      // 露出和 New Chat 一样的空态，让用户误以为对话被清空了。改用 isInitializingSession 占位
+      // (loading spinner)，等 messages_loaded 把历史灌回 store 后再关掉。Empty 分支同时被该
+      // 标志关掉（见 ClaudeChatSurface viewport 渲染条件）。
+      setIsInitializingSession(true);
       setCurrentSessionId(sdkSessionId);
       setSessionId(sdkSessionId);
       clearMessages();
       setChatKey((k) => k + 1);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await resumeSession(sdkSessionId);
-      trackClaudeAgentSessionSwitched({ sessionId: sdkSessionId, isResume: true });
+      // 兜底：空历史会话 server 不会发 messages_loaded（见 ws-server.mjs:2085 length>0 分支），
+      // 仅靠监听器关 spinner 会卡死。3s 后强制关，用户看到的是真正的空会话/空状态而不是死转。
+      armSwitchSettleTimer();
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await resumeSession(sdkSessionId);
+        trackClaudeAgentSessionSwitched({ sessionId: sdkSessionId, isResume: true });
+      } catch (error) {
+        console.error('[Route] Failed to resume session:', error);
+        clearSwitchSettleTimer();
+        setIsInitializingSession(false);
+      }
+      // 不在这里 finally 关 spinner —— 让 onMessagesLoaded 或 settleTimer 来负责，
+      // 否则 send 一返回就关，反而把 ~1s 空窗暴露出来回到 BUG-009 原态。
     }
-  }, [setSessionId, clearMessages, temporarySkills, clearTemporarySkills, disableUserSkills, assignToProject, projectQueryClient, urlProjectId]);
+  }, [setSessionId, clearMessages, temporarySkills, clearTemporarySkills, disableUserSkills, assignToProject, projectQueryClient, urlProjectId, armSwitchSettleTimer, clearSwitchSettleTimer]);
 
   const handleSelectSession = useCallback(async (sdkSessionId: string) => {
     // Check both route state and adapter state for current session
@@ -492,6 +543,9 @@ export function ClaudeChatController({
         await performSessionSwitch(sdkSessionId, false);
       } else {
         console.log('[Route] Session already active, skipping:', sdkSessionId);
+        // BUG-009: 已经是当前会话且历史已在 store —— 立刻清掉首屏预先开启的 init 占位，
+        // 否则用户重复点同一会话或 URL bootstrap 命中早已加载的会话时 spinner 会卡住。
+        setIsInitializingSession(false);
       }
       return;
     }
@@ -521,7 +575,13 @@ export function ClaudeChatController({
   // loader never resumes (landmine #5).
   useEffect(() => {
     if (typeof window === 'undefined' || !urlSessionId) return;
-    if (urlSessionId === currentSessionIdRef.current || urlSessionId === getSessionId()) return;
+    if (urlSessionId === currentSessionIdRef.current || urlSessionId === getSessionId()) {
+      // Session already loaded (e.g. onSessionInit→navigate from a fresh branch / new send):
+      // we pre-armed isInitializingSession on mount to suppress the New Chat empty flash, but
+      // there's no work to do here so clear it now (handleSelectSession won't run).
+      setIsInitializingSession(false);
+      return;
+    }
     void handleSelectSession(urlSessionId);
     // One-time URL gate keyed on urlSessionId; handleSelectSession is intentionally excluded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
