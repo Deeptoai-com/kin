@@ -72,6 +72,48 @@ interface HistoryItem {
   pageCount: number; scanned: boolean; createdAt: string | Date;
 }
 
+/** OCR-nav: one row in the page-navigation strip — a lazily-rendered thumbnail (loads only when
+ *  scrolled into view, via IntersectionObserver) with a status badge + page number overlaid.
+ *  Why a real thumbnail (not just a status dot): our users (lawyers/finance) recognize pages by
+ *  LAYOUT ("the signature page", "the financials table"), not by page number — a 96px-wide thumb
+ *  is too small to READ but plenty to tell a table from prose from a title page. Cost is bounded:
+ *  it renders at dpi=40 only for visible rows and reuses any full image already on hand. */
+function PageThumb({
+  page, label, statusColor, statusTitle, isActive, thumb, ocring, onClick, onVisible,
+}: {
+  page: number; label: string; statusColor: string; statusTitle: string; isActive: boolean;
+  thumb: string | undefined; ocring: boolean; onClick: () => void; onVisible: () => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || thumb) return; // already have it → no need to observe
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { onVisible(); io.disconnect(); break; }
+    }, { rootMargin: '200px' }); // prefetch slightly before it scrolls in
+    io.observe(el);
+    return () => io.disconnect();
+  }, [thumb, onVisible]);
+  return (
+    <button ref={ref} type="button" onClick={onClick} title={`第 ${page} 页 · ${statusTitle}`}
+      className={`group relative flex w-full flex-col items-stretch overflow-hidden rounded-md border transition-colors ${isActive ? 'border-primary ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
+      <div className="relative aspect-[3/4] w-full bg-muted/40">
+        {thumb ? (
+          <img src={`data:image/png;base64,${thumb}`} alt={`第 ${page} 页`} loading="lazy" className="h-full w-full object-cover object-top" />
+        ) : ocring ? (
+          <div className="flex h-full items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground/60">第 {page} 页</div>
+        )}
+        {/* status badge (top-right) + page number (bottom-left) overlaid on the thumb */}
+        <span title={statusTitle} className={`absolute right-1 top-1 h-2.5 w-2.5 rounded-full ring-1 ring-background ${statusColor}`} />
+        <span className="absolute bottom-0 left-0 rounded-tr bg-background/80 px-1 text-[10px] text-muted-foreground">{page}</span>
+      </div>
+      <span className={`truncate px-1 py-0.5 text-center text-[10px] ${isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{label}</span>
+    </button>
+  );
+}
+
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp';
 const MEDIA: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
 // We give the VLM the page IMAGE + the parser's text (prose right, table mangled) and ask it to
@@ -165,6 +207,11 @@ function OcrConverterPage() {
   const [tableError, setTableError] = useState<string | null>(null);
   const [tableBatch, setTableBatch] = useState<{ done: number; total: number } | null>(null); // 全选批量进度
   const [rendering, setRendering] = useState<number | null>(null); // page being lazily rendered
+  /** OCR-nav: per-page thumbnail base64 (low-DPI, rendered lazily on scroll-into-view). Separate
+   *  from the full DPI-150 page image so the thumb is cheap; if a full image already exists we
+   *  reuse it (CSS-scaled) and skip a render. Keyed by page number. */
+  const [thumbs, setThumbs] = useState<Record<number, string>>({});
+  const thumbInflight = useRef<Set<number>>(new Set()); // pages whose thumb fetch is in flight
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -304,6 +351,7 @@ function OcrConverterPage() {
         const img = (j.pages ?? [])[0]?.image as string | undefined;
         if (img) {
           setPages((prev) => prev.map((p) => (p.page === pn ? { ...p, imageB64: img, imageUrl: `data:image/png;base64,${img}` } : p)));
+          setThumbs((t) => (t[pn] ? t : { ...t, [pn]: img })); // OCR-nav: reuse the full image as the strip thumb (free)
           return img;
         }
         return null;
@@ -322,6 +370,35 @@ function OcrConverterPage() {
   const toggleSelPage = useCallback((pn: number) => {
     setSelPages((prev) => (prev.includes(pn) ? prev.filter((x) => x !== pn) : [...prev, pn].sort((a, b) => a - b)));
   }, []);
+
+  /** OCR-nav: lazily fetch a LOW-DPI thumbnail for the page-strip. Cost control:
+   *  - reuse the full DPI-150 image if it already exists (主视图/对比 already rendered it) — 0 cost;
+   *  - else render at dpi=40 (~1/4 linear → ~1/14 the pixels/bytes of a 150-dpi page);
+   *  - dedup in-flight requests; non-PDF / no-file → no-op (the upload b64 already serves as thumb). */
+  const ensureThumb = useCallback(
+    async (pn: number) => {
+      if (thumbs[pn] || thumbInflight.current.has(pn)) return;
+      const file = fileRef.current;
+      const pg = pages.find((p) => p.page === pn);
+      if (!pg) return;
+      // reuse a full image if we already have one (free).
+      if (pg.imageB64) { setThumbs((t) => (t[pn] ? t : { ...t, [pn]: pg.imageB64! })); return; }
+      if (!file || file.name.split('.').pop()?.toLowerCase() !== 'pdf') return;
+      thumbInflight.current.add(pn);
+      try {
+        const j = (await fetchWithTimeout(
+          `/api/ocr/render?page=${pn}&dpi=40`,
+          { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file },
+          PARSE_RENDER_CLIENT_TIMEOUT_MS,
+          '缩略图',
+        )) as { pages?: { image: string }[] };
+        const img = (j.pages ?? [])[0]?.image;
+        if (img) setThumbs((t) => ({ ...t, [pn]: img }));
+      } catch { /* thumbnail is best-effort; the status dot + page number still navigate. */ }
+      finally { thumbInflight.current.delete(pn); }
+    },
+    [pages, thumbs],
+  );
 
   // row click: VIEW a page in the comparison (no selection). If it belongs to a recognized
   // cross-page correction, view the whole set so 原图/文字/AI 三栏对齐.
@@ -419,6 +496,7 @@ function OcrConverterPage() {
     setFileName(null); setPages([]); setActive(0); setScanned(false); setError(null); setSavedToKb('idle');
     setSelPages([]); setViewPage(null); setRecognizedTables([]); setTableError(null); setRendering(null); setFormat('markdown'); setPhase('idle');
     setLoadingStage(false);
+    setThumbs({}); thumbInflight.current.clear();
   }, []);
 
   const runLoad = useCallback(
@@ -616,7 +694,8 @@ function OcrConverterPage() {
     setActive(clamped);
     const pg = pages[clamped];
     if (pg && !pg.imageB64) void ensurePageImage(pg.page);
-  }, [pages, ensurePageImage]);
+    if (pg) void ensureThumb(pg.page); // make sure the strip shows the jumped-to page too
+  }, [pages, ensurePageImage, ensureThumb]);
 
   // OCR-UX-B: keyboard nav for the normal (non-tables) view — ←/→ page, Home/End jump.
   // Skips when typing in an input/textarea or in tables mode; only active once pages are loaded.
@@ -879,37 +958,24 @@ function OcrConverterPage() {
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-[132px_1fr_1fr]">
-          {/* OCR-UX-B: 缩略图/页码栏 — 全部页（含未 OCR）一栏纵览，点击跳页，徽标标状态。 */}
+        <div className="grid min-h-0 flex-1 grid-cols-[140px_1fr_1fr]">
+          {/* OCR-nav: 缩略图导航栏 — 懒渲染低 DPI 缩略图 + 状态徽标 + 页码。用户靠"版式"认页
+              （那页是表/是图/是签字页），不是靠页码；缩略图只需"认得出版式"不需"读得清字"。 */}
           <div className="flex min-h-0 flex-col border-r">
             <div className="flex items-center justify-between gap-1 border-b px-2 py-1.5 text-[10px] text-muted-foreground">
               <span>全部 {pages.length} 页</span>
               {pendingCount > 0 && <span className="rounded bg-amber-500/10 px-1 text-amber-600">待识别 {pendingCount}</span>}
             </div>
-            <div className="min-h-0 flex-1 space-y-1 overflow-auto p-1.5">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-1.5 overflow-auto p-1.5">
               {pages.map((p, i) => {
-                const isActive = i === active;
                 const st = p.ocring ? 'ocring' : p.error ? 'error' : p.text !== null ? (p.source === 'ocr' ? 'ocr' : 'parse') : 'pending';
+                const color = st === 'error' ? 'bg-destructive' : st === 'ocr' ? 'bg-emerald-500' : st === 'parse' ? 'bg-primary' : st === 'ocring' ? 'bg-primary' : 'bg-amber-400';
+                const title = st === 'pending' ? '待识别' : st === 'error' ? '识别失败' : st === 'ocr' ? '已 AI 识别' : st === 'ocring' ? '识别中' : '已解析';
+                const label = st === 'pending' ? '待识别' : st === 'error' ? '失败' : st === 'ocr' ? 'AI' : st === 'ocring' ? '识别中' : '已解析';
                 return (
-                  <button key={p.page} type="button" onClick={() => goToPage(i)}
-                    className={`flex w-full items-center gap-1.5 rounded-md border px-1.5 py-1 text-left text-[11px] transition-colors ${isActive ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-accent/40'}`}>
-                    <span className="w-6 shrink-0 text-center text-muted-foreground">{p.page}</span>
-                    {/* 每页状态徽标：已解析 / 已 AI 识别 / 识别中 / 失败 / 待识别 */}
-                    {st === 'ocring' ? (
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
-                    ) : st === 'error' ? (
-                      <span title="识别失败" className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
-                    ) : st === 'ocr' ? (
-                      <span title="已 AI 识别" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                    ) : st === 'parse' ? (
-                      <span title="已解析" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                    ) : (
-                      <span title="待识别" className="h-2 w-2 shrink-0 rounded-full border border-amber-500" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      {st === 'pending' ? '待识别' : st === 'error' ? '失败' : st === 'ocr' ? 'AI' : st === 'ocring' ? '识别中' : '已解析'}
-                    </span>
-                  </button>
+                  <PageThumb key={p.page} page={p.page} label={label} statusColor={color} statusTitle={title}
+                    isActive={i === active} thumb={thumbs[p.page]} ocring={p.ocring}
+                    onClick={() => goToPage(i)} onVisible={() => void ensureThumb(p.page)} />
                 );
               })}
             </div>
