@@ -148,9 +148,9 @@ function OcrConverterPage() {
   const [active, setActive] = useState(0);
   const [format, setFormat] = useState<OutputFormat>('markdown');
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready'>('idle');
-  /** BUG-008 返工：阶段进度细化，告诉用户卡在哪一段 —— 上传中/解析中/渲染中/识别中。
-   *  只在 phase='loading' 期间显示，phase='ready' 后清空。 */
-  const [loadingStage, setLoadingStage] = useState<'parse' | 'render' | null>(null);
+  /** BUG-008 返工：阶段进度细化。OCR-UX-C：parse/render 是并行 allSettled，旧的 'parse'|'render'
+   *  两态从不切到 'render' → "渲染中…"是死分支。改成并行时显示"解析+渲染中…"（一个布尔即可）。 */
+  const [loadingStage, setLoadingStage] = useState<boolean>(false);
   const [scanned, setScanned] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -418,7 +418,7 @@ function OcrConverterPage() {
     fileRef.current = null; jobIdRef.current = null; uploadedFileIdRef.current = null;
     setFileName(null); setPages([]); setActive(0); setScanned(false); setError(null); setSavedToKb('idle');
     setSelPages([]); setViewPage(null); setRecognizedTables([]); setTableError(null); setRendering(null); setFormat('markdown'); setPhase('idle');
-    setLoadingStage(null);
+    setLoadingStage(false);
   }, []);
 
   const runLoad = useCallback(
@@ -436,9 +436,9 @@ function OcrConverterPage() {
         if (ext === 'pdf') {
           setPhase('loading');
           // BUG-008 返工: parse/render fetch 都套 AbortSignal+超时+r.ok（之前完全没有）。
-          // 先标 'parse' 阶段——任一段先返回都会切到 'render' 直到两者就绪。Promise.allSettled
-          // 让两段独立 bail：一段超时不会拖死另一段；一段成功 + 另一段失败，仍能告诉用户哪段挂了。
-          setLoadingStage('parse');
+          // parse/render 并行（Promise.allSettled）：两段独立 bail，一段超时不拖死另一段；
+          // 一段成功 + 另一段失败仍能告诉用户哪段挂了。loadingStage=true 期间显示"解析+渲染中…"。
+          setLoadingStage(true);
           const [parseSettled, renderSettled] = await Promise.allSettled([
             fetchWithTimeout('/api/ocr/parse', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }, PARSE_RENDER_CLIENT_TIMEOUT_MS, '解析'),
             fetchWithTimeout('/api/ocr/render', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }, PARSE_RENDER_CLIENT_TIMEOUT_MS, '渲染'),
@@ -456,7 +456,7 @@ function OcrConverterPage() {
           const renderRes = renderSettled.status === 'fulfilled' ? (renderSettled.value as { pages?: { page: number; image: string }[]; error?: string }) : { pages: [], error: (renderSettled.reason as Error).message };
           if (parseSettled.status === 'rejected') setError(`解析失败：${(parseSettled.reason as Error).message}（已退化为扫描件，可逐页 AI 识别）`);
           else if (renderSettled.status === 'rejected') setError(`渲染失败：${(renderSettled.reason as Error).message}（无页面预览图，文字内容仍可读）`);
-          setLoadingStage(null);
+          setLoadingStage(false);
 
           const images: Record<number, string> = {};
           for (const p of (renderRes.pages ?? []) as { page: number; image: string }[]) images[p.page] = p.image;
@@ -497,10 +497,81 @@ function OcrConverterPage() {
       } catch (err) {
         setError(err instanceof Error ? err.message : '读取失败');
         setPhase('idle');
-        setLoadingStage(null);
+        setLoadingStage(false);
       }
     },
     [resetState, callOcr, persist],
+  );
+
+  /** Rebuild the FULL page set for a reopened job from its original file.
+   *
+   *  OCR-UX-A 根因修复：旧版 reopen 只把存下来的页（`persist` 只存有 text 的页）放回 UI →
+   *  100 页文档只 OCR 4 页时，reopen 后只剩 4 页、剩 96 页消失、无法续 OCR。这里取回原文件后：
+   *  - PDF：重跑 parse/render（已带 BUG-008 超时）拿回全部页 + 图，再把存下来的 OCR 文字按页号 overlay 回去
+   *    （存过的页保留既有文字 + source；未 OCR 的页 text=null，可继续逐页/「识别全部」补完）。
+   *  - 单图：本来就 1 页，直接用既有文字。
+   *  失败（原文件取不回 / parse&render 都挂）→ 退化为「只有存下来的页」的纯文本 reopen（至少不空白）。 */
+  const rebuildFromFile = useCallback(
+    async (file: File, job: { fileName: string; scanned: boolean; pages: { page: number; text: string; source: 'parse' | 'ocr' }[] }) => {
+      const isPdf = job.fileName.toLowerCase().endsWith('.pdf');
+      const storedText = new Map<number, { text: string; source: 'parse' | 'ocr' }>();
+      for (const p of job.pages) storedText.set(p.page, { text: p.text, source: p.source });
+
+      if (!isPdf) {
+        // single image: one page; stored OCR text (if any) goes back on it.
+        const b64 = await fileToBase64(file);
+        const ext = job.fileName.split('.').pop()?.toLowerCase() ?? '';
+        const mt = MEDIA[ext] ?? 'image/jpeg';
+        const stored = storedText.get(1);
+        setPages([{ page: 1, imageUrl: `data:${mt};base64,${b64}`, imageB64: b64, mediaType: mt, text: stored?.text ?? null, source: stored?.source ?? null, ocring: false }]);
+        return;
+      }
+
+      // PDF: re-derive the full page set (parse for text-layer pages count + render for images).
+      setLoadingStage(true);
+      const [parseSettled, renderSettled] = await Promise.allSettled([
+        fetchWithTimeout('/api/ocr/parse', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }, PARSE_RENDER_CLIENT_TIMEOUT_MS, '解析'),
+        fetchWithTimeout('/api/ocr/render', { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }, PARSE_RENDER_CLIENT_TIMEOUT_MS, '渲染'),
+      ]);
+      setLoadingStage(false);
+      // both failed → keep the text-only restore that reopen already set (don't blow it away).
+      if (parseSettled.status === 'rejected' && renderSettled.status === 'rejected') {
+        setError(`重建完整页集失败（解析与渲染都失败），仅恢复已识别的 ${job.pages.length} 页。可重新上传原文件继续。`);
+        return;
+      }
+      const parseRes = parseSettled.status === 'fulfilled' ? (parseSettled.value as { pages?: { page: number; text: string }[] }) : { pages: [] };
+      const renderRes = renderSettled.status === 'fulfilled' ? (renderSettled.value as { pages?: { page: number; image: string }[] }) : { pages: [] };
+      if (parseSettled.status === 'rejected') setError(`解析失败：${(parseSettled.reason as Error).message}（页面预览可用，文字层未重建）`);
+      else if (renderSettled.status === 'rejected') setError(`渲染失败：${(renderSettled.reason as Error).message}（无预览图，文字内容仍可读）`);
+
+      const images: Record<number, string> = {};
+      for (const p of (renderRes.pages ?? []) as { page: number; image: string }[]) images[p.page] = p.image;
+      const freshText: Record<number, string> = {};
+      for (const p of (parseRes.pages ?? []) as { page: number; text: string }[]) freshText[p.page] = p.text;
+
+      // page universe = every page seen anywhere (render images ∪ fresh parse ∪ stored pages).
+      const nums = Array.from(new Set([
+        ...Object.keys(images).map(Number),
+        ...Object.keys(freshText).map(Number),
+        ...job.pages.map((p) => p.page),
+      ])).sort((a, b) => a - b);
+      if (nums.length === 0) {
+        setError('无法重建该 PDF 的页面（可能原文件已损坏）。');
+        return;
+      }
+      const work: OcrPage[] = nums.map((n) => {
+        const stored = storedText.get(n);
+        // priority: stored OCR/correction text (user's work) > fresh parse text (text-layer) > null (needs OCR).
+        const text = stored?.text ?? (!job.scanned ? freshText[n] ?? null : null);
+        const source = stored?.source ?? (text && freshText[n] ? 'parse' : null);
+        return {
+          page: n, imageUrl: images[n] ? `data:image/png;base64,${images[n]}` : null, imageB64: images[n] ?? null,
+          mediaType: 'image/png', text, source, ocring: false,
+        };
+      });
+      setPages(work);
+    },
+    [],
   );
 
   const reopen = useCallback(
@@ -511,22 +582,27 @@ function OcrConverterPage() {
         jobIdRef.current = job.id;
         uploadedFileIdRef.current = 'reopened'; // file already in S3; don't re-upload on persist
         setFileName(job.fileName); setScanned(job.scanned);
+        // immediate text-only restore so the UI isn't blank while we fetch the original.
         setPages(job.pages.map((p) => ({ page: p.page, imageUrl: null, imageB64: null, mediaType: 'image/png', text: p.text, source: p.source, ocring: false })));
         setRecognizedTables(job.tables ?? []); // restore previously-recognized tables
         setPhase('ready');
-        // Pull the stored original back so previews can render + tables can be read (deep pages
-        // render lazily). MinIO isn't browser-reachable → the app proxies the bytes.
+        // OCR-UX-A: pull the original back AND rebuild the FULL page set (not just the saved pages),
+        // so missing/un-OCR'd pages reappear, render lazily, and 「识别这页/识别全部」can finish them.
         try {
           const res = await fetch(`/api/ocr/file?jobId=${encodeURIComponent(id)}`);
           if (res.ok) {
             const blob = await res.blob();
-            fileRef.current = new File([blob], job.fileName, { type: job.mimeType || blob.type || 'application/octet-stream' });
-            if (job.fileName.toLowerCase().endsWith('.pdf') && job.pages[0]) void ensurePageImage(job.pages[0].page);
+            const file = new File([blob], job.fileName, { type: job.mimeType || blob.type || 'application/octet-stream' });
+            fileRef.current = file;
+            await rebuildFromFile(file, job);
+          } else {
+            // original gone (purged) → keep text-only restore + tell the user tables/续OCR需重新上传.
+            setError('历史记录的原文件已不可用，仅恢复已识别的文字。续识别 / 表格需重新上传原文件。');
           }
-        } catch { /* original unavailable; text-only reopen */ }
+        } catch { /* original unavailable; the text-only restore above stands */ }
       } catch { setError('打开历史失败'); }
     },
-    [resetState, getJob, ensurePageImage],
+    [resetState, getJob, rebuildFromFile],
   );
 
   const removeJob = useCallback(async (id: string, e: React.MouseEvent) => {
@@ -626,7 +702,7 @@ function OcrConverterPage() {
           {phase === 'loading' ? (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {loadingStage === 'parse' ? '解析中…' : loadingStage === 'render' ? '渲染中…' : '加载中…'}
+              {loadingStage ? '解析 + 渲染中…' : '加载中…'}
             </span>
           ) : scanned ? (
             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600">扫描件 · 需 AI 识别</span>
@@ -662,7 +738,7 @@ function OcrConverterPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
               {!fileRef.current ? (
-                <p className="text-xs text-muted-foreground">历史记录未保留原文件，无法读取表格。请重新上传该文件。</p>
+                <p className="text-xs text-muted-foreground">历史记录的原文件已不可用，无法读取表格。请重新上传该文件。</p>
               ) : tablePages.length === 0 ? (
                 <p className="text-xs text-muted-foreground">未在解析结果中检测到表格。</p>
               ) : (
