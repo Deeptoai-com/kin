@@ -10,7 +10,7 @@
  */
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ScanText, FileUp, Copy, Check, Download, BookPlus, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, Sparkles, Square, CheckSquare, Trash2, RotateCcw, Clock, Table as TableIcon,
@@ -618,6 +618,22 @@ function OcrConverterPage() {
     if (pg && !pg.imageB64) void ensurePageImage(pg.page);
   }, [pages, ensurePageImage]);
 
+  // OCR-UX-B: keyboard nav for the normal (non-tables) view — ←/→ page, Home/End jump.
+  // Skips when typing in an input/textarea or in tables mode; only active once pages are loaded.
+  useEffect(() => {
+    if (format === 'tables' || pages.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement | null)?.isContentEditable) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPage(active - 1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goToPage(active + 1); }
+      else if (e.key === 'Home') { e.preventDefault(); goToPage(0); }
+      else if (e.key === 'End') { e.preventDefault(); goToPage(pages.length - 1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [format, pages.length, active, goToPage]);
+
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void runLoad(f); };
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void runLoad(f); };
 
@@ -863,7 +879,41 @@ function OcrConverterPage() {
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-2">
+        <div className="grid min-h-0 flex-1 grid-cols-[132px_1fr_1fr]">
+          {/* OCR-UX-B: 缩略图/页码栏 — 全部页（含未 OCR）一栏纵览，点击跳页，徽标标状态。 */}
+          <div className="flex min-h-0 flex-col border-r">
+            <div className="flex items-center justify-between gap-1 border-b px-2 py-1.5 text-[10px] text-muted-foreground">
+              <span>全部 {pages.length} 页</span>
+              {pendingCount > 0 && <span className="rounded bg-amber-500/10 px-1 text-amber-600">待识别 {pendingCount}</span>}
+            </div>
+            <div className="min-h-0 flex-1 space-y-1 overflow-auto p-1.5">
+              {pages.map((p, i) => {
+                const isActive = i === active;
+                const st = p.ocring ? 'ocring' : p.error ? 'error' : p.text !== null ? (p.source === 'ocr' ? 'ocr' : 'parse') : 'pending';
+                return (
+                  <button key={p.page} type="button" onClick={() => goToPage(i)}
+                    className={`flex w-full items-center gap-1.5 rounded-md border px-1.5 py-1 text-left text-[11px] transition-colors ${isActive ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-accent/40'}`}>
+                    <span className="w-6 shrink-0 text-center text-muted-foreground">{p.page}</span>
+                    {/* 每页状态徽标：已解析 / 已 AI 识别 / 识别中 / 失败 / 待识别 */}
+                    {st === 'ocring' ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+                    ) : st === 'error' ? (
+                      <span title="识别失败" className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
+                    ) : st === 'ocr' ? (
+                      <span title="已 AI 识别" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                    ) : st === 'parse' ? (
+                      <span title="已解析" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                    ) : (
+                      <span title="待识别" className="h-2 w-2 shrink-0 rounded-full border border-amber-500" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {st === 'pending' ? '待识别' : st === 'error' ? '失败' : st === 'ocr' ? 'AI' : st === 'ocring' ? '识别中' : '已解析'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="min-h-0 overflow-auto border-r p-3">
             <div className="mb-2 text-[11px] text-muted-foreground">原始页 · 第 {current?.page ?? 1} 页</div>
             {current?.imageUrl ? (
@@ -899,11 +949,18 @@ function OcrConverterPage() {
 
       <div className="flex items-center justify-between gap-2 border-t px-4 py-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          {format !== 'tables' && (
+          {format !== 'tables' && pages.length > 0 && (
             <>
-              <button type="button" disabled={active === 0} onClick={() => goToPage(active - 1)} className="disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-              <span>{current?.page ?? 1} / {pages.length}</span>
-              <button type="button" disabled={active >= pages.length - 1} onClick={() => goToPage(active + 1)} className="disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" disabled={active === 0} onClick={() => goToPage(active - 1)} title="上一页 (←)" className="disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+              {/* OCR-UX-B: 输入页号直达 */}
+              <span className="flex items-center gap-1">
+                <input type="number" min={1} max={pages.length} value={current?.page ?? 1}
+                  onChange={(e) => { const n = Number(e.target.value); const idx = pages.findIndex((p) => p.page === n); if (idx >= 0) goToPage(idx); else if (n >= 1 && n <= pages.length) goToPage(n - 1); }}
+                  className="w-12 rounded border bg-background px-1 py-0.5 text-center text-xs text-foreground" />
+                <span className="text-xs">/ {pages.length}</span>
+              </span>
+              <button type="button" disabled={active >= pages.length - 1} onClick={() => goToPage(active + 1)} title="下一页 (→)" className="disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+              <span className="ml-1 hidden text-[10px] text-muted-foreground/70 sm:inline">← / → 翻页 · Home/End 首末页</span>
             </>
           )}
         </div>
