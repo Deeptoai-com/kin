@@ -3,11 +3,9 @@
 # This file is optimized for Dokploy with Traefik reverse proxy.
 # Traefik will handle HTTPS, SSL certificates, and routing.
 #
-# Usage in Dokploy:
-# 1. Create a new application in Dokploy
-# 2. Upload this docker-compose.yml file
-# 3. Configure environment variables in Dokploy UI
-# 4. Add Traefik labels (see infra/deploy/dokploy-traefik-labels.yml)
+# Usage in Dokploy: see docs/deployment/dokploy.md — create a Compose service from the
+# git repo, point it at this file, set env from infra/deploy/env.dokploy.example, deploy.
+# Traefik routing labels are already defined on the services below (no separate label file).
 #
 # Key differences from docker-compose.yml:
 # - Uses `expose` instead of `ports` (Traefik handles external access)
