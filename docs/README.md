@@ -17,7 +17,7 @@ Documentation hub for developers and deployers.
 
 - **Getting Started**: See the main [README](../README.md) for installation and Quick Start
 - **Deployment**: [Docker Compose](../README.md#option-a-docker-compose-recommended) | [infra/deploy](../infra/deploy/) for Dokploy, Ansible
-- **Contributing**: [CONTRIBUTING.md](../CONTRIBUTING.md)
+- **Contributing**: [CONTRIBUTING.md](../.github/CONTRIBUTING.md)
 
 ## Other Documents
 

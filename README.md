@@ -1,7 +1,7 @@
 # Kin
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](.github/CODE_OF_CONDUCT.md)
 [![Images](https://img.shields.io/badge/images-GHCR%20multi--arch-2496ed.svg)](https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp)
 
 **Kin is a self-hosted, single-org, multi-user agent workspace for small teams.** Run a
@@ -229,4 +229,4 @@ Kin is built on the
 
 - **Repository**: https://github.com/deeptoai-com/kin
 - **Container images**: https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp
-- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) · **Security**: [SECURITY.md](SECURITY.md)
+- **Contributing**: [CONTRIBUTING.md](.github/CONTRIBUTING.md) · **Security**: [SECURITY.md](.github/SECURITY.md)

@@ -118,6 +118,12 @@ hosts.local.ini
 # Test output files with local paths (for open source preparation)
 test-advanced-features.log
 test-advanced-features-results.json
+
+# Cursor IDE — personal/local config, kept locally but not in the public repo
+/.cursor/
+/.cursorignore
+/.cursorindexingignore
+
 # Intlayer
 .intlayer
 

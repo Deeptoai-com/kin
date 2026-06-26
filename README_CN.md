@@ -1,7 +1,7 @@
 # Kin
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](.github/CODE_OF_CONDUCT.md)
 [![Images](https://img.shields.io/badge/images-GHCR%20multi--arch-2496ed.svg)](https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp)
 
 > 中文文档 · English: [README.md](README.md)
@@ -206,4 +206,4 @@ Kin 构建于 [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/cla
 
 - **仓库**：https://github.com/deeptoai-com/kin
 - **容器镜像**：https://github.com/deeptoai-com/kin/pkgs/container/kin%2Fapp
-- **贡献**：[CONTRIBUTING.md](CONTRIBUTING.md) · **安全**：[SECURITY.md](SECURITY.md)
+- **贡献**：[CONTRIBUTING.md](.github/CONTRIBUTING.md) · **安全**：[SECURITY.md](.github/SECURITY.md)
