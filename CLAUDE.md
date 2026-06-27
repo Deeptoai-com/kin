@@ -1,8 +1,13 @@
-# OxyGenie - 开发规则
+# Kin - 开发规则
+
+> 历史品牌：本项目早期称为 **OxyGenie**，仍保留 `oxygenie.cc` 作为生产域名（Owner
+> 2026-06-12 确认），但代码仓库、GHCR 镜像、README/官方文案均已迁移到 **Kin /
+> Deeptoai-com**。文中出现 `oxygenie.cc` / `oxygenie-cc2-private` 等字样是**真实部署事实**
+> 或**历史坑点**，并非待改的"品牌错位"——请勿盲改。
 
 ## 产品定位与设计前提（北极星 · 任何设计/功能先对照此处，避免偏差）
 
-**OxyGenie 是面向中小团队的「私有化部署」自治 Claude-Agent 工作台。** 典型场景：**公司内部 / 团队内部**，由**可信的小圈子（同事）自托管使用**——这也是我们鼓励的用法。它是**自托管、单组织、多用户（组织内多个可信用户）**的产品，**不是**面向公网匿名大众的多租户 SaaS。
+**Kin 是面向中小团队的「私有化部署」自治 Claude-Agent 工作台。** 典型场景：**公司内部 / 团队内部**，由**可信的小圈子（同事）自托管使用**——这也是我们鼓励的用法。它是**自托管、单组织、多用户（组织内多个可信用户）**的产品，**不是**面向公网匿名大众的多租户 SaaS。
 
 **设计自检（每次做设计/功能前对照；若与下列前提冲突，停下来与 Owner 确认）：**
 1. **威胁模型 = 半可信同事，不是匿名攻击者。** 安全是「防误操作 + 共享宿主/密钥卫生 + 组织内用户隔离」的**纵深防御**，**不是**反匿名攻击的锁死。**触达服务器的强力功能（stdio MCP、连内网/本地工具、代码执行）是合法核心用途**——用沙盒 + 警示护栏，而非禁止。
@@ -36,7 +41,7 @@ AI SDK（`ai` / `@ai-sdk/*`），如需新增 LLM 网关能力走「多模型」
 
 本项目基于 **TanStack Start** 构建。
 
-**GitHub 仓库**: https://github.com/foreveryh/oxygenie
+**GitHub 仓库**: https://github.com/deeptoai-com/kin
 
 **已完成的功能 (Phase 1-4)**:
 - Phase 1: WebSocket 服务器 + Claude Agent SDK 集成
@@ -56,7 +61,7 @@ AI SDK（`ai` / `@ai-sdk/*`），如需新增 LLM 网关能力走「多模型」
 ## 项目结构
 
 ```
-OxyGenie/
+OxyGenie/  # 历史名；目录结构指代当前仓库根
 ├── src/
 │   ├── components/claude-chat/   # Claude Chat UI 组件
 │   ├── lib/                      # 工具库和适配器
@@ -137,7 +142,7 @@ scripts/local-backend.sh down      # 收工清理：删桥 + 删 .env.local
 ## Git 工作流
 
 - 主分支: `main`
-- 远程仓库: `origin` → https://github.com/foreveryh/oxygenie
+- 远程仓库: `origin` → https://github.com/deeptoai-com/kin
 - 直接在 `main` 分支开发，或创建 feature 分支后合并
 
 ---
@@ -649,12 +654,12 @@ TanStack Start + Nitro 已提供的能力，**不要重新实现**：
 ```bash
 # ✅ 正确：指定目标平台为 linux/amd64
 docker buildx build --platform linux/amd64 \
-  -t ghcr.io/foreveryh/oxygenie/app:latest \
+  -t ghcr.io/deeptoai-com/kin/app:latest \
   --push .
 
 # ❌ 错误：不指定平台（会构建本机架构 arm64）
-docker build -t ghcr.io/foreveryh/oxygenie/app:latest .
-docker push ghcr.io/foreveryh/oxygenie/app:latest
+docker build -t ghcr.io/deeptoai-com/kin/app:latest .
+docker push ghcr.io/deeptoai-com/kin/app:latest
 ```
 
 #### 推送前认证
@@ -671,8 +676,8 @@ echo $(gh auth token) | docker login ghcr.io -u USERNAME --password-stdin
 
 ```bash
 # 拉取并检查架构
-docker pull ghcr.io/foreveryh/oxygenie/app:latest
-docker inspect ghcr.io/foreveryh/oxygenie/app:latest | jq '.[0].Architecture'
+docker pull ghcr.io/deeptoai-com/kin/app:latest
+docker inspect ghcr.io/deeptoai-com/kin/app:latest | jq '.[0].Architecture'
 # 应输出: "amd64"
 ```
 
