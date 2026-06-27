@@ -1,7 +1,7 @@
 {
-  "name": "oxygenie",
-  "description": "OxyGenie - Extensible enterprise AI agent platform, based on Constructa scaffold",
-  "repository": "https://github.com/foreveryh/oxygenie",
+  "name": "kin",
+  "description": "Kin — self-hosted, single-org Claude-Agent workspace (based on Constructa scaffold)",
+  "repository": "https://github.com/deeptoai-com/kin",
   "private": true,
   "sideEffects": false,
   "type": "module",
